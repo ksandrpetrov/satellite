@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from typing import Union
 
 from ...messages_ru import (
     button_text_is_calendar_sources,
@@ -21,6 +23,126 @@ from ...messages_ru import (
     button_text_to_mode,
 )
 from .context import IncomingCallback, IncomingMessage, PlanMode, SubscriptionAction
+
+
+# --- единая точка правды для команд (роутинг / dedup / FSM-exit) ------------
+
+
+@dataclass(frozen=True)
+class PlanCommand:
+    mode: PlanMode
+
+
+@dataclass(frozen=True)
+class SubscriptionCommand:
+    action: SubscriptionAction
+
+
+@dataclass(frozen=True)
+class StartOrHelpCommand:
+    is_start: bool
+
+
+@dataclass(frozen=True)
+class SettingsCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class UpcomingCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class CreateCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class ConnectCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class DisconnectCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class CheckCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class CalendarSourcesCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class ForeignCalendarsCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class PendingCommand:
+    pass
+
+
+RecognizedCommand = Union[
+    PlanCommand,
+    SubscriptionCommand,
+    StartOrHelpCommand,
+    SettingsCommand,
+    UpcomingCommand,
+    CreateCommand,
+    ConnectCommand,
+    DisconnectCommand,
+    CheckCommand,
+    CalendarSourcesCommand,
+    ForeignCalendarsCommand,
+    PendingCommand,
+]
+
+
+def recognize_message(text: str | None) -> RecognizedCommand | None:
+    """Распознаёт команду или текст reply-кнопки. None — свободный ввод / unknown."""
+    if not text:
+        return None
+    if is_start_command(text):
+        return StartOrHelpCommand(is_start=True)
+    if is_help_command(text):
+        return StartOrHelpCommand(is_start=False)
+    mode = parse_command_mode(text)
+    if mode is not None:
+        return PlanCommand(mode=mode)
+    action = parse_subscription_action(text)
+    if action is not None:
+        return SubscriptionCommand(action=action)
+    if is_settings_request(text):
+        return SettingsCommand()
+    if is_upcoming_request(text):
+        return UpcomingCommand()
+    if is_create_event_request(text):
+        return CreateCommand()
+    if is_connect_calendar_request(text):
+        return ConnectCommand()
+    if is_check_calendar_request(text):
+        return CheckCommand()
+    if is_disconnect_calendar_request(text):
+        return DisconnectCommand()
+    if is_calendar_sources_request(text):
+        return CalendarSourcesCommand()
+    if is_foreign_calendars_request(text):
+        return ForeignCalendarsCommand()
+    if _is_pending_command(text):
+        return PendingCommand()
+    return None
+
+
+def _is_pending_command(text: str | None) -> bool:
+    if not text:
+        return False
+    return text.strip().split()[0].lower().startswith("/pending")
 
 
 # Длинные алиасы (/today, /tomorrow, /aftertomorrow) появились вместе с
@@ -173,29 +295,7 @@ def is_foreign_calendars_request(text: str | None) -> bool:
 
 def is_command_like_message(text: str) -> bool:
     """Команды (`/td`, кнопки) трактуем как «выход из state», не как ввод времени."""
-    if parse_command_mode(text) is not None:
-        return True
-    if parse_subscription_action(text) is not None:
-        return True
-    if is_settings_request(text):
-        return True
-    if is_start_or_help_command(text):
-        return True
-    if is_upcoming_request(text):
-        return True
-    if is_create_event_request(text):
-        return True
-    if is_connect_calendar_request(text):
-        return True
-    if is_check_calendar_request(text):
-        return True
-    if is_disconnect_calendar_request(text):
-        return True
-    if is_calendar_sources_request(text):
-        return True
-    if is_foreign_calendars_request(text):
-        return True
-    return False
+    return recognize_message(text) is not None
 
 
 def _display_name(from_user: dict) -> str | None:

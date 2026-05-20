@@ -75,6 +75,7 @@ class DigestSettings:
     """
 
     chat_id: int
+    telegram_user_id: int
     username: str
     digest_enabled: bool = False
     digest_days: str = DEFAULT_DIGEST_DAYS
@@ -106,7 +107,13 @@ class SubscriptionStore:
             record = self._items.get(chat_id)
             return bool(record and record.digest_enabled)
 
-    def subscribe(self, chat_id: int, username: str) -> bool:
+    def subscribe(
+        self,
+        chat_id: int,
+        username: str,
+        *,
+        telegram_user_id: int | None = None,
+    ) -> bool:
         """Тонкая обёртка над ``update_settings(digest_enabled=True)``.
 
         Возвращает ``True``, если запись была создана или ``digest_enabled``
@@ -118,7 +125,12 @@ class SubscriptionStore:
         with self._lock:
             existed = self._items.get(chat_id)
             was_enabled = bool(existed and existed.digest_enabled)
-        updated = self.update_settings(chat_id, username, digest_enabled=True)
+        updated = self.update_settings(
+            chat_id,
+            username,
+            telegram_user_id=telegram_user_id,
+            digest_enabled=True,
+        )
         return not was_enabled and updated.digest_enabled
 
     def unsubscribe(self, chat_id: int) -> bool:
@@ -142,7 +154,13 @@ class SubscriptionStore:
         with self._lock:
             return self._items.get(chat_id)
 
-    def get_or_create(self, chat_id: int, username: str) -> DigestSettings:
+    def get_or_create(
+        self,
+        chat_id: int,
+        username: str,
+        *,
+        telegram_user_id: int | None = None,
+    ) -> DigestSettings:
         """Гарантирует запись с дефолтами; обновляет username, если поменялся.
 
         Полезно для экрана настроек: открытие меню должно показать корректное
@@ -154,28 +172,38 @@ class SubscriptionStore:
         if not username:
             raise ValueError("username is required")
         normalized = username.lower()
+        resolved_user_id = (
+            int(telegram_user_id)
+            if telegram_user_id is not None
+            else int(chat_id)
+        )
         with self._lock:
             existing = self._items.get(chat_id)
             if existing is None:
                 created = DigestSettings(
                     chat_id=chat_id,
+                    telegram_user_id=resolved_user_id,
                     username=normalized,
                 )
                 self._items[chat_id] = created
                 self._save_locked()
                 return created
+            updated = existing
             if existing.username != normalized:
-                updated = replace(existing, username=normalized)
+                updated = replace(updated, username=normalized)
+            if existing.telegram_user_id != resolved_user_id:
+                updated = replace(updated, telegram_user_id=resolved_user_id)
+            if updated is not existing:
                 self._items[chat_id] = updated
                 self._save_locked()
-                return updated
-            return existing
+            return updated
 
     def update_settings(
         self,
         chat_id: int,
         username: str,
         *,
+        telegram_user_id: int | None = None,
         digest_enabled: bool | None = None,
         digest_days: str | None = None,
         digest_time: str | None = None,
@@ -191,17 +219,25 @@ class SubscriptionStore:
         if not username:
             raise ValueError("username is required")
         normalized_user = username.lower()
+        resolved_user_id = (
+            int(telegram_user_id)
+            if telegram_user_id is not None
+            else int(chat_id)
+        )
         now_iso = self._now_iso()
         with self._lock:
             existing = self._items.get(chat_id)
             if existing is None:
                 existing = DigestSettings(
                     chat_id=chat_id,
+                    telegram_user_id=resolved_user_id,
                     username=normalized_user,
                 )
             updated = existing
             if existing.username != normalized_user:
                 updated = replace(updated, username=normalized_user)
+            if existing.telegram_user_id != resolved_user_id:
+                updated = replace(updated, telegram_user_id=resolved_user_id)
             if digest_enabled is not None and digest_enabled != updated.digest_enabled:
                 if digest_enabled:
                     updated = replace(
@@ -302,8 +338,19 @@ class SubscriptionStore:
                 last_sent_str = None
             else:
                 last_sent_str = str(last_sent)
+            uid_raw = value.get("telegram_user_id")
+            if isinstance(uid_raw, int):
+                telegram_user_id = uid_raw
+            elif isinstance(uid_raw, str) and uid_raw.strip():
+                try:
+                    telegram_user_id = int(uid_raw)
+                except ValueError:
+                    telegram_user_id = chat_id
+            else:
+                telegram_user_id = chat_id
             items[chat_id] = DigestSettings(
                 chat_id=chat_id,
+                telegram_user_id=telegram_user_id,
                 username=username,
                 digest_enabled=digest_enabled,
                 digest_days=digest_days,
@@ -317,6 +364,7 @@ class SubscriptionStore:
     def _save_locked(self) -> None:
         payload = {
             str(chat_id): {
+                "telegram_user_id": rec.telegram_user_id,
                 "username": rec.username,
                 "digest_enabled": rec.digest_enabled,
                 "digest_days": rec.digest_days,

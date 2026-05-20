@@ -25,19 +25,26 @@ def handle_subscription_action(
         return
     username = effective_username(msg)
     if action == "subscribe":
-        text = _do_subscribe(ctx, msg.chat_id, username)
+        text = _do_subscribe(ctx, msg.chat_id, username, msg.user_id)
     else:
         text = _do_unsubscribe(ctx, msg.chat_id, username)
     send(ctx, msg.chat_id, text)
 
 
-def _do_subscribe(ctx: HandlerContext, chat_id: int, username: str) -> str:
-    settings = ctx.subscriptions.get_or_create(chat_id, username)
+def _do_subscribe(
+    ctx: HandlerContext, chat_id: int, username: str, telegram_user_id: int
+) -> str:
+    settings = ctx.subscriptions.get_or_create(
+        chat_id, username, telegram_user_id=telegram_user_id
+    )
     if settings.digest_enabled:
         log.info("Already subscribed: chat_id=%s username=%s", chat_id, username)
         return SUBSCRIBE_ALREADY_TEXT
     updated = ctx.subscriptions.update_settings(
-        chat_id, username, digest_enabled=True
+        chat_id,
+        username,
+        telegram_user_id=telegram_user_id,
+        digest_enabled=True,
     )
     log.info(
         "Subscribed: chat_id=%s username=%s time=%s days=%s",

@@ -45,6 +45,7 @@ def _settings(
 ) -> DigestSettings:
     return DigestSettings(
         chat_id=chat_id,
+        telegram_user_id=chat_id,
         username="alice",
         digest_enabled=enabled,
         digest_days=days,

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 
-from ...calendar.providers.base import CalendarListEntry, CalendarProviderError
-from ...calendar.selection import effective_enabled_calendar_urls
 from ...messages_ru import (
     CALENDAR_SOURCES_LAST_ENABLED_TEXT,
     CALENDAR_SOURCES_LOAD_FAIL_HTML,
@@ -16,36 +14,11 @@ from ...messages_ru import (
     calendar_sources_screen_text,
     calendar_sources_toggle_notice,
 )
+from .calendar_view import enabled_url_set, fetch_calendars, normalize_calendar_url, screen_lines
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import edit_callback_message, safe_answer_callback, send
 
 log = logging.getLogger(__name__)
-
-
-def _normalize_url(url: str) -> str:
-    return url.strip().rstrip("/")
-
-
-def _enabled_url_set(record) -> set[str]:
-    return {_normalize_url(url) for url in effective_enabled_calendar_urls(record)}
-
-
-def _screen_lines(
-    calendars: list[CalendarListEntry], enabled_urls: set[str]
-) -> list[str]:
-    lines: list[str] = []
-    for entry in calendars:
-        mark = "✅" if _normalize_url(entry.url) in enabled_urls else "⬜️"
-        lines.append(f"{mark} {entry.name}")
-    return lines
-
-
-def _fetch_calendars(ctx: HandlerContext, user_id: int) -> list[CalendarListEntry] | None:
-    try:
-        return ctx.calendar_service.list_calendars(user_id)
-    except CalendarProviderError:
-        log.warning("Failed to list calendars for user_id=%s", user_id)
-        return None
 
 
 def handle_open_calendar_sources(ctx: HandlerContext, msg: IncomingMessage) -> None:
@@ -54,15 +27,15 @@ def handle_open_calendar_sources(ctx: HandlerContext, msg: IncomingMessage) -> N
     record = ctx.users.get(msg.user_id)
     if record is None or not record.has_calendar:
         return
-    calendars = _fetch_calendars(ctx, msg.user_id)
+    calendars = fetch_calendars(ctx, msg.user_id)
     if calendars is None:
         send(ctx, msg.chat_id, CALENDAR_SOURCES_LOAD_FAIL_HTML)
         return
     if len(calendars) <= 1:
         send(ctx, msg.chat_id, CALENDAR_SOURCES_SINGLE_HTML)
         return
-    enabled_urls = _enabled_url_set(record)
-    text = calendar_sources_screen_text(lines=_screen_lines(calendars, enabled_urls))
+    enabled_urls = enabled_url_set(record)
+    text = calendar_sources_screen_text(lines=screen_lines(calendars, enabled_urls))
     keyboard = build_calendar_sources_keyboard(
         calendars=[(entry.name, entry.url) for entry in calendars],
         enabled_urls=enabled_urls,
@@ -106,7 +79,7 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
     except ValueError:
         safe_answer_callback(ctx, cb)
         return
-    calendars = _fetch_calendars(ctx, cb.user_id)
+    calendars = fetch_calendars(ctx, cb.user_id)
     if calendars is None:
         safe_answer_callback(ctx, cb, text="Не удалось обновить список")
         return
@@ -118,8 +91,8 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
         return
 
     target = calendars[idx]
-    target_url = _normalize_url(target.url)
-    current = set(_enabled_url_set(record))
+    target_url = normalize_calendar_url(target.url)
+    current = set(enabled_url_set(record))
     if target_url in current:
         if len(current) <= 1:
             safe_answer_callback(ctx, cb, text=CALENDAR_SOURCES_LAST_ENABLED_TEXT)
@@ -133,8 +106,8 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
     updated = ctx.users.set_enabled_calendar_urls(
         cb.user_id, calendar_urls=sorted(current)
     )
-    enabled_urls = _enabled_url_set(updated)
-    text = calendar_sources_screen_text(lines=_screen_lines(calendars, enabled_urls))
+    enabled_urls = enabled_url_set(updated)
+    text = calendar_sources_screen_text(lines=screen_lines(calendars, enabled_urls))
     keyboard = build_calendar_sources_keyboard(
         calendars=[(entry.name, entry.url) for entry in calendars],
         enabled_urls=enabled_urls,

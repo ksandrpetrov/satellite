@@ -64,6 +64,14 @@ def test_persistence_file_is_valid_json(tmp_path: Path):
     raw = json.loads(path.read_text())
     assert "42" in raw
     assert raw["42"]["username"] == "alex"
+    assert raw["42"]["telegram_user_id"] == 42
+
+
+def test_telegram_user_id_persisted(tmp_path: Path):
+    store = SubscriptionStore(tmp_path / "subs.json")
+    store.get_or_create(99, "bob", telegram_user_id=4242)
+    raw = json.loads((tmp_path / "subs.json").read_text())
+    assert raw["99"]["telegram_user_id"] == 4242
 
 
 def test_load_from_corrupt_file_does_not_crash(tmp_path: Path):

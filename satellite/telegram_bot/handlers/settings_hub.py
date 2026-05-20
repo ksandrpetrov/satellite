@@ -21,7 +21,7 @@ from ...messages_ru import (
     SETTINGS_HUB_TEXT,
     build_settings_hub_keyboard,
 )
-from .calendar_sources import _enabled_url_set, _fetch_calendars, _screen_lines
+from .calendar_view import enabled_url_set, fetch_calendars, screen_lines
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import edit_callback_message, safe_answer_callback, send
 from .settings import show_digest_settings_screen
@@ -99,7 +99,7 @@ def _open_calendar_sources_from_callback(ctx: HandlerContext, cb: IncomingCallba
     if not _has_calendar(ctx, cb.user_id):
         safe_answer_callback(ctx, cb)
         return
-    calendars = _fetch_calendars(ctx, cb.user_id)
+    calendars = fetch_calendars(ctx, cb.user_id)
     if calendars is None:
         safe_answer_callback(ctx, cb, text="Не удалось загрузить календари")
         send(ctx, cb.chat_id, CALENDAR_SOURCES_LOAD_FAIL_HTML)
@@ -116,8 +116,8 @@ def _open_calendar_sources_from_callback(ctx: HandlerContext, cb: IncomingCallba
         calendar_sources_screen_text,
     )
 
-    enabled_urls = _enabled_url_set(record)
-    text = calendar_sources_screen_text(lines=_screen_lines(calendars, enabled_urls))
+    enabled_urls = enabled_url_set(record)
+    text = calendar_sources_screen_text(lines=screen_lines(calendars, enabled_urls))
     keyboard = build_calendar_sources_keyboard(
         calendars=[(entry.name, entry.url) for entry in calendars],
         enabled_urls=enabled_urls,

@@ -197,19 +197,19 @@ class DigestScheduler:
         return delivered
 
     def _resolve_telegram_user_id(self, sub: DigestSettings) -> int | None:
-        user_record = self._users.find_by_username(sub.username)
+        user_record = self._users.get(sub.telegram_user_id)
         if user_record is None:
             log.warning(
-                "Digest skip: chat_id=%s username=%s user not found in users.json",
+                "Digest skip: chat_id=%s telegram_user_id=%s user not found in users.json",
                 sub.chat_id,
-                sub.username,
+                sub.telegram_user_id,
             )
             return None
         if not user_record.has_calendar:
             log.warning(
-                "Digest skip: chat_id=%s username=%s calendar not connected",
+                "Digest skip: chat_id=%s telegram_user_id=%s calendar not connected",
                 sub.chat_id,
-                sub.username,
+                sub.telegram_user_id,
             )
             return None
         return user_record.telegram_user_id

@@ -53,7 +53,9 @@ def handle_open_digest_settings(
     username = effective_username(msg)
     # Выход из state ожидания времени, если он был.
     ctx.digest_state.clear(msg.chat_id)
-    settings = ctx.subscriptions.get_or_create(msg.chat_id, username)
+    settings = ctx.subscriptions.get_or_create(
+        msg.chat_id, username, telegram_user_id=msg.user_id
+    )
     text = digest_settings_screen_text(
         digest_enabled=settings.digest_enabled,
         digest_days=settings.digest_days,
@@ -84,6 +86,7 @@ def handle_digest_time_input(ctx: HandlerContext, msg: IncomingMessage) -> None:
     updated = ctx.subscriptions.update_settings(
         msg.chat_id,
         username,
+        telegram_user_id=msg.user_id,
         digest_time=normalized,
     )
     ctx.digest_state.clear(msg.chat_id)
@@ -103,10 +106,15 @@ def handle_callback_toggle(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.chat_id is None or cb.user_id is None:
         return
     username = effective_username_from_callback(cb)
-    settings = ctx.subscriptions.get_or_create(cb.chat_id, username)
+    settings = ctx.subscriptions.get_or_create(
+        cb.chat_id, username, telegram_user_id=cb.user_id
+    )
     new_enabled = not settings.digest_enabled
     updated = ctx.subscriptions.update_settings(
-        cb.chat_id, username, digest_enabled=new_enabled
+        cb.chat_id,
+        username,
+        telegram_user_id=cb.user_id,
+        digest_enabled=new_enabled,
     )
     notice = digest_toggle_notice_text(enabled=updated.digest_enabled)
     log.info(
@@ -126,7 +134,9 @@ def show_digest_settings_screen(
         return
     username = effective_username_from_callback(cb)
     ctx.digest_state.clear(cb.chat_id)
-    settings = ctx.subscriptions.get_or_create(cb.chat_id, username)
+    settings = ctx.subscriptions.get_or_create(
+        cb.chat_id, username, telegram_user_id=cb.user_id
+    )
     render_digest_settings_screen(ctx, cb, settings)
     safe_answer_callback(ctx, cb)
 
@@ -135,7 +145,9 @@ def show_digest_days_screen(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.chat_id is None or cb.user_id is None:
         return
     username = effective_username_from_callback(cb)
-    settings = ctx.subscriptions.get_or_create(cb.chat_id, username)
+    settings = ctx.subscriptions.get_or_create(
+        cb.chat_id, username, telegram_user_id=cb.user_id
+    )
     edit_callback_message(
         ctx,
         cb,
@@ -151,9 +163,14 @@ def handle_callback_set_days(
     if cb.chat_id is None or cb.user_id is None:
         return
     username = effective_username_from_callback(cb)
-    before = ctx.subscriptions.get_or_create(cb.chat_id, username)
+    before = ctx.subscriptions.get_or_create(
+        cb.chat_id, username, telegram_user_id=cb.user_id
+    )
     updated = ctx.subscriptions.update_settings(
-        cb.chat_id, username, digest_days=value
+        cb.chat_id,
+        username,
+        telegram_user_id=cb.user_id,
+        digest_days=value,
     )
     changed = before.digest_days != updated.digest_days
     log.info(
@@ -181,7 +198,9 @@ def handle_callback_time(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.chat_id is None or cb.user_id is None:
         return
     username = effective_username_from_callback(cb)
-    settings = ctx.subscriptions.get_or_create(cb.chat_id, username)
+    settings = ctx.subscriptions.get_or_create(
+        cb.chat_id, username, telegram_user_id=cb.user_id
+    )
     ctx.digest_state.set_waiting_for_time(cb.chat_id, cb.message_id)
     edit_callback_message(
         ctx,

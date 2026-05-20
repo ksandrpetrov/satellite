@@ -27,7 +27,7 @@ from ...messages_ru import (
 )
 from ..chat_action import run_with_typing_action
 from .access import ensure_calendar_connected
-from .calendar_sources import _fetch_calendars, _normalize_url
+from .calendar_view import fetch_calendars, normalize_calendar_url
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import edit_callback_message, safe_answer_callback, send
 
@@ -38,7 +38,7 @@ def _foreign_calendars(ctx: HandlerContext, user_id: int):
     record = ctx.users.get(user_id)
     if record is None:
         return None
-    calendars = _fetch_calendars(ctx, user_id)
+    calendars = fetch_calendars(ctx, user_id)
     if calendars is None:
         return None
     return foreign_calendar_entries(
@@ -155,7 +155,7 @@ def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
         safe_answer_callback(ctx, cb)
         return
     entry = foreign[idx]
-    calendar_url = _normalize_url(entry.url)
+    calendar_url = normalize_calendar_url(entry.url)
     today = datetime.now(tz=ctx.tz).date()
     target_date = today + timedelta(days=day_offset)
     edit_callback_message(ctx, cb, FOREIGN_CALENDARS_FETCH_STATUS, reply_markup=None)

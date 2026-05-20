@@ -16,7 +16,7 @@ from .access import (
     ensure_calendar_connected,
     handle_start_or_help,
 )
-from .admin import handle_pending_command, is_pending_command, route_admin_callback
+from .admin import handle_pending_command, route_admin_callback
 from .calendar_create import handle_create_text_input, route_create_callback, start_create_event
 from .calendar_list import handle_upcoming_events
 from .calendar_manage import route_manage_callback
@@ -37,19 +37,20 @@ from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import notify_handler_failure, safe_answer_callback, send
 from .plan import handle_plan
 from .routing import (
-    is_calendar_sources_request,
-    is_foreign_calendars_request,
-    is_check_calendar_request,
-    is_command_like_message,
-    is_connect_calendar_request,
-    is_create_event_request,
-    is_settings_request,
-    is_disconnect_calendar_request,
-    is_start_command,
-    is_start_or_help_command,
-    is_upcoming_request,
-    parse_command_mode,
-    parse_subscription_action,
+    CalendarSourcesCommand,
+    CheckCommand,
+    ConnectCommand,
+    CreateCommand,
+    DisconnectCommand,
+    ForeignCalendarsCommand,
+    PendingCommand,
+    PlanCommand,
+    RecognizedCommand,
+    SettingsCommand,
+    StartOrHelpCommand,
+    SubscriptionCommand,
+    UpcomingCommand,
+    recognize_message,
 )
 from .settings import handle_digest_time_input, route_settings_callback
 from .settings_hub import handle_open_settings_hub, route_settings_hub_callback
@@ -66,13 +67,10 @@ def handle_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if msg.chat_id is None:
         return
 
-    if is_start_or_help_command(msg.text):
+    cmd = recognize_message(msg.text)
+    if isinstance(cmd, StartOrHelpCommand):
         try:
-            handle_start_or_help(
-                ctx,
-                msg,
-                is_start=is_start_command(msg.text),
-            )
+            handle_start_or_help(ctx, msg, is_start=cmd.is_start)
         except TelegramError as exc:
             log.error("Telegram error while handling user_id=%s: %s", msg.user_id, exc)
         except Exception:  # noqa: BLE001 - один апдейт не должен валить бота
@@ -80,7 +78,7 @@ def handle_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
             notify_handler_failure(ctx, msg.chat_id)
         return
 
-    if is_pending_command(msg.text):
+    if isinstance(cmd, PendingCommand):
         try:
             handle_pending_command(ctx, msg)
         except TelegramError as exc:
@@ -100,62 +98,66 @@ def handle_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
 
 
 def _route_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
-    if (
-        msg.chat_id is not None
-        and ctx.digest_state.is_waiting_for_time(msg.chat_id)
-        and msg.text is not None
-        and not is_command_like_message(msg.text)
-    ):
+    cmd = recognize_message(msg.text)
+    if cmd is None:
+        if (
+            msg.chat_id is not None
+            and ctx.digest_state.is_waiting_for_time(msg.chat_id)
+            and msg.text is not None
+        ):
+            if ensure_calendar_access(ctx, msg):
+                handle_digest_time_input(ctx, msg)
+            return
+        if handle_create_text_input(ctx, msg):
+            return
         if ensure_calendar_access(ctx, msg):
-            handle_digest_time_input(ctx, msg)
+            _handle_unknown(ctx, msg)
         return
 
-    if handle_create_text_input(ctx, msg):
-        return
+    if msg.chat_id is not None:
+        ctx.digest_state.clear(msg.chat_id)
+        ctx.calendar_state.clear(msg.chat_id)
+    _dispatch_recognized(ctx, msg, cmd)
 
-    if is_connect_calendar_request(msg.text):
+
+def _dispatch_recognized(
+    ctx: HandlerContext, msg: IncomingMessage, cmd: RecognizedCommand
+) -> None:
+    if isinstance(cmd, ConnectCommand):
         handle_connect_calendar_button(ctx, msg)
         return
-    if is_check_calendar_request(msg.text):
+    if isinstance(cmd, CheckCommand):
         handle_check_calendar(ctx, msg)
         return
-    if is_disconnect_calendar_request(msg.text):
+    if isinstance(cmd, DisconnectCommand):
         handle_disconnect_calendar(ctx, msg)
         return
-    if is_upcoming_request(msg.text):
+    if isinstance(cmd, UpcomingCommand):
         handle_upcoming_events(ctx, msg)
         return
-    if is_create_event_request(msg.text):
+    if isinstance(cmd, CreateCommand):
         start_create_event(ctx, msg)
         return
-    if is_calendar_sources_request(msg.text):
+    if isinstance(cmd, CalendarSourcesCommand):
         if ensure_calendar_connected(ctx, msg):
             handle_open_calendar_sources(ctx, msg)
         return
-    if is_foreign_calendars_request(msg.text):
+    if isinstance(cmd, ForeignCalendarsCommand):
         if ensure_calendar_connected(ctx, msg):
             handle_open_foreign_calendars(ctx, msg)
         return
-
-    if is_settings_request(msg.text):
+    if isinstance(cmd, SettingsCommand):
         if ensure_calendar_access(ctx, msg):
             handle_open_settings_hub(ctx, msg)
         return
-
-    action = parse_subscription_action(msg.text)
-    if action is not None:
+    if isinstance(cmd, SubscriptionCommand):
         if ensure_calendar_access(ctx, msg):
-            handle_subscription_action(ctx, msg, action)
+            handle_subscription_action(ctx, msg, cmd.action)
         return
-
-    mode = parse_command_mode(msg.text)
-    if mode is not None:
+    if isinstance(cmd, PlanCommand):
         if ensure_calendar_connected(ctx, msg):
-            handle_plan(ctx, msg, mode)
+            handle_plan(ctx, msg, cmd.mode)
         return
-
-    if ensure_calendar_access(ctx, msg):
-        _handle_unknown(ctx, msg)
 
 
 # --- диспетчер: callback_query ---------------------------------------------

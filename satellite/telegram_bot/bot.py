@@ -33,17 +33,9 @@ from .handlers import (
     extract_message,
     handle_callback_query,
     handle_message,
-    is_check_calendar_request,
-    is_connect_calendar_request,
-    is_create_event_request,
-    is_digest_settings_request,
-    is_disconnect_calendar_request,
-    is_start_or_help_command,
     is_update_callback,
     is_update_message,
-    is_upcoming_request,
-    parse_command_mode,
-    parse_subscription_action,
+    recognize_message,
 )
 from .offset_store import OffsetStore
 from .offset_tracker import OffsetTracker
@@ -297,18 +289,7 @@ class TelegramBot:
     def _is_duplicate_recognized_command(self, msg: IncomingMessage) -> bool:
         if msg.chat_id is None or msg.text is None:
             return False
-        recognized = (
-            parse_command_mode(msg.text)
-            or is_start_or_help_command(msg.text)
-            or parse_subscription_action(msg.text)
-            or is_digest_settings_request(msg.text)
-            or is_upcoming_request(msg.text)
-            or is_create_event_request(msg.text)
-            or is_connect_calendar_request(msg.text)
-            or is_check_calendar_request(msg.text)
-            or is_disconnect_calendar_request(msg.text)
-        )
-        if not recognized:
+        if recognize_message(msg.text) is None:
             return False
         return not self._inflight.add_if_absent(msg.chat_id)
 

@@ -18,6 +18,25 @@ from satellite.telegram_bot.handlers import (
     is_start_or_help_command,
     parse_command_mode,
     parse_subscription_action,
+    recognize_message,
+)
+from satellite.telegram_bot.handlers.routing import (
+    CalendarSourcesCommand,
+    CheckCommand,
+    ConnectCommand,
+    CreateCommand,
+    DisconnectCommand,
+    ForeignCalendarsCommand,
+    PendingCommand,
+    PlanCommand,
+    SettingsCommand,
+    StartOrHelpCommand,
+    SubscriptionCommand,
+    UpcomingCommand,
+)
+from satellite.telegram_bot.calendar_state import (
+    CalendarFlowState,
+    STATE_CREATE_TITLE,
 )
 from satellite.messages_ru import (
     ACCESS_REQUEST_SENT_HTML,
@@ -54,8 +73,10 @@ def _access_ctx(*, approved: bool = True, has_calendar: bool = True) -> MagicMoc
     ctx.webapp.base_url = "https://example.com/connect"
     ctx.digest_state = MagicMock()
     ctx.digest_state.is_waiting_for_time = MagicMock(return_value=False)
+    ctx.digest_state.clear = MagicMock()
     ctx.calendar_state = MagicMock()
     ctx.calendar_state.get = MagicMock(return_value=None)
+    ctx.calendar_state.clear = MagicMock()
     ctx.telegram = MagicMock()
     ctx.telegram.send_message = MagicMock(return_value={})
     ctx.subscriptions = MagicMock()
@@ -109,6 +130,62 @@ def test_parse_command_mode_long_aliases_from_command_menu():
     assert parse_command_mode("/after_tomorrow") == "day_after_tomorrow"
     assert parse_command_mode("/aftertomorrow@MyBot") == "day_after_tomorrow"
     assert parse_command_mode("/after_tomorrow@MyBot") == "day_after_tomorrow"
+
+
+@pytest.mark.parametrize(
+    "text,expected_type",
+    [
+        ("/start", StartOrHelpCommand),
+        ("/help", StartOrHelpCommand),
+        (BUTTON_TODAY, PlanCommand),
+        (BUTTON_SUBSCRIBE, SubscriptionCommand),
+        ("/settings", SettingsCommand),
+        ("/upcoming", UpcomingCommand),
+        ("/create", CreateCommand),
+        ("/connect", ConnectCommand),
+        ("/pending", PendingCommand),
+    ],
+)
+def test_recognize_message_covers_dispatch_commands(text, expected_type):
+    cmd = recognize_message(text)
+    assert cmd is not None
+    assert isinstance(cmd, expected_type)
+
+
+def test_recognize_message_foreign_and_calendar_sources():
+    from satellite.messages_ru import (
+        BUTTON_CALENDAR_SOURCES,
+        BUTTON_FOREIGN_CALENDARS,
+        BUTTON_CHECK_CALENDAR,
+        BUTTON_DISCONNECT_CALENDAR,
+    )
+
+    assert isinstance(recognize_message(BUTTON_FOREIGN_CALENDARS), ForeignCalendarsCommand)
+    assert isinstance(recognize_message(BUTTON_CALENDAR_SOURCES), CalendarSourcesCommand)
+    assert isinstance(recognize_message(BUTTON_CHECK_CALENDAR), CheckCommand)
+    assert isinstance(recognize_message(BUTTON_DISCONNECT_CALENDAR), DisconnectCommand)
+
+
+def test_settings_command_clears_create_fsm_and_opens_hub():
+    from satellite.messages_ru import BUTTON_SETTINGS, SETTINGS_HUB_TEXT
+
+    ctx = _access_ctx(approved=True, has_calendar=True)
+    ctx.calendar_state.get = MagicMock(
+        return_value=CalendarFlowState(state=STATE_CREATE_TITLE)
+    )
+    msg = IncomingMessage(
+        update_id=301,
+        chat_id=9001,
+        user_id=9001,
+        username="alice",
+        display_name=None,
+        text=BUTTON_SETTINGS,
+    )
+    handle_message(ctx, msg)
+    ctx.calendar_state.clear.assert_called_once_with(9001)
+    ctx.digest_state.clear.assert_any_call(9001)
+    sent = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
+    assert SETTINGS_HUB_TEXT in sent
 
 
 def test_parse_command_mode_returns_none_for_garbage():
