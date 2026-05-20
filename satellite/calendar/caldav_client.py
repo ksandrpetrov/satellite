@@ -38,6 +38,18 @@ def _normalize_url(url: str) -> str:
     return url.rstrip("/")
 
 
+def login_variants_for_caldav(login: str) -> list[str]:
+    """Варианты логина для Basic Auth (Mail.ru / корпоративные @vk.team и др.)."""
+    normalized = (login or "").strip()
+    if not normalized:
+        return [""]
+    variants = [normalized]
+    local, sep, _domain = normalized.partition("@")
+    if sep and local and local not in variants:
+        variants.append(local)
+    return variants
+
+
 def build_candidate_urls(caldav_url: str | None, login: str) -> list[str]:
     """Возвращает порядок эндпоинтов для попыток discovery (наиболее вероятные сверху)."""
     login_name, _, domain = (login or "").partition("@")
@@ -363,28 +375,33 @@ class CalDAVService:
         candidates = build_candidate_urls(self._caldav_url, self._login)
         errors: list[str] = []
         for candidate in candidates:
-            try:
-                client = DAVClient(
-                    url=candidate,
-                    username=self._login,
-                    password=self._app_password,
-                )
-                principal = client.principal()
-                calendars = principal.calendars()
-                handles = [self._make_handle(cal) for cal in calendars]
-                log.info(
-                    "CalDAV discovery ok: endpoint=%s calendars=%d",
-                    candidate,
-                    len(handles),
-                )
-                return _DiscoveryResult(
-                    endpoint=candidate,
-                    calendars=handles,
-                    cached_at=time.monotonic(),
-                )
-            except Exception as exc:  # noqa: BLE001 - server-specific errors vary
-                errors.append(f"{candidate} -> {exc.__class__.__name__}: {exc}")
-        details = "\n".join(errors[-5:])
+            for username in login_variants_for_caldav(self._login):
+                try:
+                    client = DAVClient(
+                        url=candidate,
+                        username=username,
+                        password=self._app_password,
+                    )
+                    principal = client.principal()
+                    calendars = principal.calendars()
+                    handles = [self._make_handle(cal) for cal in calendars]
+                    log.info(
+                        "CalDAV discovery ok: endpoint=%s calendars=%d login_variant=%s",
+                        candidate,
+                        len(handles),
+                        "full" if username == self._login else "local",
+                    )
+                    return _DiscoveryResult(
+                        endpoint=candidate,
+                        calendars=handles,
+                        cached_at=time.monotonic(),
+                    )
+                except Exception as exc:  # noqa: BLE001 - server-specific errors vary
+                    user_label = "email" if username == self._login else "local-part"
+                    errors.append(
+                        f"{candidate} ({user_label}) -> {exc.__class__.__name__}: {exc}"
+                    )
+        details = "\n".join(errors[-8:])
         raise CalDAVError(f"Unable to discover calendars via CalDAV:\n{details}")
 
     @staticmethod

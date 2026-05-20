@@ -44,6 +44,18 @@ DEFAULT_WEBAPP_PORT = 8080
 # Значения-заглушки из .env.example — при require_* считаются «не настроено».
 PLACEHOLDER_TELEGRAM_BOT_TOKEN = "123456:your-bot-token"
 PLACEHOLDER_WEBAPP_BASE_URL = "https://your-domain.example/connect"
+DEFAULT_WEBAPP_BASE_URL = "https://cassinilab.ru/connect"
+
+
+def is_valid_webapp_base_url(url: str) -> bool:
+    """Публичный HTTPS URL для кнопки Web App, не путь к файлу в репозитории."""
+    normalized = url.strip()
+    if not normalized.startswith("https://"):
+        return False
+    lowered = normalized.lower()
+    if "connect.html" in lowered or "/static/" in lowered or "satellite/web/" in lowered:
+        return False
+    return True
 
 
 def default_weather_config() -> WeatherConfig:
@@ -340,10 +352,12 @@ def load_settings(
         not webapp_base_url
         or webapp_base_url == PLACEHOLDER_WEBAPP_BASE_URL
         or "your-domain.example" in webapp_base_url
+        or "satellite.example.com" in webapp_base_url
+        or not is_valid_webapp_base_url(webapp_base_url)
     ):
         env_errors.append(
             "WEBAPP_BASE_URL: укажите публичный HTTPS URL страницы подключения календаря "
-            "(например https://bot.example.com/connect)"
+            f"(например {DEFAULT_WEBAPP_BASE_URL}), не путь к connect.html в репозитории"
         )
     if env_errors:
         raise ValueError("Invalid .env:\n- " + "\n- ".join(env_errors))

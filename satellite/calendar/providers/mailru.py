@@ -29,18 +29,27 @@ class MailruCalendarProvider:
         self._cache_ttl_sec = cache_ttl_sec
 
     def validate_credentials(
-        self, credentials: ProviderCredentials
+        self,
+        credentials: ProviderCredentials,
+        *,
+        caldav_url: str | None = None,
     ) -> tuple[bool, str | None, str | None]:
         if credentials.is_empty():
             return False, None, "INVALID_CREDENTIALS"
+        seed = (caldav_url or "").strip() or None
         try:
-            service = self._service(credentials)
+            service = self._service(credentials, caldav_url=seed)
             primary = service.primary_calendar_url()
             if not primary:
                 return False, None, "NO_CALENDAR"
             return True, primary, None
-        except CalDAVError:
-            log.info("Mail.ru credential validation failed for login domain only")
+        except CalDAVError as exc:
+            login_domain = (credentials.login.split("@")[-1] if "@" in credentials.login else "?")
+            log.info(
+                "Mail.ru credential validation failed domain=%s detail=%s",
+                login_domain,
+                str(exc).splitlines()[-1][:200],
+            )
             return False, None, "AUTH_FAILED"
         except Exception:  # noqa: BLE001
             log.exception("Unexpected Mail.ru validation error")
@@ -166,9 +175,14 @@ class MailruCalendarProvider:
                 error_code="DELETE_FAILED",
             ) from exc
 
-    def _service(self, credentials: ProviderCredentials) -> CalDAVService:
+    def _service(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        caldav_url: str | None = None,
+    ) -> CalDAVService:
         return CalDAVService(
-            caldav_url=DEFAULT_CALDAV_URL,
+            caldav_url=(caldav_url or DEFAULT_CALDAV_URL).strip(),
             login=credentials.login.strip(),
             app_password=credentials.secret,
             cache_ttl_sec=self._cache_ttl_sec,

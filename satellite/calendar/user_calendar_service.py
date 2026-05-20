@@ -73,9 +73,12 @@ class UserCalendarService:
         *,
         provider_id: str,
         credentials: ProviderCredentials,
+        caldav_url: str | None = None,
     ) -> UserRecord:
         provider = self._provider_for(provider_id)
-        ok, primary_url, error_code = provider.validate_credentials(credentials)
+        ok, primary_url, error_code = provider.validate_credentials(
+            credentials, caldav_url=caldav_url
+        )
         if not ok or not primary_url:
             self._log.record(
                 user_id=telegram_user_id,

@@ -20,7 +20,10 @@ class YandexCalendarProvider:
     provider_id = PROVIDER_ID
 
     def validate_credentials(
-        self, credentials: ProviderCredentials
+        self,
+        credentials: ProviderCredentials,
+        *,
+        caldav_url: str | None = None,
     ) -> tuple[bool, str | None, str | None]:
         raise ProviderNotImplementedError(self.provider_id)
 

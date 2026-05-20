@@ -266,11 +266,13 @@ def _handle_connect(
     if not login or not app_password:
         _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "missing_fields"})
         return
+    caldav_url = str(body.get("caldav_url") or "").strip() or None
     try:
         calendar.connect(
             user_id,
             provider_id=provider,
             credentials=ProviderCredentials(login=login, secret=app_password),
+            caldav_url=caldav_url,
         )
     except CalendarProviderError as exc:
         _json_response(

@@ -134,7 +134,7 @@ make deploy
 TELEGRAM_BOT_TOKEN=123456:your-bot-token
 TOKEN_ENCRYPTION_KEY=<fernet-key>
 ADMIN_TELEGRAM_IDS=111111111
-WEBAPP_BASE_URL=https://your-domain.example/connect
+WEBAPP_BASE_URL=https://cassinilab.ru/connect
 ```
 
 Полная карта переменных: [docs/configuration.md](docs/configuration.md).

@@ -6,7 +6,7 @@ deploy_dir: /opt/satellite
 deploy_compose_project: satellite
 
 # --- Домен и TLS (Certbot + Traefik) ---
-domain: satellite.example.com
+domain: cassinilab.ru
 certbot_email: admin@example.com
 certbot_staging: false
 

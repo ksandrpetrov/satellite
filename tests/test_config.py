@@ -2,6 +2,7 @@ import pytest
 from pathlib import Path
 
 from satellite.config import (
+    is_valid_webapp_base_url,
     load_settings,
     parse_bool_env,
     parse_digest_mode,
@@ -112,6 +113,35 @@ def test_load_settings_rejects_username_as_admin_id(tmp_path: Path, monkeypatch)
             require_encryption_key=True,
         )
     assert "не @username" in str(exc_info.value)
+
+
+def test_is_valid_webapp_base_url():
+    assert is_valid_webapp_base_url("https://cassinilab.ru/connect")
+    assert not is_valid_webapp_base_url("satellite/web/static/connect.html")
+    assert not is_valid_webapp_base_url("http://cassinilab.ru/connect")
+    assert not is_valid_webapp_base_url("https://cassinilab.ru/static/connect.html")
+
+
+def test_load_settings_rejects_invalid_webapp_url(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("WEBAPP_BASE_URL", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "TELEGRAM_BOT_TOKEN=1:abc\n"
+        "TOKEN_ENCRYPTION_KEY=key\n"
+        "ADMIN_TELEGRAM_IDS=1\n"
+        "WEBAPP_BASE_URL=satellite/web/static/connect.html\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError) as exc_info:
+        load_settings(
+            env_path=env_file,
+            require_telegram=True,
+            require_admin=True,
+            require_webapp=True,
+            require_encryption_key=True,
+        )
+    assert "WEBAPP_BASE_URL" in str(exc_info.value)
+    assert "connect.html" in str(exc_info.value)
 
 
 def test_load_settings_rejects_placeholder_bot_token(tmp_path: Path, monkeypatch):

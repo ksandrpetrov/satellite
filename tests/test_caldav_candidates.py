@@ -1,8 +1,20 @@
 from datetime import date
 from zoneinfo import ZoneInfo
 
-from satellite.calendar.caldav_client import build_candidate_urls, calendar_matches
+from satellite.calendar.caldav_client import (
+    build_candidate_urls,
+    calendar_matches,
+    login_variants_for_caldav,
+)
 from satellite.calendar.caldav_client import CalendarHandle, CalDAVService
+
+
+def test_login_variants_for_caldav_includes_local_part():
+    assert login_variants_for_caldav("alex@vk.team") == [
+        "alex@vk.team",
+        "alex",
+    ]
+    assert login_variants_for_caldav("user@mail.ru") == ["user@mail.ru", "user"]
 
 
 def test_build_candidate_urls_includes_principal_and_calendars_paths():

@@ -1,7 +1,7 @@
 http:
   routers:
     http-to-https:
-      rule: Host(`satellite.example.com`)
+      rule: Host(`cassinilab.ru`)
       entryPoints:
         - web
       middlewares:

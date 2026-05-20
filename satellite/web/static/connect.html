@@ -167,11 +167,14 @@
         <option value="mailru">Mail.ru / Mailroom</option>
         <option value="yandex" disabled>Яндекс (скоро)</option>
       </select>
-      <label for="login">Email Mail.ru</label>
-      <input id="login" type="email" autocomplete="username" placeholder="you@mail.ru">
+      <label for="login">Email календаря</label>
+      <input id="login" type="email" autocomplete="username" placeholder="aleksandr.petrov@vk.team">
       <label for="token">Пароль приложения</label>
-      <input id="token" type="password" autocomplete="off" placeholder="Создаётся в настройках Mail.ru">
-      <p class="hint">Настройки Mail.ru → «Пароли для внешних приложений» → выберите «Календарь».</p>
+      <input id="token" type="password" autocomplete="off" placeholder="Токен для внешнего приложения">
+      <p class="hint">Mail.ru → «Пароли для внешних приложений» → доступ <strong>Календарь</strong> (не пароль от почты). Подходит @mail.ru и корпоративный @vk.team — сервер calendar.mail.ru.</p>
+      <label for="caldavUrl">CalDAV URL (необязательно)</label>
+      <input id="caldavUrl" type="url" autocomplete="off" placeholder="https://calendar.mail.ru/principals/vk.team/имя/">
+      <p class="hint">Оставьте пустым, если на Mac указали только calendar.mail.ru. Если там был полный principal URL — вставьте его сюда.</p>
       <button id="connectBtn" class="primary">Подключить</button>
       <button id="checkBtn" class="secondary" type="button">Проверить подключение</button>
       <button id="disconnectBtn" class="danger" type="button">Отключить календарь</button>
@@ -317,23 +320,29 @@
       const btn = document.getElementById('connectBtn');
       btn.disabled = true;
       try {
+        const caldavUrl = document.getElementById('caldavUrl').value.trim();
         await api('POST', '/api/calendar/connect', {
           provider: document.getElementById('provider').value,
           login: document.getElementById('login').value.trim(),
-          app_password: document.getElementById('token').value,
+          app_password: document.getElementById('token').value.trim(),
+          ...(caldavUrl ? { caldav_url: caldavUrl } : {}),
         });
         document.getElementById('token').value = '';
         showStatus('connectStatus', 'Календарь подключён.', 'ok');
         await refreshStatus();
         setTimeout(() => { if (tg) tg.close(); }, 1200);
       } catch (e) {
-        showStatus(
-          'connectStatus',
-          e.code === 'AUTH_FAILED'
-            ? 'Токен не подошёл. Проверьте email и пароль приложения.'
-            : (e.message || 'Не удалось подключить календарь.'),
-          'err'
-        );
+        let msg = 'Не удалось подключить календарь.';
+        if (e.code === 'AUTH_FAILED') {
+          msg = 'Токен не подошёл. Проверьте email, пароль приложения (доступ «Календарь») и при необходимости CalDAV URL.';
+        } else if (e.code === 'unauthorized') {
+          msg = 'Сессия Telegram недействительна. Закройте Web App и откройте снова из бота (не из браузера).';
+        } else if (e.code === 'not_approved') {
+          msg = 'Доступ к боту ещё не одобрен админом.';
+        } else if (e.message && e.message !== 'request_failed') {
+          msg = e.message;
+        }
+        showStatus('connectStatus', msg, 'err');
       } finally {
         btn.disabled = false;
       }

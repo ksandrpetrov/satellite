@@ -22,7 +22,7 @@ cp .env.example .env
 TELEGRAM_BOT_TOKEN=123456:your-bot-token
 TOKEN_ENCRYPTION_KEY=replace-with-fernet-key
 ADMIN_TELEGRAM_IDS=111111111
-WEBAPP_BASE_URL=https://your-domain.example/connect
+WEBAPP_BASE_URL=https://cassinilab.ru/connect
 ```
 
 - `TELEGRAM_BOT_TOKEN` — токен от [@BotFather](https://t.me/BotFather).

@@ -37,7 +37,9 @@ WEBAPP_BASE_URL=...
 **TELEGRAM_BOT_TOKEN** — полный токен от @BotFather (`123456789:AAH...`). Значения
 `123456:your-bot-token` из `.env.example` дают HTTP 401 Unauthorized.
 
-**WEBAPP_BASE_URL** — реальный HTTPS, не `https://your-domain.example/connect`.
+**WEBAPP_BASE_URL** — реальный HTTPS, не `https://your-domain.example/connect` и не путь
+к файлу (`satellite/web/static/connect.html`). Для production на VPS:
+`https://cassinilab.ru/connect` (домен из `deploy/ansible/group_vars/all.yml`).
 
 ### Неверный ключ шифрования
 
@@ -79,6 +81,19 @@ WEBAPP_BASE_URL=...
 
 - календарь успешно подключён через Web App (`calendar_last_checked_at`);
 - app password Mail.ru с доступом к календарю (не обычный пароль почты);
+- для `@vk.team` / Mailroom: email `имя@vk.team`, сервер `calendar.mail.ru`, токен с правом **Календарь**;
+- при ошибке «Токен не подошёл» на VPS проверьте CalDAV с сервера (без Telegram):
+
+  ```bash
+  cd /opt/satellite && source venv/bin/activate
+  export CALDAV_LOGIN='ваш@vk.team'
+  read -s CALDAV_APP_PASSWORD && export CALDAV_APP_PASSWORD
+  # если на Mac был principal URL:
+  # export CALDAV_URL='https://calendar.mail.ru/principals/vk.team/имя/'
+  python scripts/diagnose_caldav.py
+  ```
+
+  Если скрипт падает на сервере, но на Mac работает — смотрите `logs/bot.log` (сеть/VPN/firewall). Если скрипт OK, а Web App нет — проверьте одобрение доступа в `logs/users.json` и что Web App открыт из бота.
 - `HIDE_ALL_DAY_EVENTS` / declined PARTSTAT не скрывают все события;
 - `LOG_LEVEL=DEBUG` для деталей CalDAV в `logs/bot.log`.
 
@@ -95,7 +110,10 @@ WEBAPP_BASE_URL=...
 - `WEBAPP_BASE_URL` должен совпадать с публичным URL: `https://<domain>/connect`.
 - Traefik проксирует `/connect` **и** `/api/calendar/*` (см. labels в `docker-compose.yml`).
 - Healthcheck контейнера: `docker compose ps` → колонка `STATUS` должна показать `healthy`.
-- Проверка с сервера: `curl -sS -o /dev/null -w '%{http_code}\n' https://<domain>/connect` (ожидается не 502).
+- Проверка с сервера: `curl -sS -o /dev/null -w '%{http_code}\n' https://<domain>/connect` (ожидается **200**, не 404/502).
+- **404 Not Found (nginx)** — в конфиге сайта нет `location /connect` и `location /api/calendar/`
+  на `127.0.0.1:8080`; см. [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example).
+- Сначала `curl http://127.0.0.1:8080/healthz` на сервере: если не 200, чините бота, не nginx.
 - Логи: `docker compose -f /opt/satellite/docker-compose.yml logs traefik satellite`.
 - Certbot: при ошибке выпуска сертификата смотрите вывод playbook; для отладки —
   `certbot_staging: true` в `deploy/ansible/group_vars/all.yml`.

@@ -73,7 +73,10 @@ class CalendarProvider(Protocol):
     provider_id: str
 
     def validate_credentials(
-        self, credentials: ProviderCredentials
+        self,
+        credentials: ProviderCredentials,
+        *,
+        caldav_url: str | None = None,
     ) -> tuple[bool, str | None, str | None]:
         """Проверяет credentials. Возвращает (ok, primary_calendar_url, error_code)."""
 

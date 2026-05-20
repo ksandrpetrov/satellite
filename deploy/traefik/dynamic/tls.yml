@@ -1,4 +1,4 @@
 tls:
   certificates:
-    - certFile: /etc/letsencrypt/live/satellite.example.com/fullchain.pem
-      keyFile: /etc/letsencrypt/live/satellite.example.com/privkey.pem
+    - certFile: /etc/letsencrypt/live/cassinilab.ru/fullchain.pem
+      keyFile: /etc/letsencrypt/live/cassinilab.ru/privkey.pem

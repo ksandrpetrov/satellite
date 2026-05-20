@@ -364,17 +364,44 @@ Telegram открывает только публичный HTTPS URL из `WEBA
 Internet → nginx/Caddy (TLS) → 127.0.0.1:WEBAPP_PORT
 ```
 
-Пример фрагмента nginx (замените домен и путь):
+Готовый фрагмент: [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example).
+
+**Проверка, что бот слушает Web App** (на сервере):
+
+```bash
+curl -sS http://127.0.0.1:8080/healthz
+# ожидается HTTP 200 и тело ok
+```
+
+Если connection refused — в `/opt/satellite/.env` должны быть `WEBAPP_HOST=127.0.0.1`,
+`WEBAPP_PORT=8080`, сервис запущен: `systemctl status satellite-bot.service`.
+
+**nginx (systemd, домен cassinilab.ru):** внутрь существующего `server { listen 443 ssl; ... }`
+добавьте прокси и на `/connect`, и на API (без `/api/calendar/` форма подключения
+откроется, но сохранение пароля вернёт 404):
 
 ```nginx
 location /connect {
     proxy_pass http://127.0.0.1:8080;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+location /api/calendar/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
 
-Проверьте, что страница открывается в браузере по тому же URL, что в `.env`.
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+curl -sS -o /dev/null -w '%{http_code}\n' https://cassinilab.ru/connect
+curl -sS -o /dev/null -w '%{http_code}\n' https://cassinilab.ru/healthz
+```
+
+Оба URL должны вернуть **200**, не 404. После этого повторите открытие Web App в Telegram.
 
 ## Runtime State
 
