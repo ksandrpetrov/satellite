@@ -6,6 +6,7 @@ from satellite.calendar.time_utils import (
     format_hhmm,
     free_slots_within,
     merge_intervals,
+    normalize_hhmm_input,
     parse_hhmm,
     sum_minutes,
 )
@@ -16,6 +17,20 @@ def test_parse_hhmm_basic():
     assert parse_hhmm("10:00") == 600
     assert parse_hhmm("13:30") == 810
     assert parse_hhmm("23:59") == 1439
+
+
+@pytest.mark.parametrize(
+    "raw,expected_minutes",
+    [
+        ("9:30", 9 * 60 + 30),
+        ("09:30", 9 * 60 + 30),
+        ("9 30", 9 * 60 + 30),
+        ("09 30", 9 * 60 + 30),
+    ],
+)
+def test_parse_hhmm_accepts_flexible_user_input(raw, expected_minutes):
+    assert parse_hhmm(raw) == expected_minutes
+    assert normalize_hhmm_input(raw) == "09:30"
 
 
 def test_parse_hhmm_rejects_garbage():

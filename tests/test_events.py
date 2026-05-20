@@ -2,6 +2,7 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from satellite.calendar.events import (
+    build_upcoming_events_groups,
     event_duration_minutes,
     event_local_start_date,
     event_occurs_on,
@@ -293,6 +294,24 @@ def test_event_local_start_date_from_datetime_and_date():
     assert event_local_start_date(ev_date, TZ) == date(2026, 5, 21)
 
 
+def test_build_upcoming_events_groups_matches_lines():
+    ref = date(2026, 5, 20)
+    events = [
+        _ev(
+            summary="Встреча A",
+            uid="u1",
+            dtstart=datetime(2026, 5, 20, 9, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 20, 10, 0, tzinfo=TZ).isoformat(),
+        ),
+    ]
+    groups = build_upcoming_events_groups(events, TZ, ref, days=7)
+    assert len(groups) == 1
+    assert groups[0]["header"] == "Сегодня, ср 20.05 (занято 1 час)"
+    assert groups[0]["events"][0]["title"] == "Встреча A"
+    assert groups[0]["events"][0]["uid"] == "u1"
+    assert groups[0]["events"][0]["time_range"] == "09:00–10:00"
+
+
 def test_format_upcoming_events_lines_groups_by_day():
     ref = date(2026, 5, 20)
     events = [
@@ -335,10 +354,10 @@ def test_format_upcoming_events_lines_blank_line_between_days_only():
     ]
     lines = format_upcoming_events_lines(events, TZ, ref, days=7)
     assert lines[0].startswith("<b>Сегодня")
-    assert lines[1] == "• 12:00–13:00 — A"
+    assert lines[1] == "1️⃣ 12:00–13:00 — A"
     assert lines[2] == ""
     assert lines[3].startswith("<b>Завтра")
-    assert lines[4] == "• 12:00–13:00 — B"
+    assert lines[4] == "1️⃣ 12:00–13:00 — B"
     assert lines[-1] != ""
 
 

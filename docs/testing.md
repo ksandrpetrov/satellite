@@ -115,6 +115,14 @@ Autouse-фикстура обнуляет `TYPING_DISPLAY_SECONDS`, чтобы �
 
 - busy/free, пересечения, обеденное окно, all-day, declined.
 
+**Time utils** (`test_time_utils.py`):
+
+- `parse_hhmm` / `normalize_hhmm_input` — гибкий ввод (`9:30`, `9 30` → `09:30`).
+
+**Events / upcoming** (`test_events.py`, `test_calendar_foreign.py`):
+
+- `format_upcoming_events_lines` — нумерация `1️⃣`… как в дайджесте.
+
 **Config** (`test_config.py`):
 
 - `DIGEST_MODE` из `.env` поверх env процесса;

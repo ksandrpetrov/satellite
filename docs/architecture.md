@@ -107,10 +107,12 @@ telegram_test_command.py
 - `satellite/calendar/caldav_client.py` — Mail.ru CalDAV discovery, cache, day
   search, optional PARTSTAT refresh.
 - `satellite/calendar/constants.py` — domain constants (lunch marker, all-day label).
-- `satellite/calendar/events.py` — filters, all-day, declined, meals, PARTSTAT.
+- `satellite/calendar/events.py` — filters, all-day, declined, meals, PARTSTAT,
+  `event_index_marker`, форматирование `/upcoming` (`format_upcoming_events_lines`).
 - `satellite/calendar/stats.py` — `NormalizedEvent`, `DayCalendarStats`,
   `normalize_caldav_event`. Default workday `10:00–19:00`, lunch `13:00–14:00`.
-- `satellite/calendar/time_utils.py` — `HH:MM` parsing, interval merge, free slots.
+- `satellite/calendar/time_utils.py` — `normalize_hhmm_input` / `parse_hhmm`
+  (гибкий ввод пользователя → канонический `HH:MM`), merge intervals, free slots.
 
 Important invariants:
 
@@ -126,7 +128,8 @@ Important invariants:
   and construct per-user `UserCalendarService` when needed.
 - `satellite/seagull/digest.py` — `prepare_seagull_stats`, `render_digest_from_stats`.
 - `satellite/seagull/rules.py` — text fragments from metrics.
-- `satellite/seagull/render.py` — Telegram HTML, escaping, truncation.
+- `satellite/seagull/render.py` — Telegram HTML, escaping, truncation;
+  маркеры встреч через `event_index_marker` из `calendar/events.py`.
 - `satellite/seagull/templates.py` — text templates.
 
 ## Weather Layer

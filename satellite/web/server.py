@@ -24,6 +24,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
+from ..calendar.events import build_upcoming_events_groups
 from ..calendar.providers.base import (
     CalendarEventPayload,
     CalendarEventRef,
@@ -42,6 +43,7 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _INDEX_FILE = _STATIC_DIR / "connect.html"
 _MAX_BODY_BYTES = 64 * 1024
 _EVENTS_DEFAULT_DAYS = 14
+_UPCOMING_VIEW_DAYS = 7
 
 
 @dataclass(frozen=True)
@@ -383,8 +385,49 @@ def _handle_list_events(
         return
     qs = parse_qs(urlparse(handler.path).query)
     today = datetime.now(tz=tz).date()
+    view = (qs.get("view", [None])[0] or "").strip().lower()
+    if view == "upcoming":
+        days = _parse_positive_int(qs.get("days", [None])[0], default=_UPCOMING_VIEW_DAYS)
+        if days is None or days > 31:
+            _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_days"})
+            return
+        end_date = today + timedelta(days=days)
+        try:
+            events = calendar.list_events(
+                user_id, start_date=today, end_date=end_date, tz=tz
+            )
+        except CalendarNotConnectedError:
+            _json_response(
+                handler, HTTPStatus.CONFLICT, {"error": "not_connected"}
+            )
+            return
+        except CalendarProviderError as exc:
+            _json_response(
+                handler,
+                HTTPStatus.BAD_GATEWAY,
+                {"error": exc.error_code, "message": str(exc)},
+            )
+            return
+        groups = build_upcoming_events_groups(
+            events, tz, today, days=days
+        )
+        _json_response(
+            handler,
+            HTTPStatus.OK,
+            {
+                "view": "upcoming",
+                "reference_date": today.isoformat(),
+                "days": days,
+                "empty": not groups,
+                "groups": groups,
+            },
+        )
+        return
+
     start_date = _parse_date(qs.get("from", [None])[0]) or today
-    end_date = _parse_date(qs.get("to", [None])[0]) or (today + timedelta(days=_EVENTS_DEFAULT_DAYS))
+    end_date = _parse_date(qs.get("to", [None])[0]) or (
+        today + timedelta(days=_EVENTS_DEFAULT_DAYS)
+    )
     if end_date < start_date:
         _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_range"})
         return
@@ -431,14 +474,29 @@ def _handle_create_event(
     title = str(body.get("title") or "").strip()
     start_raw = str(body.get("start") or "").strip()
     end_raw = str(body.get("end") or "").strip()
-    location = (body.get("location") or None)
-    description = (body.get("description") or None)
-    if not title or not start_raw or not end_raw:
+    duration_raw = body.get("duration_minutes")
+    location = body.get("location")
+    description = body.get("description")
+    if not title or not start_raw:
         _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "missing_fields"})
         return
     start = _parse_datetime(start_raw, tz)
-    end = _parse_datetime(end_raw, tz)
-    if start is None or end is None or end <= start:
+    if start is None:
+        _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_dates"})
+        return
+    end: datetime | None = None
+    if end_raw:
+        end = _parse_datetime(end_raw, tz)
+    elif duration_raw is not None:
+        try:
+            minutes = int(duration_raw)
+        except (TypeError, ValueError):
+            minutes = 0
+        if minutes <= 0 or minutes > 24 * 60:
+            _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_duration"})
+            return
+        end = start + timedelta(minutes=minutes)
+    if end is None or end <= start:
         _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_dates"})
         return
     payload = CalendarEventPayload(
@@ -502,6 +560,18 @@ def _handle_delete_event(
         )
         return
     _json_response(handler, HTTPStatus.OK, {"status": "deleted"})
+
+
+def _parse_positive_int(value: str | None, *, default: int) -> int | None:
+    if value is None or not str(value).strip():
+        return default
+    try:
+        parsed = int(str(value).strip())
+    except ValueError:
+        return None
+    if parsed <= 0:
+        return None
+    return parsed
 
 
 def _parse_date(value: str | None) -> date | None:

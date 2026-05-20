@@ -10,7 +10,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 from urllib.parse import urlencode
@@ -268,6 +268,36 @@ def test_list_events_when_not_connected(started_server):
     assert body["error"] == "not_connected"
 
 
+def test_list_events_upcoming_view(started_server):
+    _server, users, calendar, base = started_server
+    _approve_user(users, 402, with_calendar=True)
+    today = date.today()
+    calendar.list_events = MagicMock(
+        return_value=[
+            {
+                "uid": "u1",
+                "summary": "Дейли",
+                "dtstart": f"{today.isoformat()}T10:00:00+03:00",
+                "dtend": f"{today.isoformat()}T10:30:00+03:00",
+            },
+        ]
+    )
+    init = _make_init_data(402)
+    status, body = _http(
+        "GET",
+        base + "/api/calendar/events?view=upcoming&days=7",
+        init_data=init,
+    )
+    assert status == 200
+    assert body["view"] == "upcoming"
+    assert body["days"] == 7
+    assert body["empty"] is False
+    assert body["groups"][0]["events"][0]["title"] == "Дейли"
+    calendar.list_events.assert_called_once()
+    _args, kwargs = calendar.list_events.call_args
+    assert kwargs["tz"] is not None
+
+
 def test_list_events_serializes_payload(started_server):
     _server, users, calendar, base = started_server
     _approve_user(users, 401, with_calendar=True)
@@ -308,6 +338,28 @@ def test_create_event_validates_dates(started_server):
     )
     assert status == 400
     assert body["error"] == "invalid_dates"
+
+
+def test_create_event_with_duration_minutes(started_server):
+    _server, users, calendar, base = started_server
+    _approve_user(users, 502, with_calendar=True)
+    calendar.create_event = MagicMock(
+        return_value=CalendarEventRef(uid="uid-2", url="https://cal/e2.ics")
+    )
+    init = _make_init_data(502)
+    status, body = _http(
+        "POST",
+        base + "/api/calendar/events",
+        init_data=init,
+        body={
+            "title": "Синк",
+            "start": "2026-05-12T10:00",
+            "duration_minutes": 45,
+        },
+    )
+    assert status == 201
+    payload = calendar.create_event.call_args[0][1]
+    assert (payload.end - payload.start).total_seconds() == 45 * 60
 
 
 def test_create_event_happy_path(started_server):

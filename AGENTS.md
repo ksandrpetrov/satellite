@@ -85,7 +85,9 @@ satellite/
 | Дату дайджеста (mode→дата) | [`digest_utils.py`](satellite/digest_utils.py) |
 | Парсинг .env | [`config.py`](satellite/config.py), образец [`.env.example`](.env.example) |
 | CalDAV / провайдеры | [`calendar/caldav_client.py`](satellite/calendar/caldav_client.py), [`calendar/providers/`](satellite/calendar/providers/), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) |
-| Список / создание событий в боте | [`handlers/calendar_list.py`](satellite/telegram_bot/handlers/calendar_list.py), [`calendar_create.py`](satellite/telegram_bot/handlers/calendar_create.py) |
+| Список / создание событий в боте | [`handlers/calendar_list.py`](satellite/telegram_bot/handlers/calendar_list.py), [`calendar_create.py`](satellite/telegram_bot/handlers/calendar_create.py); формат строк — [`events.py`](satellite/calendar/events.py) |
+| Ввод времени (дайджест, /create) | [`time_utils.py`](satellite/calendar/time_utils.py); подсказки — [`messages_ru.py`](satellite/messages_ru.py) |
+| Нумерация встреч (дайджест, /upcoming) | [`event_index_marker`](satellite/calendar/events.py) |
 | Web App REST API | [`web/server.py`](satellite/web/server.py) |
 | Сборку текста плана | [`plan_service.py`](satellite/plan_service.py) — callers передают calendar identity |
 | Диагностика CalDAV с сервера | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) — см. [troubleshooting.md](docs/troubleshooting.md) |
@@ -108,8 +110,11 @@ satellite/
 ## Антипаттерны
 
 - Глобальные `MAIL_LOGIN` / `USER_CALENDAR_MAP` — удалены из `config.py`.
-- Свой парсер `HH:MM` — только [`time_utils.parse_hhmm`](satellite/calendar/time_utils.py)
-  / [`normalize_hhmm_input`](satellite/calendar/time_utils.py).
+- Свой парсер времени — только [`normalize_hhmm_input`](satellite/calendar/time_utils.py)
+  (UI) и [`parse_hhmm`](satellite/calendar/time_utils.py) (минуты от полуночи;
+  внутри делегирует в `normalize_hhmm_input`).
+- Свои маркеры номеров встреч — только [`event_index_marker`](satellite/calendar/events.py)
+  (дайджест и `/upcoming`).
 - Inline render дайджеста вне [`seagull/digest.py`](satellite/seagull/digest.py).
 - Fallback `edit` → `send` в callback-хендлерах — дубли ([`delivery.py`](satellite/telegram_bot/handlers/delivery.py)).
 - Второй путь нормализации событий — только `normalize_caldav_event`.

@@ -16,22 +16,17 @@ _MIN_PER_DAY = 24 * 60
 
 
 def parse_hhmm(value: str) -> int:
-    """Парсит строку "HH:MM" в минуты от полуночи.
+    """Парсит время в минуты от полуночи.
 
+    Принимает те же формы, что и ``normalize_hhmm_input`` (``9:30``, ``09 30``).
     Бросает ValueError, если формат не подходит или значения за диапазоном.
     """
     if not isinstance(value, str):
         raise ValueError(f"Expected HH:MM string, got {value!r}")
-    parts = value.strip().split(":")
-    if len(parts) != 2:
+    normalized = normalize_hhmm_input(value)
+    if normalized is None:
         raise ValueError(f"Expected HH:MM, got {value!r}")
-    try:
-        hour = int(parts[0])
-        minute = int(parts[1])
-    except ValueError as exc:
-        raise ValueError(f"Expected HH:MM digits, got {value!r}") from exc
-    if not (0 <= hour <= 23 and 0 <= minute <= 59):
-        raise ValueError(f"HH:MM out of range: {value!r}")
+    hour, minute = (int(part) for part in normalized.split(":"))
     return hour * 60 + minute
 
 

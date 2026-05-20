@@ -14,6 +14,15 @@ PizzaMealKind = Literal["breakfast", "lunch", "dinner"]
 
 Event = dict[str, Any]
 
+NUMBER_EMOJI = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟")
+
+
+def event_index_marker(index: int) -> str:
+    """Маркер порядкового номера встречи (как в дайджесте)."""
+    if index < len(NUMBER_EMOJI):
+        return NUMBER_EMOJI[index]
+    return f"{index + 1}."
+
 
 def parse_iso(value: Any) -> datetime | date | None:
     """Парсит ISO-строку в date (если только дата) либо datetime (если дата+время).
@@ -302,15 +311,15 @@ def _day_busy_minutes(events: Sequence[Event], target_date: date, tz: tzinfo) ->
     return sum_minutes(merge_intervals(intervals))
 
 
-def format_upcoming_events_lines(
+def build_upcoming_events_groups(
     events: Sequence[Event],
     tz: tzinfo,
     reference_date: date,
     *,
     days: int = 7,
     max_events: int = 30,
-) -> list[str]:
-    """Строки тела «Ближайшие события»: заголовки дней и пункты встреч (HTML)."""
+) -> list[dict[str, Any]]:
+    """Группы «Ближайшие события» для Web App (та же логика, что /upcoming)."""
     visible = [ev for ev in events if not is_cancelled_event(ev)]
     visible.sort(key=lambda ev: sort_key(ev, tz))
     end = reference_date + timedelta(days=days)
@@ -321,9 +330,8 @@ def format_upcoming_events_lines(
             continue
         by_day.setdefault(day, []).append(ev)
 
-    lines: list[str] = []
+    groups: list[dict[str, Any]] = []
     remaining = max_events
-    first_day = True
     for offset in range(days):
         if remaining <= 0:
             break
@@ -331,19 +339,47 @@ def format_upcoming_events_lines(
         day_events = by_day.get(day)
         if not day_events:
             continue
+        busy = _day_busy_minutes(day_events, day, tz)
+        header = format_upcoming_day_header(day, reference_date, busy_minutes=busy)
+        items: list[dict[str, Any]] = []
+        for idx, ev in enumerate(day_events):
+            if remaining <= 0:
+                break
+            items.append(
+                {
+                    "marker": event_index_marker(idx),
+                    "time_range": format_time_range(ev, tz),
+                    "title": str(ev.get("summary") or ev.get("title") or "—"),
+                    "uid": ev.get("uid") or ev.get("id"),
+                    "url": ev.get("url"),
+                }
+            )
+            remaining -= 1
+        groups.append({"date": day.isoformat(), "header": header, "events": items})
+    return groups
+
+
+def format_upcoming_events_lines(
+    events: Sequence[Event],
+    tz: tzinfo,
+    reference_date: date,
+    *,
+    days: int = 7,
+    max_events: int = 30,
+) -> list[str]:
+    """Строки тела «Ближайшие события»: заголовки дней и пункты встреч (HTML)."""
+    lines: list[str] = []
+    first_day = True
+    for group in build_upcoming_events_groups(
+        events, tz, reference_date, days=days, max_events=max_events
+    ):
         if not first_day:
             lines.append("")
         first_day = False
-        busy = _day_busy_minutes(day_events, day, tz)
-        header = format_upcoming_day_header(day, reference_date, busy_minutes=busy)
-        lines.append(f"<b>{header}</b>")
-        for ev in day_events:
-            if remaining <= 0:
-                break
-            title = html.escape(str(ev.get("summary") or ev.get("title") or "—"))
-            when = format_time_range(ev, tz)
-            lines.append(f"• {when} — {title}")
-            remaining -= 1
+        lines.append(f"<b>{group['header']}</b>")
+        for item in group["events"]:
+            title = html.escape(str(item["title"]))
+            lines.append(f"{item['marker']} {item['time_range']} — {title}")
     return lines
 
 
@@ -367,10 +403,11 @@ def format_single_day_events_lines(
     busy = _day_busy_minutes(visible, target_date, tz)
     header = format_upcoming_day_header(target_date, reference_date, busy_minutes=busy)
     lines = [f"<b>{header}</b>"]
-    for ev in visible[:max_events]:
+    for idx, ev in enumerate(visible[:max_events]):
         title = html.escape(str(ev.get("summary") or ev.get("title") or "—"))
         when = format_time_range(ev, tz)
-        lines.append(f"• {when} — {title}")
+        marker = event_index_marker(idx)
+        lines.append(f"{marker} {when} — {title}")
     return lines
 
 

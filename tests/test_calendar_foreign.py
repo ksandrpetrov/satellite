@@ -54,6 +54,7 @@ def test_format_single_day_events_lines():
     ]
     lines = format_single_day_events_lines(events, TZ, ref, ref)
     assert lines[0].startswith("<b>Сегодня")
+    assert lines[1].startswith("1️⃣ ")
     assert "Созвон" in lines[1]
 
 

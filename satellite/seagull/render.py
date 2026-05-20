@@ -5,7 +5,7 @@ from __future__ import annotations
 from html import escape
 from typing import Sequence
 
-from ..calendar.events import pizza_meal_kind
+from ..calendar.events import event_index_marker, pizza_meal_kind
 from ..calendar.stats import DayCalendarStats, NormalizedEvent
 from ..calendar.time_utils import format_hhmm, merge_intervals
 from ..messages_ru import (
@@ -17,7 +17,6 @@ from ..messages_ru import (
 from . import templates as t
 from .rules import SeagullTexts
 
-NUMBER_EMOJI = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟")
 PENDING_MARK = "⚠️"
 TENTATIVE_MARK = "⚖️"
 MAX_DIGEST_MESSAGE_LEN = 3800
@@ -132,9 +131,9 @@ def render_daily_digest(
       строки первой/последней встречи и детальное расписание.
     """
     lines: list[str] = [_forecast_header(stats)]
+    lines.append("")
 
     if weather_line:
-        lines.append("")
         lines.append(weather_line)
         lines.append("")
 
@@ -179,10 +178,8 @@ def _render_event(index: int, ev: NormalizedEvent, *, escape_html: bool) -> list
         marker = TENTATIVE_MARK
     elif ev.is_pending:
         marker = PENDING_MARK
-    elif index < len(NUMBER_EMOJI):
-        marker = NUMBER_EMOJI[index]
     else:
-        marker = f"{index + 1}."
+        marker = event_index_marker(index)
     title_raw = _ellipsize(ev.title.strip() or t.EVENT_NO_TITLE)
     location_raw = _ellipsize(ev.location or t.ROOM_NONE)
     title = escape(title_raw) if escape_html else title_raw

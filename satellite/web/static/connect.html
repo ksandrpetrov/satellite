@@ -134,6 +134,40 @@
     }
     .event .actions button.danger { color: var(--danger); border-color: var(--danger); }
     .empty { color: var(--hint); text-align: center; padding: 16px 0; }
+    .day-group { margin-bottom: 12px; }
+    .day-group:last-child { margin-bottom: 0; }
+    .day-header { font-weight: 600; font-size: 0.95rem; margin-bottom: 6px; }
+    .event-line { padding: 4px 0; font-size: 0.95rem; }
+    .event-line .when { color: var(--hint); }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+    .chip-row button {
+      flex: 1 1 auto;
+      min-width: 72px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--separator);
+      background: var(--secondary-bg);
+      color: var(--text);
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .chip-row button.active {
+      background: var(--button-bg);
+      color: var(--button-text);
+      border-color: var(--button-bg);
+    }
+    .wizard-step { display: none; }
+    .wizard-step.active { display: block; }
+    .confirm-box {
+      background: var(--secondary-bg);
+      border-radius: 10px;
+      padding: 12px;
+      margin: 12px 0;
+      line-height: 1.5;
+    }
+    .confirm-box .ev-title { font-weight: 600; }
+    .row-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .row-actions button { margin-top: 0; flex: 1; }
     .spinner {
       display: inline-block;
       width: 14px;
@@ -184,48 +218,60 @@
   </section>
 
   <section id="tab-events">
-    <div class="card">
-      <div class="row">
-        <div>
-          <label for="rangeFrom">С</label>
-          <input id="rangeFrom" type="date">
-        </div>
-        <div>
-          <label for="rangeTo">По</label>
-          <input id="rangeTo" type="date">
-        </div>
-      </div>
-      <button id="refreshBtn" class="secondary" type="button">Обновить</button>
-    </div>
-    <div id="eventsList" class="card">
-      <div class="empty">Нажмите «Обновить», чтобы загрузить события.</div>
+    <p class="hint">Как в боте: ближайшие 7 дней, сгруппировано по дням.</p>
+    <button id="refreshBtn" class="secondary" type="button">Обновить</button>
+    <div id="eventsList" class="card" style="margin-top:12px">
+      <div class="empty">Откройте вкладку или нажмите «Обновить».</div>
     </div>
     <div id="eventsStatus" class="status"></div>
   </section>
 
   <section id="tab-create">
-    <div class="card">
-      <label for="evTitle">Название</label>
-      <input id="evTitle" type="text" placeholder="Дейли команды">
-      <div class="row">
-        <div>
-          <label for="evDate">Дата</label>
-          <input id="evDate" type="date">
+    <div class="card" id="createWizard">
+      <div class="wizard-step active" data-step="title">
+        <p>➕ Как назвать событие?</p>
+        <input id="evTitle" type="text" placeholder="Дейли команды" autocomplete="off">
+        <button type="button" class="primary create-next">Далее</button>
+      </div>
+      <div class="wizard-step" data-step="date">
+        <p>📅 На какую дату?</p>
+        <div class="chip-row">
+          <button type="button" data-date-preset="today">📅 Сегодня</button>
+          <button type="button" data-date-preset="tomorrow">➡️ Завтра</button>
         </div>
-        <div>
-          <label for="evStart">Начало</label>
-          <input id="evStart" type="time">
-        </div>
-        <div>
-          <label for="evEnd">Конец</label>
-          <input id="evEnd" type="time">
+        <input id="evDate" type="date">
+        <p class="hint">Или выберите дату в календаре.</p>
+        <div class="row-actions">
+          <button type="button" class="secondary create-back">Назад</button>
+          <button type="button" class="primary create-next">Далее</button>
         </div>
       </div>
-      <label for="evLocation">Место (опционально)</label>
-      <input id="evLocation" type="text" placeholder="Zoom / адрес">
-      <label for="evDescription">Описание (опционально)</label>
-      <textarea id="evDescription"></textarea>
-      <button id="createBtn" class="primary">Создать событие</button>
+      <div class="wizard-step" data-step="time">
+        <p>🕘 Во сколько начать?</p>
+        <input id="evStart" type="time" value="10:00">
+        <p class="hint">Например: 09:30</p>
+        <div class="row-actions">
+          <button type="button" class="secondary create-back">Назад</button>
+          <button type="button" class="primary create-next">Далее</button>
+        </div>
+      </div>
+      <div class="wizard-step" data-step="duration">
+        <p>⏱ Сколько минут длится?</p>
+        <div class="chip-row" id="durationPresets"></div>
+        <input id="evDuration" type="number" min="1" max="1440" placeholder="60" inputmode="numeric">
+        <div class="row-actions">
+          <button type="button" class="secondary create-back">Назад</button>
+          <button type="button" class="primary create-next">Далее</button>
+        </div>
+      </div>
+      <div class="wizard-step" data-step="confirm">
+        <p>Создать событие?</p>
+        <div class="confirm-box" id="createConfirmBox"></div>
+        <div class="row-actions">
+          <button type="button" class="secondary" id="createCancelBtn">❌ Отмена</button>
+          <button type="button" class="primary" id="createConfirmBtn">✅ Создать</button>
+        </div>
+      </div>
     </div>
     <div id="createStatus" class="status"></div>
   </section>
@@ -307,6 +353,7 @@
           el.classList.toggle('active', key === btn.dataset.tab);
         });
         if (btn.dataset.tab === 'events') loadEvents();
+        if (btn.dataset.tab === 'create') resetCreateWizard();
       });
     });
 
@@ -442,36 +489,52 @@
       }
     });
 
-    // --- events tab -------------------------------------------------------
+    // --- events tab (как /upcoming в боте) --------------------------------
+
+    const UPCOMING_DAYS = 7;
+    const DURATION_PRESETS_MIN = [15, 30, 45, 60];
 
     function isoDate(d) { return d.toISOString().slice(0, 10); }
-    function fmtDateTime(iso) {
-      if (!iso) return '';
-      const d = new Date(iso);
-      if (Number.isNaN(d.getTime())) return iso;
-      return d.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+
+    function localToday() {
+      const d = new Date();
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
     }
 
-    function setDefaultRange() {
-      const today = new Date();
-      const to = new Date(today);
-      to.setDate(today.getDate() + 14);
-      document.getElementById('rangeFrom').value = isoDate(today);
-      document.getElementById('rangeTo').value = isoDate(to);
+    function setCreateDefaults() {
+      const today = localToday();
       document.getElementById('evDate').value = isoDate(today);
       document.getElementById('evStart').value = '10:00';
-      document.getElementById('evEnd').value = '11:00';
+      document.getElementById('evDuration').value = '60';
+    }
+
+    function initDurationPresets() {
+      const row = document.getElementById('durationPresets');
+      row.innerHTML = '';
+      DURATION_PRESETS_MIN.forEach((minutes) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = minutes + ' мин';
+        btn.dataset.minutes = String(minutes);
+        btn.addEventListener('click', () => {
+          document.getElementById('evDuration').value = String(minutes);
+          row.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+        row.appendChild(btn);
+      });
     }
 
     async function loadEvents() {
       const list = document.getElementById('eventsList');
-      const from = document.getElementById('rangeFrom').value;
-      const to = document.getElementById('rangeTo').value;
-      list.innerHTML = '<div class="empty"><span class="spinner"></span> Загрузка…</div>';
+      list.innerHTML = '<div class="empty"><span class="spinner"></span> Чайка собирает ближайшие события…</div>';
       clearStatus('eventsStatus');
       try {
-        const data = await api('GET', `/api/calendar/events?from=${from}&to=${to}`);
-        renderEvents(data.events || []);
+        const data = await api(
+          'GET',
+          `/api/calendar/events?view=upcoming&days=${UPCOMING_DAYS}`
+        );
+        renderUpcomingGroups(data.groups || [], Boolean(data.empty));
       } catch (e) {
         if (e.code === 'not_connected') {
           list.innerHTML = '<div class="empty">Сначала подключите календарь.</div>';
@@ -484,29 +547,50 @@
       }
     }
 
-    function renderEvents(events) {
+    function renderUpcomingGroups(groups, empty) {
       const list = document.getElementById('eventsList');
-      if (!events.length) {
-        list.innerHTML = '<div class="empty">В диапазоне нет событий.</div>';
+      if (empty || !groups.length) {
+        list.innerHTML = '<div class="empty">🗓 На ближайшие дни встреч нет.</div>';
         return;
       }
       list.innerHTML = '';
-      events.forEach((ev) => {
-        const div = document.createElement('div');
-        div.className = 'event';
-        const meta = [fmtDateTime(ev.start), ev.location].filter(Boolean).join(' · ');
-        div.innerHTML =
-          `<div class="title"></div>
-           <div class="meta"></div>
-           <div class="actions">
-             <button class="danger" data-uid="${encodeURIComponent(ev.uid || '')}"
-                     data-url="${encodeURIComponent(ev.url || '')}">Удалить</button>
-           </div>`;
-        div.querySelector('.title').textContent = ev.title || 'Без названия';
-        div.querySelector('.meta').textContent = meta || '—';
-        const btn = div.querySelector('button.danger');
-        btn.addEventListener('click', () => deleteEvent(btn));
-        list.appendChild(div);
+      const heading = document.createElement('div');
+      heading.className = 'day-header';
+      heading.textContent = '🗓 Ближайшие события';
+      list.appendChild(heading);
+      groups.forEach((group) => {
+        const block = document.createElement('div');
+        block.className = 'day-group';
+        const hdr = document.createElement('div');
+        hdr.className = 'day-header';
+        hdr.textContent = group.header || '';
+        block.appendChild(hdr);
+        (group.events || []).forEach((ev) => {
+          const line = document.createElement('div');
+          line.className = 'event-line';
+          const when = document.createElement('span');
+          when.className = 'when';
+          when.textContent = (ev.marker || '') + ' ' + (ev.time_range || '') + ' — ';
+          const title = document.createElement('span');
+          title.textContent = ev.title || '—';
+          line.appendChild(when);
+          line.appendChild(title);
+          if (ev.uid) {
+            const actions = document.createElement('div');
+            actions.className = 'actions';
+            const btn = document.createElement('button');
+            btn.className = 'danger';
+            btn.type = 'button';
+            btn.textContent = 'Удалить';
+            btn.dataset.uid = encodeURIComponent(ev.uid);
+            btn.dataset.url = encodeURIComponent(ev.url || '');
+            btn.addEventListener('click', () => deleteEvent(btn));
+            actions.appendChild(btn);
+            line.appendChild(actions);
+          }
+          block.appendChild(line);
+        });
+        list.appendChild(block);
       });
     }
 
@@ -532,35 +616,157 @@
 
     document.getElementById('refreshBtn').addEventListener('click', loadEvents);
 
-    // --- create tab -------------------------------------------------------
+    // --- create tab (как FSM /create в боте) ------------------------------
 
-    document.getElementById('createBtn').addEventListener('click', async () => {
+    const createDraft = {
+      title: '',
+      eventDate: '',
+      startTime: '',
+      durationMinutes: 60,
+    };
+
+    function showCreateStep(step) {
+      document.querySelectorAll('#createWizard .wizard-step').forEach((el) => {
+        el.classList.toggle('active', el.dataset.step === step);
+      });
+    }
+
+    function resetCreateWizard() {
+      createDraft.title = '';
+      createDraft.eventDate = isoDate(localToday());
+      createDraft.startTime = '10:00';
+      createDraft.durationMinutes = 60;
+      document.getElementById('evTitle').value = '';
+      document.getElementById('evDate').value = createDraft.eventDate;
+      document.getElementById('evStart').value = createDraft.startTime;
+      document.getElementById('evDuration').value = '60';
+      document.querySelectorAll('#durationPresets button').forEach((b) => b.classList.remove('active'));
+      showCreateStep('title');
       clearStatus('createStatus');
-      const title = document.getElementById('evTitle').value.trim();
-      const dateVal = document.getElementById('evDate').value;
-      const startVal = document.getElementById('evStart').value;
-      const endVal = document.getElementById('evEnd').value;
-      if (!title || !dateVal || !startVal || !endVal) {
-        showStatus('createStatus', 'Заполните название, дату, начало и конец.', 'err');
-        return;
-      }
-      const btn = document.getElementById('createBtn');
+    }
+
+    function applyDatePreset(preset) {
+      const today = localToday();
+      const target = new Date(today);
+      if (preset === 'tomorrow') target.setDate(target.getDate() + 1);
+      const iso = isoDate(target);
+      document.getElementById('evDate').value = iso;
+      createDraft.eventDate = iso;
+    }
+
+    function formatRuDate(iso) {
+      const [y, m, d] = iso.split('-').map(Number);
+      if (!y || !m || !d) return iso;
+      return String(d).padStart(2, '0') + '.' + String(m).padStart(2, '0') + '.' + y;
+    }
+
+    function computeEndTime(startHHMM, minutes) {
+      const parts = startHHMM.split(':');
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      if (Number.isNaN(h) || Number.isNaN(m)) return '';
+      const total = h * 60 + m + minutes;
+      const eh = Math.floor(total / 60) % 24;
+      const em = total % 60;
+      return String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
+    }
+
+    function fillCreateConfirm() {
+      const end = computeEndTime(createDraft.startTime, createDraft.durationMinutes);
+      const box = document.getElementById('createConfirmBox');
+      box.innerHTML =
+        '<div class="ev-title"></div>' +
+        '<div class="ev-when"></div>';
+      box.querySelector('.ev-title').textContent = createDraft.title;
+      box.querySelector('.ev-when').textContent =
+        formatRuDate(createDraft.eventDate) + ' ' +
+        createDraft.startTime + '–' + end;
+    }
+
+    document.querySelectorAll('[data-date-preset]').forEach((btn) => {
+      btn.addEventListener('click', () => applyDatePreset(btn.dataset.datePreset));
+    });
+
+    document.querySelectorAll('.create-next').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const step = btn.closest('.wizard-step').dataset.step;
+        clearStatus('createStatus');
+        if (step === 'title') {
+          const title = document.getElementById('evTitle').value.trim();
+          if (!title) {
+            showStatus('createStatus', 'Укажите название события.', 'err');
+            return;
+          }
+          createDraft.title = title;
+          showCreateStep('date');
+          return;
+        }
+        if (step === 'date') {
+          const dateVal = document.getElementById('evDate').value;
+          if (!dateVal) {
+            showStatus('createStatus', '⚠️ Не понял дату. Пример: 20.05.2026 или «завтра»', 'err');
+            return;
+          }
+          createDraft.eventDate = dateVal;
+          showCreateStep('time');
+          return;
+        }
+        if (step === 'time') {
+          const startVal = document.getElementById('evStart').value;
+          if (!startVal) {
+            showStatus('createStatus', '⚠️ Не понял время. Например: 09:30', 'err');
+            return;
+          }
+          createDraft.startTime = startVal;
+          showCreateStep('duration');
+          return;
+        }
+        if (step === 'duration') {
+          const minutes = parseInt(document.getElementById('evDuration').value, 10);
+          if (!minutes || minutes <= 0 || minutes > 24 * 60) {
+            showStatus('createStatus', '⚠️ Укажите длительность в минутах, например 60', 'err');
+            return;
+          }
+          createDraft.durationMinutes = minutes;
+          fillCreateConfirm();
+          showCreateStep('confirm');
+        }
+      });
+    });
+
+    document.querySelectorAll('.create-back').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const step = btn.closest('.wizard-step').dataset.step;
+        if (step === 'date') showCreateStep('title');
+        else if (step === 'time') showCreateStep('date');
+        else if (step === 'duration') showCreateStep('time');
+        clearStatus('createStatus');
+      });
+    });
+
+    document.getElementById('createCancelBtn').addEventListener('click', resetCreateWizard);
+
+    document.getElementById('createConfirmBtn').addEventListener('click', async () => {
+      clearStatus('createStatus');
+      const btn = document.getElementById('createConfirmBtn');
       btn.disabled = true;
       try {
         await api('POST', '/api/calendar/events', {
-          title,
-          start: `${dateVal}T${startVal}:00`,
-          end: `${dateVal}T${endVal}:00`,
-          location: document.getElementById('evLocation').value.trim(),
-          description: document.getElementById('evDescription').value.trim(),
+          title: createDraft.title,
+          start: createDraft.eventDate + 'T' + createDraft.startTime + ':00',
+          duration_minutes: createDraft.durationMinutes,
         });
-        showStatus('createStatus', 'Событие создано.', 'ok');
-        document.getElementById('evTitle').value = '';
-        document.getElementById('evLocation').value = '';
-        document.getElementById('evDescription').value = '';
+        showStatus('createStatus', '✅ Событие создано в вашем календаре.', 'ok');
+        resetCreateWizard();
       } catch (e) {
         if (e.code === 'not_connected') {
           showStatus('createStatus', 'Сначала подключите календарь.', 'err');
+        } else if (e.code === 'CREATE_FAILED') {
+          showStatus(
+            'createStatus',
+            '⚠️ Не удалось создать событие. Проверьте права записи в календарь.',
+            'err'
+          );
         } else {
           showStatus('createStatus', e.message || 'Не удалось создать событие.', 'err');
         }
@@ -569,7 +775,8 @@
       }
     });
 
-    setDefaultRange();
+    initDurationPresets();
+    setCreateDefaults();
     refreshStatus();
   </script>
 </body>

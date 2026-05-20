@@ -444,7 +444,7 @@ def test_callback_time_sets_waiting_state(tmp_path: Path):
     # пользователю показали экран ввода времени (через edit)
     edit_text = ctx.telegram.edit_message_text.call_args.args[2]
     assert "Время отправки" in edit_text
-    assert "ЧЧ:ММ" in edit_text
+    assert "09:30" in edit_text
 
 
 def test_valid_time_input_saves_and_clears_state(tmp_path: Path):

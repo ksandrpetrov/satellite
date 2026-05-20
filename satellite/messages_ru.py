@@ -282,7 +282,7 @@ UPCOMING_FETCH_STATUS = "🗓 Чайка собирает ближайшие с�
 UPCOMING_EMPTY_HTML = "🗓 На ближайшие дни встреч нет."
 CREATE_EVENT_ASK_TITLE = "➕ Как назвать событие?"
 CREATE_EVENT_ASK_DATE = "📅 На какую дату? Формат: ДД.ММ.ГГГГ или «сегодня» / «завтра»"
-CREATE_EVENT_ASK_TIME = "🕘 Во сколько начать? Формат ЧЧ:ММ"
+CREATE_EVENT_ASK_TIME = "🕘 Во сколько начать? Например: 09:30, 9 30 или 9:30"
 CREATE_EVENT_ASK_DURATION = "⏱ Сколько минут длится? Например: 30 или 60"
 CREATE_EVENT_CONFIRM_HTML = (
     "Создать событие?\n"
@@ -290,7 +290,7 @@ CREATE_EVENT_CONFIRM_HTML = (
     "{date} {start}–{end}"
 )
 CREATE_EVENT_INVALID_DATE = "⚠️ Не понял дату. Пример: 20.05.2026 или «завтра»"
-CREATE_EVENT_INVALID_TIME = "⚠️ Не понял время. Формат ЧЧ:ММ"
+CREATE_EVENT_INVALID_TIME = "⚠️ Не понял время. Например: 09:30, 9 30 или 9:30"
 CREATE_EVENT_INVALID_DURATION = "⚠️ Укажите длительность в минутах, например 60"
 CREATE_EVENT_CREATING_HTML = "⏳ Создаю событие в календаре…"
 CREATE_EVENT_SUCCESS_HTML = "✅ Событие создано в вашем календаре."
@@ -600,8 +600,8 @@ def digest_time_screen_text(digest_time: str) -> str:
     return (
         "🕘 Время отправки дайджеста\n"
         f"Сейчас: {digest_time} МСК\n"
-        "Напиши новое время в формате ЧЧ:ММ.\n"
-        "Например: 08:30 или 18:25."
+        "Напиши новое время: 08:30, 8:30, 08 30 или 8 30.\n"
+        "Например: 09:30, 9 30, 18:25."
     )
 
 
@@ -624,8 +624,7 @@ def digest_time_applied_text(digest_time: str) -> str:
 
 DIGEST_TIME_INVALID_TEXT = (
     "⚠️ Не понял время.\n"
-    "Напиши в формате ЧЧ:ММ.\n"
-    "Например: 09:00 или 18:25."
+    "Напиши, например: 09:30, 9 30, 9:30 или 18:25."
 )
 
 DIGEST_SETTINGS_CLOSED_TEXT = "⚙️ Настройки закрыты. Возвращайся, когда понадобятся."
