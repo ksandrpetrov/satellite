@@ -37,6 +37,7 @@ from ...messages_ru import (
 from .access import ensure_calendar_connected
 from .calendar_view import CalendarListStatus, fetch_calendars, normalize_calendar_url
 from .context import HandlerContext, IncomingCallback, IncomingMessage
+from ..html_format import build_copy_text_button
 from .delivery import edit_callback_message, safe_answer_callback, send
 
 log = logging.getLogger(__name__)
@@ -224,7 +225,11 @@ def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
         )
         text = ERR_CALDAV_UNAVAILABLE_TEXT
 
-    edit_callback_message(ctx, cb, text, reply_markup=None)
+    markup = None
+    plain = text.replace("<b>", "").replace("</b>", "")
+    if len(plain) <= 256 and "—" in plain:
+        markup = {"inline_keyboard": [[build_copy_text_button("📋 Скопировать список", plain)]]}
+    edit_callback_message(ctx, cb, text, reply_markup=markup)
     log.info(
         "Foreign calendar day: user_id=%s calendar=%s offset=%d",
         cb.user_id,

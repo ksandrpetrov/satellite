@@ -43,6 +43,13 @@ from ..calendar_state import (
 )
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
+from ..visual import (
+    EFFECT_PARTY,
+    SCENARIO_CREATE,
+    private_message_effect,
+    react_to_command,
+    send_with_effect,
+)
 from .delivery import edit_callback_message, safe_answer_callback, send
 
 log = logging.getLogger(__name__)
@@ -258,6 +265,13 @@ def _confirm_create(ctx: HandlerContext, cb: IncomingCallback) -> None:
 
     ctx.calendar_state.clear(cb.chat_id)
     edit_callback_message(ctx, cb, CREATE_EVENT_SUCCESS_HTML, reply_markup=None)
+    if cb.chat_id is not None:
+        send_with_effect(
+            ctx.telegram,
+            cb.chat_id,
+            "✅ Готово.",
+            message_effect_id=private_message_effect(EFFECT_PARTY, cb.chat_id),
+        )
     safe_answer_callback(ctx, cb, text="Готово")
 
 

@@ -14,8 +14,11 @@ from ..messages_ru import (
     PLAN_STATS_LUNCH,
     format_duration_ru,
 )
+from ..telegram_bot.html_format import expandable_blockquote, replace_first_char_with_tg_emoji
 from . import templates as t
 from .rules import SeagullTexts
+
+_SCHEDULE_EXPANDABLE_MIN_MEETINGS = 4
 
 PENDING_MARK = "⚠️"
 TENTATIVE_MARK = "⚖️"
@@ -78,7 +81,8 @@ def _forecast_header(stats: DayCalendarStats) -> str:
         raw = t.FORECAST_HEADER_RELATIVE.format(rel=rel, date=date_str)
     else:
         raw = t.FORECAST_HEADER_PLAIN_DATE.format(date=date_str)
-    return f"📬 {_html_b(raw)}"
+    header = f"📬 {_html_b(raw)}"
+    return replace_first_char_with_tg_emoji(header, "📬")
 
 
 def _meal_stats_lines_from_normalized(
@@ -151,17 +155,22 @@ def render_daily_digest(
         _html_b(last_template.format(value=stats.last_meeting_end or t.NO_VALUE))
     )
     lines.append("")
-    lines.append(_html_b(t.SCHEDULE_TITLE))
-
     if stats.meetings_count == 0:
+        lines.append(_html_b(t.SCHEDULE_TITLE))
         lines.append(t.EMPTY_SCHEDULE)
         lines.append("")
     else:
         events = list(stats.events)
+        schedule_lines: list[str] = [_html_b(t.SCHEDULE_TITLE)]
         for index, ev in enumerate(events):
-            lines.extend(_render_event(index, ev, escape_html=escape_html))
+            schedule_lines.extend(_render_event(index, ev, escape_html=escape_html))
             if index < len(events) - 1:
-                lines.append("")
+                schedule_lines.append("")
+        schedule_body = "\n".join(schedule_lines)
+        if stats.meetings_count >= _SCHEDULE_EXPANDABLE_MIN_MEETINGS:
+            lines.append(expandable_blockquote(schedule_body, threshold=3))
+        else:
+            lines.append(schedule_body)
         lines.append("")
 
     lines.append(t.BUSY_LINE.format(value=format_duration_ru(stats.busy_minutes)))

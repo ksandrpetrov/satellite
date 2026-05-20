@@ -118,8 +118,10 @@ def webapp_connect_url(
     if not url or telegram_user_id is None:
         return url
     token = ctx.connect_tokens.issue(telegram_user_id)
+    if not isinstance(token, str) or not token.strip():
+        return url
     # Путь + hash: Telegram иногда открывает только /connect без query/path.
-    return f"{url}/{token}#t={quote(token, safe='')}"
+    return f"{url}/{token.strip()}#t={quote(token.strip(), safe='')}"
 
 
 def notify_handler_failure(ctx: HandlerContext, chat_id: int | None) -> None:

@@ -29,6 +29,23 @@ class TelegramError(RuntimeError):
     """Не получилось договориться с Telegram даже после всех ретраев."""
 
 
+def is_custom_emoji_rejected(exc: BaseException) -> bool:
+    """Telegram отклонил ``<tg-emoji emoji-id="…">`` в HTML-тексте."""
+    text = str(exc).lower()
+    return "custom_emoji" in text or "tg-emoji" in text
+
+
+def is_html_entities_rejected(exc: BaseException) -> bool:
+    """Невалидный HTML (entities, expandable blockquote, и т.п.)."""
+    text = str(exc).lower()
+    return (
+        "can't parse" in text
+        or "parse entities" in text
+        or "unsupported start tag" in text
+        or ("expandable" in text and "blockquote" in text)
+    )
+
+
 def is_message_effect_rejected(exc: BaseException) -> bool:
     """Telegram отказался применять ``message_effect_id``.
 
@@ -107,6 +124,38 @@ class TelegramClient:
         self._session.close()
         self._long_poll_session.close()
 
+    @staticmethod
+    def _attach_link_preview(
+        data: dict[str, Any],
+        *,
+        link_preview_options: dict[str, Any] | None,
+        disable_web_page_preview: bool,
+    ) -> None:
+        if link_preview_options is not None:
+            data["link_preview_options"] = json.dumps(
+                link_preview_options, ensure_ascii=False
+            )
+        elif disable_web_page_preview:
+            data["link_preview_options"] = json.dumps(
+                {"is_disabled": True}, ensure_ascii=False
+            )
+
+    @staticmethod
+    def _strip_rich_html(text: str) -> str:
+        from .html_format import strip_expandable_blockquote, strip_tg_emoji_tags
+
+        return strip_expandable_blockquote(strip_tg_emoji_tags(text))
+
+    def _retry_html_text(self, data: dict[str, Any], *, method: str, **call_kw: Any) -> Any:
+        """Повтор send/edit без ``<tg-emoji>`` и expandable blockquote."""
+        retry_data = dict(data)
+        if "text" in retry_data:
+            retry_data["text"] = self._strip_rich_html(str(retry_data["text"]))
+        if "caption" in retry_data:
+            retry_data["caption"] = self._strip_rich_html(str(retry_data["caption"]))
+        log.info("%s HTML markup rejected, retrying without tg-emoji/expandable", method)
+        return self._call(method, data=retry_data, **call_kw)
+
     # --- public API -------------------------------------------------------
 
     def send_message(
@@ -117,6 +166,7 @@ class TelegramClient:
         parse_mode: str | None = "HTML",
         reply_markup: dict | list | str | None = None,
         disable_web_page_preview: bool = True,
+        link_preview_options: dict[str, Any] | None = None,
         message_thread_id: int | None = None,
         message_effect_id: str | None = None,
     ) -> dict[str, Any]:
@@ -126,8 +176,11 @@ class TelegramClient:
         }
         if parse_mode:
             data["parse_mode"] = parse_mode
-        if disable_web_page_preview:
-            data["disable_web_page_preview"] = "true"
+        self._attach_link_preview(
+            data,
+            link_preview_options=link_preview_options,
+            disable_web_page_preview=disable_web_page_preview,
+        )
         if message_thread_id is not None:
             data["message_thread_id"] = message_thread_id
         if message_effect_id:
@@ -138,13 +191,12 @@ class TelegramClient:
                 if isinstance(reply_markup, (dict, list))
                 else reply_markup
             )
+        call_kw = {
+            "timeout": _SEND_MESSAGE_TIMEOUT_SEC,
+            "max_retries": _SEND_MESSAGE_MAX_RETRIES,
+        }
         try:
-            return self._call(
-                "sendMessage",
-                data=data,
-                timeout=_SEND_MESSAGE_TIMEOUT_SEC,
-                max_retries=_SEND_MESSAGE_MAX_RETRIES,
-            )
+            return self._call("sendMessage", data=data, **call_kw)
         except TelegramError as exc:
             if message_effect_id and is_message_effect_rejected(exc):
                 log.info(
@@ -152,12 +204,12 @@ class TelegramClient:
                     exc,
                 )
                 data.pop("message_effect_id", None)
-                return self._call(
-                    "sendMessage",
-                    data=data,
-                    timeout=_SEND_MESSAGE_TIMEOUT_SEC,
-                    max_retries=_SEND_MESSAGE_MAX_RETRIES,
-                )
+                try:
+                    return self._call("sendMessage", data=data, **call_kw)
+                except TelegramError as exc2:
+                    exc = exc2
+            if is_custom_emoji_rejected(exc) or is_html_entities_rejected(exc):
+                return self._retry_html_text(data, method="sendMessage", **call_kw)
             raise
 
     def send_photo(
@@ -183,14 +235,13 @@ class TelegramClient:
             data["message_thread_id"] = message_thread_id
         if message_effect_id:
             data["message_effect_id"] = message_effect_id
+        call_kw = {
+            "files": files,
+            "timeout": _SEND_MESSAGE_TIMEOUT_SEC,
+            "max_retries": _SEND_MESSAGE_MAX_RETRIES,
+        }
         try:
-            return self._call(
-                "sendPhoto",
-                data=data,
-                files=files,
-                timeout=_SEND_MESSAGE_TIMEOUT_SEC,
-                max_retries=_SEND_MESSAGE_MAX_RETRIES,
-            )
+            return self._call("sendPhoto", data=data, **call_kw)
         except TelegramError as exc:
             if message_effect_id and is_message_effect_rejected(exc):
                 log.info(
@@ -198,13 +249,14 @@ class TelegramClient:
                     exc,
                 )
                 data.pop("message_effect_id", None)
-                return self._call(
-                    "sendPhoto",
-                    data=data,
-                    files=files,
-                    timeout=_SEND_MESSAGE_TIMEOUT_SEC,
-                    max_retries=_SEND_MESSAGE_MAX_RETRIES,
-                )
+                try:
+                    return self._call("sendPhoto", data=data, **call_kw)
+                except TelegramError as exc2:
+                    exc = exc2
+            if caption and (
+                is_custom_emoji_rejected(exc) or is_html_entities_rejected(exc)
+            ):
+                return self._retry_html_text(data, method="sendPhoto", **call_kw)
             raise
 
     def answer_callback_query(
@@ -249,6 +301,7 @@ class TelegramClient:
         parse_mode: str | None = "HTML",
         reply_markup: dict | list | str | None = None,
         disable_web_page_preview: bool = True,
+        link_preview_options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         data: dict[str, Any] = {
             "chat_id": chat_id,
@@ -257,20 +310,27 @@ class TelegramClient:
         }
         if parse_mode:
             data["parse_mode"] = parse_mode
-        if disable_web_page_preview:
-            data["disable_web_page_preview"] = "true"
+        self._attach_link_preview(
+            data,
+            link_preview_options=link_preview_options,
+            disable_web_page_preview=disable_web_page_preview,
+        )
         if reply_markup is not None:
             data["reply_markup"] = (
                 json.dumps(reply_markup, ensure_ascii=False)
                 if isinstance(reply_markup, (dict, list))
                 else reply_markup
             )
-        return self._call(
-            "editMessageText",
-            data=data,
-            timeout=_EDIT_MESSAGE_TIMEOUT_SEC,
-            max_retries=_EDIT_MESSAGE_MAX_RETRIES,
-        )
+        call_kw = {
+            "timeout": _EDIT_MESSAGE_TIMEOUT_SEC,
+            "max_retries": _EDIT_MESSAGE_MAX_RETRIES,
+        }
+        try:
+            return self._call("editMessageText", data=data, **call_kw)
+        except TelegramError as exc:
+            if is_custom_emoji_rejected(exc) or is_html_entities_rejected(exc):
+                return self._retry_html_text(data, method="editMessageText", **call_kw)
+            raise
 
     def send_message_draft(
         self,
@@ -401,6 +461,57 @@ class TelegramClient:
             data["menu_button"] = json.dumps(menu_button, ensure_ascii=False)
         return self._call(
             "setChatMenuButton",
+            data=data,
+            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+            max_retries=1,
+        )
+
+    def set_my_name(
+        self,
+        name: str,
+        *,
+        language_code: str | None = None,
+    ) -> Any:
+        """``setMyName``: отображаемое имя бота в профиле."""
+        data: dict[str, Any] = {"name": name}
+        if language_code:
+            data["language_code"] = language_code
+        return self._call(
+            "setMyName",
+            data=data,
+            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+            max_retries=1,
+        )
+
+    def set_my_description(
+        self,
+        description: str,
+        *,
+        language_code: str | None = None,
+    ) -> Any:
+        """``setMyDescription``: текст «Описание» в профиле бота."""
+        data: dict[str, Any] = {"description": description}
+        if language_code:
+            data["language_code"] = language_code
+        return self._call(
+            "setMyDescription",
+            data=data,
+            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+            max_retries=1,
+        )
+
+    def set_my_short_description(
+        self,
+        short_description: str,
+        *,
+        language_code: str | None = None,
+    ) -> Any:
+        """``setMyShortDescription``: краткое описание в списке чатов."""
+        data: dict[str, Any] = {"short_description": short_description}
+        if language_code:
+            data["language_code"] = language_code
+        return self._call(
+            "setMyShortDescription",
             data=data,
             timeout=_SEND_MESSAGE_TIMEOUT_SEC,
             max_retries=1,

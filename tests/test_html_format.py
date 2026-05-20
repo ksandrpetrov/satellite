@@ -1,0 +1,49 @@
+"""Тесты HTML-хелперов для Telegram."""
+
+from __future__ import annotations
+
+from satellite.telegram_bot.html_format import (
+    blockquote,
+    build_copy_text_button,
+    expandable_blockquote,
+    strip_expandable_blockquote,
+    strip_tg_emoji_tags,
+    tg_emoji,
+)
+
+
+def test_blockquote_wraps_text() -> None:
+    assert blockquote("hello") == "<blockquote>hello</blockquote>"
+
+
+def test_expandable_blockquote_when_enough_lines() -> None:
+    body = "a\nb\nc\nd"
+    out = expandable_blockquote(body, threshold=3)
+    assert 'expandable="true"' in out
+    assert body in out
+
+
+def test_expandable_blockquote_skips_short_text() -> None:
+    assert expandable_blockquote("one line", threshold=3) == "one line"
+
+
+def test_tg_emoji_known_char() -> None:
+    out = tg_emoji("🪶")
+    assert "<tg-emoji" in out
+    assert "🪶" in out
+
+
+def test_strip_tg_emoji_tags() -> None:
+    raw = '<tg-emoji emoji-id="123">🪶</tg-emoji> hi'
+    assert strip_tg_emoji_tags(raw) == "🪶 hi"
+
+
+def test_strip_expandable_blockquote() -> None:
+    raw = '<blockquote expandable="true">x</blockquote>'
+    assert strip_expandable_blockquote(raw) == "<blockquote>x</blockquote>"
+
+
+def test_build_copy_text_button_truncates() -> None:
+    long = "x" * 300
+    btn = build_copy_text_button("copy", long)
+    assert len(btn["copy_text"]["text"]) == 256

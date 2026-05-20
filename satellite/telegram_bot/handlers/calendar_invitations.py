@@ -34,6 +34,13 @@ from ...messages_ru import (
 )
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
+from ..visual import (
+    EFFECT_SPARKLES,
+    SCENARIO_INVITATIONS,
+    private_message_effect,
+    react_to_command,
+    send_with_effect,
+)
 from .delivery import (
     edit_callback_message,
     open_streaming_reply,
@@ -135,6 +142,8 @@ def _find_event_by_token(events: list, token: str):
 def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_connected(ctx, msg) or msg.chat_id is None or msg.user_id is None:
         return
+    react_to_command(ctx, msg, SCENARIO_INVITATIONS)
+
     stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
     stream.push(INVITATIONS_FETCH_STATUS)
 
@@ -231,4 +240,11 @@ def _handle_respond(ctx: HandlerContext, cb: IncomingCallback, data: str) -> Non
         safe_answer_callback(ctx, cb, text=INVITATIONS_RESPOND_FAIL_TEXT)
         return
     toast = _TOAST_BY_CODE.get(code.strip().lower(), INVITATIONS_RESPOND_ACCEPTED)
+    if cb.chat_id is not None and partstat == "ACCEPTED":
+        send_with_effect(
+            ctx.telegram,
+            cb.chat_id,
+            INVITATIONS_RESPOND_ACCEPTED,
+            message_effect_id=private_message_effect(EFFECT_SPARKLES, cb.chat_id),
+        )
     _edit_invitations_screen(ctx, cb, toast=toast)

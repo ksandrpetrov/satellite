@@ -27,6 +27,13 @@ from ...users import (
 )
 from ..api import TelegramError
 from .context import HandlerContext, IncomingCallback, IncomingMessage
+from ..visual import (
+    EFFECT_HEART,
+    SCENARIO_START_APPROVED,
+    private_message_effect,
+    react_to_command,
+    send_with_effect,
+)
 from .delivery import webapp_connect_url
 
 log = logging.getLogger(__name__)
@@ -101,11 +108,11 @@ def _handle_start_flow(ctx: HandlerContext, msg: IncomingMessage, status: str) -
     has_calendar = bool(record and record.has_calendar)
     webapp_url = webapp_connect_url(ctx)
     markup = build_approved_main_keyboard() if webapp_url else REPLY_KEYBOARD_REMOVE
-    ctx.telegram.send_message(
-        msg.chat_id,
-        ACCESS_APPROVED_HTML if not has_calendar else BOT_WELCOME_HTML,
-        reply_markup=markup,
-    )
+    if not has_calendar:
+        ctx.telegram.send_message(msg.chat_id, ACCESS_APPROVED_HTML, reply_markup=markup)
+    else:
+        react_to_command(ctx, msg, SCENARIO_START_APPROVED)
+        ctx.telegram.send_message(msg.chat_id, BOT_WELCOME_HTML, reply_markup=markup)
 
 
 def _submit_access_request_if_needed(ctx: HandlerContext, msg: IncomingMessage) -> bool:
@@ -159,19 +166,25 @@ def notify_user_access_decision(
     if approved:
         try:
             if webapp_url:
-                ctx.telegram.send_message(
+                send_with_effect(
+                    ctx.telegram,
                     chat_id,
                     ACCESS_APPROVED_HTML,
                     reply_markup=build_webapp_connect_keyboard(webapp_url),
+                    message_effect_id=private_message_effect(EFFECT_HEART, chat_id),
                 )
-                # Сбрасываем старую reply-кнопку Web App (без initData) и даём главное меню.
                 ctx.telegram.send_message(
                     chat_id,
                     ACCESS_APPROVED_KEYBOARD_HINT,
                     reply_markup=build_approved_main_keyboard(),
                 )
             else:
-                ctx.telegram.send_message(chat_id, ACCESS_APPROVED_HTML)
+                send_with_effect(
+                    ctx.telegram,
+                    chat_id,
+                    ACCESS_APPROVED_HTML,
+                    message_effect_id=private_message_effect(EFFECT_HEART, chat_id),
+                )
         except TelegramError as exc:
             log.warning("Failed to notify user %s about approval: %s", chat_id, exc)
     else:

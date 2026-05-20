@@ -25,7 +25,7 @@ from ..web.connect_token import ConnectTokenStore
 from ..web.server import WebAppServer, WebAppServerConfig
 from .api import TelegramClient, TelegramError
 from .calendar_state import CalendarStateStore
-from .commands import setup_bot_commands
+from .commands import setup_bot_identity
 from .concurrency import ChatLockManager, InflightTracker
 from .digest_state import DigestStateStore
 from .handlers import (
@@ -138,7 +138,7 @@ class TelegramBot:
         )
         self._log_persistence_summary()
         self._verify_encryption_key_against_existing_users()
-        self._register_commands_safely()
+        self._register_identity_safely()
         self._webapp.start()
         self._scheduler.start()
         try:
@@ -207,11 +207,11 @@ class TelegramBot:
             _encryption_key_fingerprint(self._settings.security.encryption_key),
         )
 
-    def _register_commands_safely(self) -> None:
+    def _register_identity_safely(self) -> None:
         try:
-            setup_bot_commands(self._telegram)
+            setup_bot_identity(self._telegram)
         except Exception:  # noqa: BLE001
-            log.exception("Bot commands setup failed; continuing without menu")
+            log.exception("Bot identity setup failed; continuing without menu/profile")
 
     def shutdown(self) -> None:
         with self._shutdown_lock:

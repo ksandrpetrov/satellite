@@ -212,6 +212,67 @@ def test_send_message_does_not_retry_on_unrelated_errors() -> None:
     client._call.assert_called_once()  # noqa: SLF001
 
 
+def test_send_message_retries_without_tg_emoji_on_custom_emoji_error() -> None:
+    client = TelegramClient("token")
+    mock_call, snapshots = _capture_call_snapshots(
+        [
+            TelegramError(
+                "sendMessage: HTTP 400: Bad Request: CUSTOM_EMOJI_ID_INVALID"
+            ),
+            {"message_id": 9},
+        ]
+    )
+    client._call = mock_call  # noqa: SLF001
+
+    html = '<tg-emoji emoji-id="1">🪶</tg-emoji> hi'
+    result = client.send_message(123, html)
+
+    assert result == {"message_id": 9}
+    assert len(snapshots) == 2
+    assert "<tg-emoji" in snapshots[0]["text"]
+    assert "<tg-emoji" not in snapshots[1]["text"]
+    assert "🪶" in snapshots[1]["text"]
+
+
+def test_send_message_link_preview_options_json() -> None:
+    client = TelegramClient("token")
+    captured: dict = {}
+
+    def fake_call(method_name, *, data=None, timeout=None, max_retries=None, **_):
+        captured["data"] = data
+        return {"message_id": 1}
+
+    client._call = fake_call  # noqa: SLF001
+    client.send_message(
+        123,
+        "see https://example.com",
+        link_preview_options={"url": "https://example.com", "show_above_text": True},
+        disable_web_page_preview=False,
+    )
+    import json
+
+    opts = json.loads(captured["data"]["link_preview_options"])
+    assert opts["show_above_text"] is True
+    assert "disable_web_page_preview" not in captured["data"]
+
+
+def test_set_my_name_description_short_description(monkeypatch) -> None:
+    client = TelegramClient("test-token")
+    methods: list[str] = []
+
+    def fake_call(method_name, *, data=None, timeout=None, max_retries=None, **_):
+        methods.append(method_name)
+        return True
+
+    monkeypatch.setattr(client, "_call", fake_call)
+
+    client.set_my_name("Чайка")
+    client.set_my_description("desc")
+    client.set_my_short_description("short")
+
+    assert methods == ["setMyName", "setMyDescription", "setMyShortDescription"]
+
+
 def _ok_response(result):
     response = MagicMock(spec=requests.Response)
     response.status_code = 200

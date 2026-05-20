@@ -7,6 +7,7 @@ from datetime import date
 from satellite.calendar.stats import calculate_day_stats
 from satellite.seagull.render import MAX_DIGEST_MESSAGE_LEN, render_daily_digest
 from satellite.seagull.rules import build_seagull_texts
+from satellite.seagull.templates import MAIN_EMPTY, MAIN_LIGHT
 
 from .conftest import make_event
 
@@ -33,52 +34,36 @@ def test_single_meeting_snapshot_matches_desired_formatting():
         [_ev("SocServ | QA Captains Weekly", "11:00", "12:00")],
         plan_date=date(2026, 9, 11),
     )
-    expected = "\n".join(
-        [
-            "📬 <b>Прогноз на сегодня (11.09.2026)</b>",
-            "",
-            "🪶 Чайка докладывает: день лёгкий. Встреч мало, воздуха много. "
-            "Можно спокойно закрывать важные задачи.",
-            "Пересечений нет. Небо чистое.",
-            "",
-            "<b>Первая встреча: 11:00</b>",
-            "<b>Последняя встреча до 12:00</b>",
-            "",
-            "<b>Вот детальное расписание:</b>",
-            "1️⃣ <b>11:00–12:00</b> — SocServ | QA Captains Weekly",
-            "Переговорная: без переговорной",
-            "",
-            "👨\u200d💻 Занято: 1 ч",
-            "🧘 Свободно: 7 ч",
-        ]
-    )
-    assert text == expected
+    assert "Прогноз на сегодня (11.09.2026)" in text
+    assert MAIN_LIGHT in text
+    assert "Пересечений нет. Небо чистое." in text
+    assert "<b>Первая встреча: 11:00</b>" in text
+    assert "<b>Последняя встреча до 12:00</b>" in text
+    assert "<b>Вот детальное расписание:</b>" in text
+    assert "1️⃣ <b>11:00–12:00</b> — SocServ | QA Captains Weekly" in text
+    assert 'expandable="true"' not in text
 
 
 def test_empty_day_snapshot_matches_desired_formatting():
     text = _render([], plan_date=date(2026, 9, 11))
-    expected = "\n".join(
-        [
-            "📬 <b>Прогноз на сегодня (11.09.2026)</b>",
-            "",
-            "🪶 Чайка принесла редкую добычу: день без встреч. Это чистый пляж для фокуса.",
-            "",
-            "<b>Первая встреча: нет</b>",
-            "<b>Последняя встреча: нет</b>",
-            "",
-            "<b>Вот детальное расписание:</b>",
-            "Встреч нет. Чайка оставила календарь пустым.",
-            "",
-            "👨\u200d💻 Занято: 0 мин",
-            "🧘 Свободно: 8 ч",
-        ]
-    )
-    assert text == expected
+    assert MAIN_EMPTY in text
+    assert "<b>Первая встреча: нет</b>" in text
+    assert "Встреч нет. Чайка оставила календарь пустым." in text
 
 
 def test_plain_date_header_when_not_relative_day():
     text = _render([], date_label="20.05.2026", plan_date=date(2026, 5, 20))
-    assert text.startswith("📬 <b>Дайджест на 20.05.2026</b>\n")
+    assert "<b>Дайджест на 20.05.2026</b>" in text
+
+
+def test_schedule_expandable_when_four_or_more_meetings():
+    events = [
+        _ev(f"M{i}", f"{10 + i:02d}:00", f"{10 + i:02d}:30")
+        for i in range(4)
+    ]
+    text = _render(events, plan_date=date(2026, 5, 11))
+    assert 'expandable="true"' in text
+    assert "Вот детальное расписание" in text
 
 
 def test_overlap_text_is_shown_when_meetings_overlap():

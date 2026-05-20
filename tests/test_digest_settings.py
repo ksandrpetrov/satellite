@@ -326,7 +326,7 @@ def test_digest_settings_button_sends_inline_settings_screen(tmp_path: Path):
     ctx.telegram.send_message.assert_called_once()
     call = ctx.telegram.send_message.call_args
     assert call.args[0] == 900
-    assert call.args[1] == SETTINGS_HUB_TEXT
+    assert "Настройки Чайки" in call.args[1]
     keyboard = call.kwargs.get("reply_markup")
     assert keyboard is not None
     assert "inline_keyboard" in keyboard
@@ -731,7 +731,7 @@ def test_settings_command_opens_inline_screen(tmp_path: Path):
     ctx.telegram.send_message.assert_called_once()
     call = ctx.telegram.send_message.call_args
     text = call.args[1]
-    assert text == SETTINGS_HUB_TEXT
+    assert "Настройки Чайки" in text
     keyboard = call.kwargs.get("reply_markup")
     assert keyboard is not None
     assert "inline_keyboard" in keyboard

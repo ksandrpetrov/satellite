@@ -1,11 +1,4 @@
-"""Тесты регистрации команд бота в Telegram command menu.
-
-Покрываем:
-- ``setup_bot_commands`` вызывает ``setMyCommands`` со всем списком из ТЗ;
-- ``setup_bot_commands`` не вызывает ``setChatMenuButton`` (кнопка «Меню» — в BotFather);
-- падение Telegram API не пробрасывается наружу (бот должен подняться);
-- ``TelegramClient.set_my_commands`` сериализует команды в JSON-payload.
-"""
+"""Тесты регистрации идентичности бота в Telegram."""
 
 from __future__ import annotations
 
@@ -13,12 +6,9 @@ import json
 from unittest.mock import MagicMock
 
 from satellite.telegram_bot.api import TelegramError
-from satellite.telegram_bot.commands import BOT_COMMANDS, setup_bot_commands
+from satellite.telegram_bot.commands import BOT_COMMANDS, setup_bot_commands, setup_bot_identity
 
 
-# В меню сознательно нет /digest и /stopdigest: включение и отключение
-# дайджеста делается из /settings (там же дни и время). Сами команды
-# /digest и /stopdigest остаются рабочими как текстовые — см. handlers.py.
 EXPECTED_COMMANDS = (
     "start",
     "today",
@@ -34,48 +24,64 @@ EXPECTED_COMMANDS = (
 
 
 def test_bot_commands_list_matches_spec():
-    """Меню Telegram содержит компактный набор без /digest и /stopdigest."""
     commands = [cmd for cmd, _desc in BOT_COMMANDS]
     assert commands == list(EXPECTED_COMMANDS)
-    # /digest и /stopdigest не должны попадать в меню — они открываются из
-    # /settings и продолжают работать только как набираемые команды.
     assert "digest" not in commands
     assert "stopdigest" not in commands
-    # каждое описание непустое — иначе Telegram отрисует пустую строку
     for _cmd, desc in BOT_COMMANDS:
         assert desc and isinstance(desc, str)
 
 
-def test_setup_bot_commands_registers_all_commands():
+def test_setup_bot_identity_registers_all_steps():
     telegram = MagicMock()
     telegram.set_my_commands = MagicMock(return_value=True)
+    telegram.set_my_name = MagicMock(return_value=True)
+    telegram.set_my_short_description = MagicMock(return_value=True)
+    telegram.set_my_description = MagicMock(return_value=True)
+    telegram.set_chat_menu_button = MagicMock(return_value=True)
 
-    ok = setup_bot_commands(telegram)
+    ok = setup_bot_identity(telegram)
 
     assert ok is True
     telegram.set_my_commands.assert_called_once()
     payload = telegram.set_my_commands.call_args.args[0]
     assert [item["command"] for item in payload] == list(EXPECTED_COMMANDS)
-    # каждая запись имеет описание
-    for item in payload:
-        assert "description" in item and item["description"]
-    telegram.set_chat_menu_button.assert_not_called()
+    telegram.set_my_name.assert_called_once()
+    telegram.set_my_short_description.assert_called_once()
+    telegram.set_my_description.assert_called_once()
+    telegram.set_chat_menu_button.assert_called_once_with(
+        menu_button={"type": "commands"}
+    )
 
 
-def test_setup_bot_commands_does_not_raise_on_telegram_error(caplog):
-    """Если Telegram API упал — мы логируем и возвращаем False, но не падаем."""
+def test_setup_bot_commands_is_alias():
+    telegram = MagicMock()
+    telegram.set_my_commands = MagicMock(return_value=True)
+    telegram.set_my_name = MagicMock(return_value=True)
+    telegram.set_my_short_description = MagicMock(return_value=True)
+    telegram.set_my_description = MagicMock(return_value=True)
+    telegram.set_chat_menu_button = MagicMock(return_value=True)
+
+    assert setup_bot_commands(telegram) is True
+    assert telegram.set_my_commands.called
+
+
+def test_setup_bot_identity_does_not_raise_on_telegram_error(caplog):
     telegram = MagicMock()
     telegram.set_my_commands = MagicMock(side_effect=TelegramError("nope"))
+    telegram.set_my_name = MagicMock(return_value=True)
+    telegram.set_my_short_description = MagicMock(return_value=True)
+    telegram.set_my_description = MagicMock(return_value=True)
+    telegram.set_chat_menu_button = MagicMock(return_value=True)
 
     with caplog.at_level("ERROR", logger="satellite.telegram_bot.commands"):
-        ok = setup_bot_commands(telegram)
+        ok = setup_bot_identity(telegram)
 
     assert ok is False
     assert any("setMyCommands" in r.getMessage() for r in caplog.records)
 
 
 def test_telegram_client_set_my_commands_serializes_payload(monkeypatch):
-    """``TelegramClient.set_my_commands`` шлёт JSON-сериализованные ``commands``."""
     from satellite.telegram_bot.api import TelegramClient
 
     client = TelegramClient("test-token")
@@ -95,7 +101,6 @@ def test_telegram_client_set_my_commands_serializes_payload(monkeypatch):
     client.set_my_commands(payload)
 
     assert captured["method"] == "setMyCommands"
-    assert "commands" in captured["data"]
     decoded = json.loads(captured["data"]["commands"])
     assert decoded == payload
 

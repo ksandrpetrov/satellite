@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 from typing import TYPE_CHECKING, Sequence
 
 from ..calendar.period_stats import AnalyticsReport, format_week_range_label
 
 if TYPE_CHECKING:
+    from PIL import Image as PILImage
     from PIL import ImageDraw, ImageFont
 
 CARD_WIDTH = 1200
 CARD_HEIGHT = 1920
 MARGIN = 56
 CARD_RADIUS = 28
+
+LOGO_PATH = Path(__file__).resolve().parent / "assets" / "logo.png"
+LOGO_TARGET_WIDTH = 200
 
 # Apple-like palette
 COLOR_BG = (245, 245, 247)
@@ -39,6 +44,37 @@ def _pil():
     from PIL import Image, ImageDraw, ImageFont
 
     return Image, ImageDraw, ImageFont
+
+
+_LOGO_CACHE: "PILImage.Image | None" = None
+
+
+def _load_brand_logo() -> "PILImage.Image | None":
+    """Логотип бренда с прозрачным фоном, масштабированный под карточку."""
+    global _LOGO_CACHE
+    if _LOGO_CACHE is not None:
+        return _LOGO_CACHE
+    if not LOGO_PATH.exists():
+        return None
+    Image, _, _ = _pil()
+    try:
+        logo = Image.open(LOGO_PATH).convert("RGBA")
+    except OSError:
+        return None
+    ratio = LOGO_TARGET_WIDTH / logo.width
+    new_size = (LOGO_TARGET_WIDTH, max(1, round(logo.height * ratio)))
+    _LOGO_CACHE = logo.resize(new_size, Image.LANCZOS)
+    return _LOGO_CACHE
+
+
+def _paste_brand_logo(img) -> None:
+    """Лого в правом верхнем углу карточки, чтобы юзер видел бренд."""
+    logo = _load_brand_logo()
+    if logo is None:
+        return
+    x = CARD_WIDTH - MARGIN - logo.width
+    y = MARGIN - 12
+    img.paste(logo, (x, y), logo)
 
 
 def _load_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -411,6 +447,9 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
     font_small = _load_font(20)
     font_badge = _load_font(24, bold=True)
     font_footer = _load_font(20)
+
+    _paste_brand_logo(img)
+    draw = ImageDraw.Draw(img)
 
     y = MARGIN
     draw.text((MARGIN, y), "ЧАЙКА · НЕДЕЛЬНАЯ АНАЛИТИКА", fill=COLOR_MUTED, font=font_eyebrow)

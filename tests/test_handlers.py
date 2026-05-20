@@ -248,7 +248,7 @@ def test_settings_command_clears_create_fsm_and_opens_hub():
     ctx.calendar_state.clear.assert_called_once_with(9001)
     ctx.digest_state.clear.assert_any_call(9001)
     sent = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
-    assert SETTINGS_HUB_TEXT in sent
+    assert any("Настройки Чайки" in t for t in sent)
 
 
 def test_parse_command_mode_returns_none_for_garbage():

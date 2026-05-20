@@ -43,11 +43,12 @@ from ...messages_ru import (
     SETTINGS_CALENDAR_MENU_TEXT,
     SETTINGS_DISCONNECT_CONFIRM_TEXT,
     SETTINGS_HUB_CLOSED_TEXT,
-    SETTINGS_HUB_TEXT,
     build_settings_calendar_menu_keyboard,
     build_settings_disconnect_confirm_keyboard,
     build_settings_hub_keyboard,
+    settings_hub_text,
 )
+from ..visual import set_default_menu_button_for_chat
 from .calendar_view import (
     CalendarSourcesScreenStatus,
     build_calendar_sources_screen,
@@ -70,6 +71,45 @@ def _has_calendar(ctx: HandlerContext, user_id: int) -> bool:
     return bool(record and record.has_calendar)
 
 
+def _subscription_username(record, user_id: int) -> str:
+    uname = getattr(record, "username", None) if record else None
+    if isinstance(uname, str) and uname.strip():
+        return uname.strip()
+    return str(user_id)
+
+
+def _calendar_login(ctx: HandlerContext, user_id: int) -> str | None:
+    svc = getattr(ctx, "calendar_service", None)
+    if svc is None:
+        return None
+    try:
+        connected = svc.require_connection(user_id)
+        login = (connected.context.login or "").strip()
+        return login or None
+    except (CalendarNotConnectedError, CalendarProviderError):
+        return None
+
+
+def _hub_text_and_keyboard(ctx: HandlerContext, user_id: int, chat_id: int):
+    record = ctx.users.get(user_id)
+    has_cal = bool(record and record.has_calendar)
+    digest_on = None
+    if record:
+        sub = ctx.subscriptions.get_or_create(
+            chat_id,
+            _subscription_username(record, user_id),
+            telegram_user_id=user_id,
+        )
+        digest_on = sub.digest_enabled
+    text = settings_hub_text(digest_enabled=digest_on, has_calendar=has_cal)
+    keyboard = build_settings_hub_keyboard(
+        webapp_url=webapp_connect_url(ctx, user_id),
+        has_calendar=has_cal,
+        calendar_login=_calendar_login(ctx, user_id) if has_cal else None,
+    )
+    return text, keyboard
+
+
 # --- главный экран --------------------------------------------------------
 
 
@@ -77,12 +117,8 @@ def handle_open_settings_hub(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if msg.chat_id is None or msg.user_id is None:
         return
     ctx.digest_state.clear(msg.chat_id)
-    webapp_url = webapp_connect_url(ctx, msg.user_id)
-    keyboard = build_settings_hub_keyboard(
-        webapp_url=webapp_url,
-        has_calendar=_has_calendar(ctx, msg.user_id),
-    )
-    ctx.telegram.send_message(msg.chat_id, SETTINGS_HUB_TEXT, reply_markup=keyboard)
+    text, keyboard = _hub_text_and_keyboard(ctx, msg.user_id, msg.chat_id)
+    ctx.telegram.send_message(msg.chat_id, text, reply_markup=keyboard)
     log.info("Opened settings hub: chat_id=%s user_id=%s", msg.chat_id, msg.user_id)
 
 
@@ -90,12 +126,8 @@ def show_settings_hub_screen(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.chat_id is None or cb.user_id is None:
         return
     ctx.digest_state.clear(cb.chat_id)
-    webapp_url = webapp_connect_url(ctx, cb.user_id)
-    keyboard = build_settings_hub_keyboard(
-        webapp_url=webapp_url,
-        has_calendar=_has_calendar(ctx, cb.user_id),
-    )
-    edit_callback_message(ctx, cb, SETTINGS_HUB_TEXT, keyboard)
+    text, keyboard = _hub_text_and_keyboard(ctx, cb.user_id, cb.chat_id)
+    edit_callback_message(ctx, cb, text, keyboard)
 
 
 # --- подэкран «Календарь» -------------------------------------------------
@@ -226,6 +258,8 @@ def _disconnect_calendar_from_callback(ctx: HandlerContext, cb: IncomingCallback
         return
     try:
         ctx.calendar_service.disconnect(cb.user_id)
+        if cb.chat_id is not None:
+            set_default_menu_button_for_chat(ctx.telegram, cb.chat_id)
         send(ctx, cb.chat_id, CALENDAR_DISCONNECTED_HTML)
         show_settings_hub_screen(ctx, cb)
     except KeyError:

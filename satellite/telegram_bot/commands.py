@@ -1,14 +1,9 @@
-"""Регистрация команд бота в Telegram (меню рядом с полем ввода).
+"""Регистрация идентичности бота в Telegram (меню, профиль, кнопка «Меню»).
 
-Telegram отрисовывает список команд из ``setMyCommands`` в кнопке «Меню» (или
-``MenuButtonCommands``) рядом с полем ввода. Раз зарегистрированные команды
-кешируются на стороне клиента, поэтому повторный вызов на каждом старте —
-дёшево и идемпотентно: Telegram просто перезатирает старое описание.
-
-Список ниже — единственный источник правды для UI-меню. Реальная маршрутизация
-команд живёт в :mod:`satellite.telegram_bot.handlers`; короткие алиасы
-(``td``/``tm``/``dat``) и текстовые кнопки старой reply-клавиатуры там
-по-прежнему распознаются, но в меню Telegram не показываются.
+На каждом старте идемпотентно вызываем ``setMyCommands``, ``setMyName``,
+``setMyDescription``, ``setMyShortDescription`` и дефолтный
+``setChatMenuButton`` (список команд). Per-chat ``MenuButtonWebApp`` ставится
+в хендлерах при подключении календаря.
 """
 
 from __future__ import annotations
@@ -16,6 +11,11 @@ from __future__ import annotations
 import logging
 from typing import Iterable
 
+from ..messages_ru import (
+    BOT_DESCRIPTION_RU,
+    BOT_NAME_RU,
+    BOT_SHORT_DESCRIPTION_RU,
+)
 from .api import TelegramClient, TelegramError
 
 log = logging.getLogger(__name__)
@@ -41,21 +41,22 @@ BOT_COMMANDS: tuple[tuple[str, str], ...] = (
     ("help", "Как пользоваться ботом"),
 )
 
+_MENU_BUTTON_COMMANDS: dict[str, str] = {"type": "commands"}
+
 
 def _to_payload(items: Iterable[tuple[str, str]]) -> list[dict[str, str]]:
     return [{"command": cmd, "description": desc} for cmd, desc in items]
 
 
-def setup_bot_commands(
+def setup_bot_identity(
     telegram: TelegramClient,
     *,
     commands: Iterable[tuple[str, str]] = BOT_COMMANDS,
 ) -> bool:
-    """Регистрирует команды бота в меню Telegram.
+    """Регистрирует команды, профиль и дефолтную кнопку «Меню» в Telegram.
 
-    Кнопку «Меню» (Web App, команды и т.д.) бот не трогает — её настраивают в
-    BotFather. Возвращает ``True``, если ``setMyCommands`` прошёл; ``False`` при
-    сбое. Падение не пробрасывается: бот должен подняться даже если Telegram
+    Возвращает ``True``, если все шаги прошли; ``False`` при любом сбое.
+    Исключения не пробрасываются — бот должен подняться даже если Telegram
     временно не отвечает.
     """
     payload = _to_payload(commands)
@@ -67,8 +68,57 @@ def setup_bot_commands(
     except TelegramError as exc:
         success = False
         log.error("Failed to register bot commands via setMyCommands: %s", exc)
-    except Exception:  # noqa: BLE001 - сетевой/JSON-сбой не должен валить бот
+    except Exception:  # noqa: BLE001
         success = False
         log.exception("Unexpected error while calling setMyCommands")
 
+    try:
+        telegram.set_my_name(BOT_NAME_RU)
+        log.info("Registered bot name via setMyName")
+    except TelegramError as exc:
+        success = False
+        log.error("Failed setMyName: %s", exc)
+    except Exception:  # noqa: BLE001
+        success = False
+        log.exception("Unexpected error while calling setMyName")
+
+    try:
+        telegram.set_my_short_description(BOT_SHORT_DESCRIPTION_RU)
+        log.info("Registered bot short description via setMyShortDescription")
+    except TelegramError as exc:
+        success = False
+        log.error("Failed setMyShortDescription: %s", exc)
+    except Exception:  # noqa: BLE001
+        success = False
+        log.exception("Unexpected error while calling setMyShortDescription")
+
+    try:
+        telegram.set_my_description(BOT_DESCRIPTION_RU)
+        log.info("Registered bot description via setMyDescription")
+    except TelegramError as exc:
+        success = False
+        log.error("Failed setMyDescription: %s", exc)
+    except Exception:  # noqa: BLE001
+        success = False
+        log.exception("Unexpected error while calling setMyDescription")
+
+    try:
+        telegram.set_chat_menu_button(menu_button=_MENU_BUTTON_COMMANDS)
+        log.info("Registered default MenuButtonCommands via setChatMenuButton")
+    except TelegramError as exc:
+        success = False
+        log.error("Failed setChatMenuButton: %s", exc)
+    except Exception:  # noqa: BLE001
+        success = False
+        log.exception("Unexpected error while calling setChatMenuButton")
+
     return success
+
+
+def setup_bot_commands(
+    telegram: TelegramClient,
+    *,
+    commands: Iterable[tuple[str, str]] = BOT_COMMANDS,
+) -> bool:
+    """Обратная совместимость: алиас ``setup_bot_identity``."""
+    return setup_bot_identity(telegram, commands=commands)

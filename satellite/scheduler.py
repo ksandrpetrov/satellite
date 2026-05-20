@@ -26,6 +26,7 @@ from .digest_utils import is_digest_day_allowed, resolve_target_date
 from .plan_service import PlanBuilder
 from .subscriptions import DigestSettings, SubscriptionStore
 from .telegram_bot.api import TelegramClient, TelegramError
+from .telegram_bot.visual import is_private_chat, pick_plan_message_effect
 from .users import UserStore
 from .weather.client import WeatherForecastClient
 
@@ -235,8 +236,17 @@ class DigestScheduler:
             )
             return False
 
+        effect = (
+            pick_plan_message_effect(plan_text)
+            if is_private_chat(sub.chat_id)
+            else None
+        )
         try:
-            self._telegram.send_message(sub.chat_id, plan_text)
+            self._telegram.send_message(
+                sub.chat_id,
+                plan_text,
+                message_effect_id=effect,
+            )
             log.info(
                 "Digest sent: chat_id=%s username=%s",
                 sub.chat_id,

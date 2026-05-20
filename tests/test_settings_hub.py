@@ -199,7 +199,7 @@ def test_settings_button_opens_hub(tmp_path: Path):
     handle_message(ctx, msg)
 
     call = ctx.telegram.send_message.call_args
-    assert call.args[1] == SETTINGS_HUB_TEXT
+    assert "Настройки Чайки" in call.args[1]
 
 
 # --- подтверждение всегда отдаёт корректную клавиатуру ---------------------

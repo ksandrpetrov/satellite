@@ -7,8 +7,6 @@ import logging
 
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...calendar.providers.registry import PROVIDER_IDS, PROVIDER_MAILRU, PROVIDER_YANDEX
-from ...security.token_vault import ProviderCredentials
-from ...users import UserStorePersistenceError
 from ...messages_ru import (
     CALENDAR_CHECK_FAIL_HTML,
     CALENDAR_CHECK_OK_HTML,
@@ -18,11 +16,34 @@ from ...messages_ru import (
     CALENDAR_RECONNECT_INTRO_HTML,
     build_webapp_connect_keyboard,
 )
+from ...security.token_vault import ProviderCredentials
+from ...users import UserStorePersistenceError
+from ..html_format import build_copy_text_button as _copy_btn
+from ..visual import (
+    EFFECT_HEART,
+    SCENARIO_CONNECT,
+    private_message_effect,
+    react_to_command,
+    send_with_effect,
+    set_default_menu_button_for_chat,
+    set_webapp_menu_button,
+)
 from .access import ensure_calendar_access
 from .context import HandlerContext, IncomingMessage
 from .delivery import send, webapp_connect_url
 
 log = logging.getLogger(__name__)
+
+
+def _check_ok_keyboard(ctx: HandlerContext, user_id: int) -> dict | None:
+    try:
+        connected = ctx.calendar_service.require_connection(user_id)
+        login = (connected.context.login or "").strip()
+    except (CalendarNotConnectedError, CalendarProviderError):
+        return None
+    if not login:
+        return None
+    return {"inline_keyboard": [[_copy_btn("📋 Скопировать e-mail", login)]]}
 
 
 def handle_web_app_connect(ctx: HandlerContext, msg: IncomingMessage) -> None:
@@ -60,7 +81,17 @@ def handle_web_app_connect(ctx: HandlerContext, msg: IncomingMessage) -> None:
             credentials=ProviderCredentials(login=login, secret=app_password),
             caldav_url=caldav_url,
         )
-        send(ctx, msg.chat_id, CALENDAR_CONNECTED_HTML)
+        react_to_command(ctx, msg, SCENARIO_CONNECT)
+        url = webapp_connect_url(ctx, msg.user_id)
+        if isinstance(url, str) and url.startswith("http"):
+            set_webapp_menu_button(ctx.telegram, msg.chat_id, url)
+        send_with_effect(
+            ctx.telegram,
+            msg.chat_id,
+            CALENDAR_CONNECTED_HTML,
+            message_effect_id=private_message_effect(EFFECT_HEART, msg.chat_id),
+            reply_markup=_check_ok_keyboard(ctx, msg.user_id),
+        )
     except CalendarProviderError:
         send(ctx, msg.chat_id, CALENDAR_CHECK_FAIL_HTML)
     except UserStorePersistenceError:
@@ -78,9 +109,6 @@ def handle_connect_calendar_button(ctx: HandlerContext, msg: IncomingMessage) ->
         msg.user_id and ctx.users.get(msg.user_id) and ctx.users.get(msg.user_id).has_calendar
     )
     intro = CALENDAR_RECONNECT_INTRO_HTML if reconnect else CALENDAR_NOT_CONNECTED_HTML
-    # `delivery.send` намеренно не пробрасывает reply_markup (см. его docstring и
-    # инвариант про меню команд). Web App-кнопка — единственный legit случай
-    # reply-клавиатуры; идём напрямую в TelegramClient, как делает access.py.
     ctx.telegram.send_message(
         msg.chat_id,
         intro,
@@ -93,11 +121,12 @@ def handle_check_calendar(ctx: HandlerContext, msg: IncomingMessage) -> None:
         return
     try:
         status = ctx.calendar_service.check_connection(msg.user_id)
-        send(
-            ctx,
-            msg.chat_id,
-            CALENDAR_CHECK_OK_HTML if status.connected else CALENDAR_CHECK_FAIL_HTML,
-        )
+        text = CALENDAR_CHECK_OK_HTML if status.connected else CALENDAR_CHECK_FAIL_HTML
+        markup = _check_ok_keyboard(ctx, msg.user_id) if status.connected else None
+        if status.connected and markup:
+            ctx.telegram.send_message(msg.chat_id, text, reply_markup=markup)
+        else:
+            send(ctx, msg.chat_id, text)
     except (CalendarNotConnectedError, CalendarProviderError):
         send(ctx, msg.chat_id, CALENDAR_CHECK_FAIL_HTML)
 
@@ -107,6 +136,7 @@ def handle_disconnect_calendar(ctx: HandlerContext, msg: IncomingMessage) -> Non
         return
     try:
         ctx.calendar_service.disconnect(msg.user_id)
+        set_default_menu_button_for_chat(ctx.telegram, msg.chat_id)
         send(ctx, msg.chat_id, CALENDAR_DISCONNECTED_HTML)
     except KeyError:
         send(ctx, msg.chat_id, CALENDAR_NOT_CONNECTED_HTML)

@@ -15,6 +15,12 @@ from ...messages_ru import (
 from ..api import TelegramError
 from .access import notify_user_access_decision
 from .context import HandlerContext, IncomingCallback, IncomingMessage
+from ..visual import (
+    SCENARIO_ADMIN_PENDING,
+    react_to_command,
+    set_default_menu_button_for_chat,
+    set_webapp_menu_button,
+)
 from .delivery import safe_answer_callback, send, webapp_connect_url
 
 log = logging.getLogger(__name__)
@@ -47,6 +53,7 @@ def handle_pending_command(ctx: HandlerContext, msg: IncomingMessage) -> None:
     for rec in pending:
         uname = f"@{rec.username}" if rec.username else "—"
         lines.append(f"{rec.display_name or '—'} ({uname}), id={rec.telegram_user_id}")
+    react_to_command(ctx, msg, SCENARIO_ADMIN_PENDING)
     send(ctx, msg.chat_id, admin_pending_list_html(lines))
 
 
@@ -86,6 +93,10 @@ def _handle_approve(ctx: HandlerContext, cb: IncomingCallback, target_id: int) -
         return
     webapp_url = webapp_connect_url(ctx, target_id)
     if record.chat_id is not None:
+        if record.has_calendar and webapp_url:
+            set_webapp_menu_button(ctx.telegram, record.chat_id, webapp_url)
+        else:
+            set_default_menu_button_for_chat(ctx.telegram, record.chat_id)
         notify_user_access_decision(
             ctx, chat_id=record.chat_id, approved=True, webapp_url=webapp_url
         )
