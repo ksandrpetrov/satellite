@@ -192,8 +192,8 @@ def test_connect_command_sends_intro_with_webapp_keyboard():
     assert call[0][1] == CALENDAR_NOT_CONNECTED_HTML
     markup = call.kwargs.get("reply_markup")
     assert isinstance(markup, dict)
-    assert markup["keyboard"][0][0]["text"] == BUTTON_CONNECT_CALENDAR
-    assert "web_app" in markup["keyboard"][0][0]
+    assert markup["inline_keyboard"][0][0]["text"] == BUTTON_CONNECT_CALENDAR
+    assert "web_app" in markup["inline_keyboard"][0][0]
 
     ctx2 = _access_ctx(approved=True, has_calendar=True)
     handle_message(
@@ -211,7 +211,7 @@ def test_connect_command_sends_intro_with_webapp_keyboard():
     assert call2[0][1] == CALENDAR_RECONNECT_INTRO_HTML
     markup2 = call2.kwargs.get("reply_markup")
     assert isinstance(markup2, dict)
-    assert markup2["keyboard"][0][0]["text"] == BUTTON_RECONNECT_CALENDAR
+    assert markup2["inline_keyboard"][0][0]["text"] == BUTTON_RECONNECT_CALENDAR
 
 
 def test_settings_command_clears_create_fsm_and_opens_hub():

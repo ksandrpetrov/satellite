@@ -219,11 +219,13 @@ ACCESS_REJECTED_HTML = (
 ACCESS_BLOCKED_HTML = "🚫 Доступ заблокирован. Чайка пока на берегу."
 ACCESS_APPROVED_HTML = (
     "✅ Доступ открыт, можно лететь.\n"
-    "Жми «🔌 Подключить календарь» ниже — Чайка свяжется с твоим Mail.ru или Яндексом и будет приносить сводку."
+    "Жми «🔌 Подключить календарь» под этим сообщением — Чайка свяжется "
+    "с твоим Mail.ru или Яндексом и будет приносить сводку."
 )
+ACCESS_APPROVED_KEYBOARD_HINT = "⌨️ Команды плана — на клавиатуре ниже."
 CALENDAR_NOT_CONNECTED_HTML = (
     "🔌 Календарь ещё не подключён.\n"
-    "Жми «Подключить календарь» внизу — Чайка откроет защищённое окно, "
+    "Жми «Подключить календарь» под сообщением — Чайка откроет защищённое окно, "
     "там нужно ввести логин и пароль приложения для CalDAV."
 )
 CALENDAR_RECONNECT_INTRO_HTML = (
@@ -509,11 +511,16 @@ def build_foreign_day_keyboard(*, calendar_token: str) -> dict:
 
 
 def build_webapp_connect_keyboard(webapp_url: str, *, reconnect: bool = False) -> dict:
+    """Inline-кнопка Web App для подключения календаря.
+
+    Reply-клавиатура с ``web_app`` не передаёт ``initData`` (см. Telegram
+    WebAppInitData) — API календаря в connect.html не сможет авторизовать
+    запрос. Inline и menu button передают сессию; настройки уже используют
+    inline — здесь тот же формат.
+    """
     label = BUTTON_RECONNECT_CALENDAR if reconnect else BUTTON_CONNECT_CALENDAR
     return {
-        "keyboard": [[{"text": label, "web_app": {"url": webapp_url}}]],
-        "resize_keyboard": True,
-        "is_persistent": True,
+        "inline_keyboard": [[{"text": label, "web_app": {"url": webapp_url}}]],
     }
 
 

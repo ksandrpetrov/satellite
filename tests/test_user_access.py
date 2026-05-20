@@ -10,12 +10,14 @@ import pytest
 from satellite.config import AdminConfig
 from satellite.messages_ru import (
     ACCESS_APPROVED_HTML,
+    ACCESS_APPROVED_KEYBOARD_HINT,
     ACCESS_PENDING_HTML,
     ACCESS_REJECTED_HTML,
     ACCESS_REQUEST_SENT_HTML,
     BOT_HELP_HTML,
     CB_ADMIN_APPROVE_PREFIX,
     CB_ADMIN_REJECT_PREFIX,
+    build_approved_main_keyboard,
 )
 from satellite.telegram_bot.handlers.access import handle_start_or_help
 from satellite.telegram_bot.handlers.admin import (
@@ -137,8 +139,16 @@ def test_admin_approve_notifies_user(users: UserStore) -> None:
     assert record.status == USER_STATUS_APPROVED
     assert users.list_pending_requests() == []
     ctx.telegram.answer_callback_query.assert_called_with("cb1", text="Доступ открыт")
-    user_notify = ctx.telegram.send_message.call_args[0][1]
-    assert user_notify == ACCESS_APPROVED_HTML
+    user_calls = [
+        c
+        for c in ctx.telegram.send_message.call_args_list
+        if c[0][0] == CHAT_ID
+    ]
+    assert len(user_calls) == 2
+    assert user_calls[0][0][1] == ACCESS_APPROVED_HTML
+    assert user_calls[0].kwargs["reply_markup"]["inline_keyboard"][0][0]["web_app"]
+    assert user_calls[1][0][1] == ACCESS_APPROVED_KEYBOARD_HINT
+    assert user_calls[1].kwargs["reply_markup"] == build_approved_main_keyboard()
 
 
 def test_admin_reject_notifies_user(users: UserStore) -> None:

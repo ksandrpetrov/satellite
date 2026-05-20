@@ -6,6 +6,7 @@ import logging
 
 from ...messages_ru import (
     ACCESS_APPROVED_HTML,
+    ACCESS_APPROVED_KEYBOARD_HINT,
     ACCESS_BLOCKED_HTML,
     ACCESS_PENDING_HTML,
     ACCESS_REJECTED_HTML,
@@ -156,9 +157,21 @@ def notify_user_access_decision(
     ctx: HandlerContext, *, chat_id: int, approved: bool, webapp_url: str
 ) -> None:
     if approved:
-        markup = build_webapp_connect_keyboard(webapp_url) if webapp_url else None
         try:
-            ctx.telegram.send_message(chat_id, ACCESS_APPROVED_HTML, reply_markup=markup)
+            if webapp_url:
+                ctx.telegram.send_message(
+                    chat_id,
+                    ACCESS_APPROVED_HTML,
+                    reply_markup=build_webapp_connect_keyboard(webapp_url),
+                )
+                # Сбрасываем старую reply-кнопку Web App (без initData) и даём главное меню.
+                ctx.telegram.send_message(
+                    chat_id,
+                    ACCESS_APPROVED_KEYBOARD_HINT,
+                    reply_markup=build_approved_main_keyboard(),
+                )
+            else:
+                ctx.telegram.send_message(chat_id, ACCESS_APPROVED_HTML)
         except TelegramError as exc:
             log.warning("Failed to notify user %s about approval: %s", chat_id, exc)
     else:
