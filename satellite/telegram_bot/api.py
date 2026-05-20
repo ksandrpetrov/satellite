@@ -120,6 +120,28 @@ class TelegramClient:
             max_retries=_SEND_MESSAGE_MAX_RETRIES,
         )
 
+    def send_photo(
+        self,
+        chat_id: int | str,
+        photo: bytes,
+        *,
+        caption: str | None = None,
+        parse_mode: str | None = "HTML",
+    ) -> dict[str, Any]:
+        files = {"photo": ("analytics.png", photo, "image/png")}
+        data: dict[str, Any] = {"chat_id": chat_id}
+        if caption:
+            data["caption"] = caption
+        if parse_mode:
+            data["parse_mode"] = parse_mode
+        return self._call(
+            "sendPhoto",
+            data=data,
+            files=files,
+            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+            max_retries=_SEND_MESSAGE_MAX_RETRIES,
+        )
+
     def send_chat_action(
         self,
         chat_id: int | str,
@@ -163,6 +185,14 @@ class TelegramClient:
         return self._call(
             "answerCallbackQuery",
             data=data,
+            timeout=_EDIT_MESSAGE_TIMEOUT_SEC,
+            max_retries=0,
+        )
+
+    def delete_message(self, chat_id: int | str, message_id: int) -> dict[str, Any] | bool:
+        return self._call(
+            "deleteMessage",
+            data={"chat_id": chat_id, "message_id": message_id},
             timeout=_EDIT_MESSAGE_TIMEOUT_SEC,
             max_retries=0,
         )
@@ -281,6 +311,7 @@ class TelegramClient:
         method: str = "POST",
         data: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
+        files: dict[str, tuple[str, bytes, str]] | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
     ) -> Any:
@@ -306,6 +337,7 @@ class TelegramClient:
                     url,
                     data=data,
                     params=params,
+                    files=files,
                     timeout=effective_timeout,
                 )
                 payload = self._parse_response(response, method_name)

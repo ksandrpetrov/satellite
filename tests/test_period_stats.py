@@ -1,0 +1,75 @@
+"""Агрегация недельной аналитики."""
+
+from __future__ import annotations
+
+from datetime import date, timedelta, timezone
+
+from satellite.calendar.period_stats import (
+    build_analytics_report,
+    build_week_summary,
+    week_bounds,
+    workday_options_from_preset,
+)
+from satellite.calendar.stats import WorkdayOptions
+
+from .conftest import make_event
+
+TZ = timezone.utc
+LOGIN = "user@test.ru"
+
+
+def _caldav_ev(title: str, day: date, start_h: int, end_h: int) -> dict:
+    start = f"{day.isoformat()}T{start_h:02d}:00:00+00:00"
+    end = f"{day.isoformat()}T{end_h:02d}:00:00+00:00"
+    return {
+        "summary": title,
+        "dtstart": start,
+        "dtend": end,
+        "attendees": [f"mailto:{LOGIN};PARTSTAT=ACCEPTED"],
+    }
+
+
+def test_week_bounds_monday():
+    # 2026-05-14 is Thursday
+    ref = date(2026, 5, 14)
+    mon, sun = week_bounds(ref)
+    assert mon == date(2026, 5, 11)
+    assert sun == date(2026, 5, 17)
+
+
+def test_build_week_summary_busy_and_free():
+    mon = date(2026, 5, 11)
+    events = [_caldav_ev("A", mon, 10, 11), _caldav_ev("B", mon, 15, 16)]
+    opts = WorkdayOptions()
+    summary = build_week_summary(events, mon, tz=TZ, login=LOGIN, options=opts)
+    assert summary.total_busy == 120
+    assert summary.load_percent > 0
+    assert len(summary.days) == 7
+
+
+def test_analytics_report_quarter_has_13_points():
+    ref = date(2026, 5, 14)
+    mon, _ = week_bounds(ref)
+    events = [_caldav_ev("M", mon, 10, 12)]
+    report = build_analytics_report(events, ref, tz=TZ, login=LOGIN)
+    assert len(report.quarter_weekly_busy) == 13
+    assert report.current.total_busy == 120
+    assert report.trend in {"up", "down", "flat"}
+
+
+def test_workday_preset_9_18():
+    opts = workday_options_from_preset("9-18")
+    assert opts.workday_start == "09:00"
+    assert opts.workday_end == "18:00"
+
+
+def test_previous_week_comparison():
+    ref = date(2026, 5, 14)
+    cur_mon, _ = week_bounds(ref)
+    prev_mon = cur_mon - timedelta(days=7)
+    events = [
+        _caldav_ev("Heavy", cur_mon, 10, 18),
+        _caldav_ev("Light", prev_mon, 10, 11),
+    ]
+    report = build_analytics_report(events, ref, tz=TZ, login=LOGIN)
+    assert report.current.total_busy > report.previous.total_busy

@@ -11,6 +11,7 @@ from ...messages_ru import (
     CALENDAR_DISCONNECTED_HTML,
     CALENDAR_SOURCES_LOAD_FAIL_HTML,
     CALENDAR_SOURCES_SINGLE_HTML,
+    CB_SETTINGS_ANALYTICS,
     CB_SETTINGS_BACK,
     CB_SETTINGS_CALENDARS,
     CB_SETTINGS_CHECK,
@@ -24,6 +25,7 @@ from ...messages_ru import (
 from .calendar_view import enabled_url_set, fetch_calendars, screen_lines
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import edit_callback_message, safe_answer_callback, send
+from .analytics import handle_open_analytics
 from .settings import show_digest_settings_screen
 
 log = logging.getLogger(__name__)
@@ -70,6 +72,9 @@ def route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bo
     data = (cb.data or "").strip()
     if data == CB_SETTINGS_DIGEST:
         show_digest_settings_screen(ctx, cb)
+        return True
+    if data == CB_SETTINGS_ANALYTICS:
+        handle_open_analytics(ctx, cb)
         return True
     if data == CB_SETTINGS_BACK:
         show_settings_hub_screen(ctx, cb)

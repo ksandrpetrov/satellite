@@ -151,6 +151,8 @@ calendar_provider  # mailru | yandex
 encrypted_credentials  # Fernet-blob (login + app password)
 calendar_status    # disconnected | connected | invalid | error
 primary_calendar_url   # CalDAV URL календаря (без display name — PII)
+enabled_calendar_urls  # tuple URL — какие календари в плане/дайджесте;
+                       # пусто = только primary_calendar_url
 ```
 
 Поток для нового пользователя:
@@ -177,7 +179,21 @@ digest_time = 09:00
 digest_timezone = Europe/Moscow
 ```
 
-Персональные значения меняются через `/settings`.
+Персональные значения меняются через `/settings` → «🔔 Дайджест» в хабе настроек.
+
+Поля записи в JSON (ключ — `chat_id`):
+
+```text
+chat_id
+telegram_user_id   # для резолва UserRecord в шедулере (не @username)
+username
+digest_enabled
+digest_days        # weekdays | all_days
+digest_time        # HH:MM
+digest_timezone    # IANA, напр. Europe/Moscow
+subscribed_at
+last_digest_sent_date
+```
 
 Глобальная переменная:
 

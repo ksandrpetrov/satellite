@@ -15,6 +15,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        fonts-dejavu-core \
         tini \
         tzdata \
     && rm -rf /var/lib/apt/lists/*

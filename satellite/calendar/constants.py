@@ -16,3 +16,20 @@ LUNCH_TEXT_MARKER = "обед"
 
 # Подпись для all-day событий в плане (когда они не скрыты HIDE_ALL_DAY_EVENTS).
 PLAN_ALL_DAY_LABEL = "весь день"
+
+# Фразы в названии события → «системное» (не встреча) в недельной аналитике.
+# Консервативный список: короткие «обед» без 🍕 не включаем — риск выкинуть 1:1.
+SYSTEM_EVENT_TITLE_PHRASES: tuple[str, ...] = (
+    "день без встреч",
+    "без встреч",
+    "фокус-день",
+    "фокус день",
+    "focus day",
+    "focus time",
+    "no meetings",
+)
+
+# Пресеты рабочего дня для аналитики (хранятся в users.json).
+ANALYTICS_WORKDAY_9_18 = "9-18"
+ANALYTICS_WORKDAY_10_19 = "10-19"
+DEFAULT_ANALYTICS_WORKDAY = ANALYTICS_WORKDAY_10_19

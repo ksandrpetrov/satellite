@@ -26,15 +26,18 @@ dat
 /settings
 /digest
 /stopdigest
+/calendars         # алиас /calendar_sources
+/foreign           # алиас /shared_calendars, /foreign_calendars
 ```
 
 В меню Telegram (`setMyCommands`) зарегистрированы: `start`, `today`, `tomorrow`,
 `aftertomorrow`, `upcoming`, `create`, `connect`, `settings`, `help`. Короткие
-алиасы (`td`/`tm`/`dat`) и `/digest`/`/stopdigest` работают, но в меню не
-показываются.
+алиасы (`td`/`tm`/`dat`), `/digest`/`/stopdigest`, `/calendars` и `/foreign`
+работают, но в меню не показываются.
 
-`/digest` и `/stopdigest` оставлены как текстовые команды совместимости.
-Основной интерфейс настройки подписки — `/settings`.
+`/digest` включает подписку (как `/subscribe`), **не** открывает экран настроек.
+`/stopdigest` отключает дайджест, запись в `subscriptions.json` сохраняется.
+Основной интерфейс — кнопка «⚙️ Настройки» или `/settings` (inline-хаб).
 
 ## Access and calendar connection
 
@@ -54,32 +57,46 @@ dat
 4. **Команды плана, списка, создания событий и дайджест** работают только при
    `UserRecord.has_calendar` (approved + connected + непустые credentials).
 
-5. **Проверка и отключение.** Кнопки «✅ Проверить подключение» и
-   «🗑 Отключить календарь» доступны после успешного connect.
+5. **Настройки и календарь.** Кнопка «⚙️ Настройки» (`/settings`) открывает
+   inline-хаб: дайджест, **📊 аналитика недели** (PNG + подпись), выбор календарей
+   для плана, Web App connect, проверка и отключение (последние два — при
+   `has_calendar`).
+
+   **Аналитика:** «📊 Аналитика» → выбор рабочего дня (9:00–18:00 / 10:00–19:00) →
+   «Построить отчёт». Один запрос CalDAV (~13 недель), сравнение с прошлой неделей,
+   тренд по кварталу. Системные события (🍕 обед, «день без встреч», all-day) и
+   неподтверждённые приглашения в метрики не входят.
 
 `/start` и `/help` отвечают всем остальным пользователям без проверки календаря.
 `/help` снимает старую reply-клавиатуру (`remove_keyboard`).
 
 ## Reply keyboard (approved)
 
-После одобрения `/start` показывает постоянную reply-клавиатуру:
+После одобрения `/start` показывает компактную reply-клавиатуру
+(`build_approved_main_keyboard`):
 
 ```text
 📅 Сегодня          🗓 Ближайшие события
+👥 Чужие календари
 ➕ Создать событие
-⚙️ Настройки дайджеста
-🔌 Подключить календарь   (Web App; после connect — «🔄 Переподключить»)
-✅ Проверить подключение   🗑 Отключить календарь   (только при has_calendar)
+⚙️ Настройки
 ```
+
+Подключение календаря, дайджест и «📚 Календари» (источники плана) — в inline-хабе
+настроек, не на reply-клавиатуре.
 
 Legacy-тексты старой клавиатуры тоже распознаются:
 
 ```text
 ➡️ Завтра
 ⏭ Послезавтра
+⚙️ Настройки дайджеста
+📚 Календари
 🔔 Подписаться на дайджест
 🔕 Отключить дайджест
 🔕 Отписаться от дайджеста
+🔌 Подключить календарь / 🔄 Переподключить
+✅ Проверить подключение   🗑 Отключить календарь
 ```
 
 ## Upcoming events
@@ -104,19 +121,54 @@ loading message → `UserCalendarService.list_events` → edit.
 
 Событие создаётся в primary-календаре пользователя через `UserCalendarService`.
 
-## Settings Screen
+## Settings hub
 
-`/settings` открывает inline-экран:
+`/settings` (кнопка «⚙️ Настройки») открывает inline-хаб (`settings_hub.py`):
 
-- статус дайджеста;
-- дни отправки;
-- время отправки;
-- кнопка включения или отключения.
+- **🔔 Дайджест** — экран настроек дайджеста (`settings.py`);
+- **📚 Календари** — какие CalDAV-календари учитывать в плане и автодайджесте
+  (`calendar_sources.py`; при одном календаре — подсказка, без списка);
+- **🔌 Подключить / 🔄 Переподключить** — Web App (`WEBAPP_BASE_URL`);
+- **✅ Проверить** / **🗑 Отключить** — только при `has_calendar`.
 
-Callback data лежат в `satellite/messages_ru.py` как константы `CB_DIGEST_*`.
+Callback data хаба: `CB_SETTINGS_*` в `messages_ru.py`. Экран дайджеста —
+`CB_DIGEST_*`.
 
 Каждый callback получает `answerCallbackQuery` best-effort. Неизвестный callback
 логируется и безопасно игнорируется.
+
+### Digest settings (из хаба)
+
+- статус дайджеста;
+- дни отправки (`weekdays` / `all_days`);
+- время отправки;
+- кнопка включения или отключения;
+- «Назад» возвращает в хаб настроек.
+
+## Calendar sources (план и дайджест)
+
+Команды `/calendars`, `/calendar_sources` или кнопка «📚 Календари» в хабе
+настроек открывают inline-список CalDAV-календарей аккаунта. Галочкой отмечены
+включённые URL; переключение пишет `enabled_calendar_urls` в `logs/users.json`.
+
+Если список пуст — в плане/дайджесте используется только `primary_calendar_url`
+(см. `effective_enabled_calendar_urls` в `calendar/selection.py`). События
+агрегируются из всех включённых календарей.
+
+Общая загрузка списка — `calendar_view.fetch_calendars` (не импортировать
+`_fetch_calendars` из `calendar_sources` в другие модули).
+
+## Foreign (shared) calendars
+
+«👥 Чужие календари» или `/foreign` (`/shared_calendars`, `/foreign_calendars`)
+— просмотр календарей, пошаренных на аккаунт пользователя (все из discovery,
+кроме `primary_calendar_url`). Сценарий:
+
+1. inline-список календарей;
+2. выбор дня (сегодня / завтра);
+3. список встреч на день (только чтение, без записи в `enabled_calendar_urls`).
+
+Не влияет на дайджест и `/today` — только отдельный просмотр.
 
 ## Time input
 
@@ -182,8 +234,10 @@ warning в лог.
 |----------|---------|
 | `/start`, `/help` | всем |
 | `/pending` | `ADMIN_TELEGRAM_IDS` |
-| `/connect`, check/disconnect | `approved` |
-| План, upcoming, create, настройки, подписка | `approved` + `has_calendar` |
+| `/connect` | `approved` |
+| План, upcoming, create, чужие календари, настройки, подписка | `approved` + `has_calendar` |
+| Выбор календарей для плана (из хаба) | `approved` + `has_calendar` |
+| Check/disconnect (из хаба) | `approved` + `has_calendar` |
 | Web App connect | `approved` (до первого успешного connect) |
 
 Подробнее о полях store: [configuration.md](configuration.md#пользователи-и-доступ-logsusersjson).

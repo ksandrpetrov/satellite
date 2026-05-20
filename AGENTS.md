@@ -41,7 +41,7 @@ satellite/
     user_calendar_service.py  # единый фасад для handlers/plan/scheduler/Web App
     operation_log.py       # audit CalDAV-операций
     caldav_client.py       # Mail.ru CalDAV (per-user login/password)
-    events.py, stats.py, time_utils.py, ical_parser.py, constants.py
+    events.py, stats.py, selection.py, time_utils.py, ical_parser.py, constants.py
 
   web/
     init_data.py           # HMAC validate_init_data
@@ -59,8 +59,10 @@ satellite/
       calendar_view.py   # общие хелперы списка календарей (sources/foreign/hub)
       delivery.py, context.py
       access.py, admin.py
+      settings_hub.py    # inline-хаб «Настройки»
       calendar_setup.py  # connect / check / disconnect
       calendar_list.py   # /upcoming
+      calendar_sources.py # календари в плане/дайджесте
       calendar_foreign.py # чужие (пошаренные) календари
       calendar_create.py # /create FSM
       calendar_manage.py # inline delete (callback)
@@ -79,7 +81,8 @@ satellite/
 | Логику дайджеста (метрики) | [`calendar/stats.py`](satellite/calendar/stats.py) |
 | Финальный рендер | [`seagull/render.py`](satellite/seagull/render.py), [`seagull/rules.py`](satellite/seagull/rules.py) |
 | Команду / кнопку | [`recognize_message`](satellite/telegram_bot/handlers/routing.py) → [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py) |
-| Настройки дайджеста | [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) |
+| Хаб настроек / дайджест | [`handlers/settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py), [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) |
+| Чужие (пошаренные) календари | [`handlers/calendar_foreign.py`](satellite/telegram_bot/handlers/calendar_foreign.py) |
 | Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users.py`](satellite/users.py) |
 | Расписание дайджеста | [`scheduler.py`](satellite/scheduler.py) + [`subscriptions.py`](satellite/subscriptions.py) |
 | Доступ, заявки, календарь пользователя | [`users.py`](satellite/users.py), шифрование — [`security/token_vault.py`](satellite/security/token_vault.py) |
@@ -92,6 +95,7 @@ satellite/
 | Нумерация встреч (дайджест, /upcoming) | [`event_index_marker`](satellite/calendar/events.py) |
 | Web App REST API | [`web/server.py`](satellite/web/server.py) |
 | Сборку текста плана | [`plan_service.py`](satellite/plan_service.py) — callers передают calendar identity |
+| Недельную аналитику (PNG + подпись) | [`analytics_service.py`](satellite/analytics_service.py), [`calendar/period_stats.py`](satellite/calendar/period_stats.py), [`calendar/event_kinds.py`](satellite/calendar/event_kinds.py), [`handlers/analytics.py`](satellite/telegram_bot/handlers/analytics.py) |
 | Диагностика CalDAV с сервера | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) — см. [troubleshooting.md](docs/troubleshooting.md) |
 
 ## Инварианты — не нарушать

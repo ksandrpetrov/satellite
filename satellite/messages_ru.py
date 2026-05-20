@@ -490,16 +490,50 @@ def build_approved_main_keyboard() -> dict:
 # --- общий экран настроек (inline-хаб) ---------------------------------------
 
 CB_SETTINGS_DIGEST = "settings_digest"
+CB_SETTINGS_ANALYTICS = "settings_analytics"
 CB_SETTINGS_CALENDARS = "settings_calendars"
 CB_SETTINGS_CHECK = "settings_check"
 CB_SETTINGS_DISCONNECT = "settings_disconnect"
 CB_SETTINGS_BACK = "settings_back"
 CB_SETTINGS_CLOSE = "settings_close"
 
+BUTTON_ANALYTICS = "📊 Аналитика"
+
 SETTINGS_HUB_TEXT = (
     "⚙️ Настройки\n\n"
     "Дайджест, календари в плане и подключение — всё здесь. Выбери раздел:"
 )
+
+ANALYTICS_FETCH_STATUS = "📊 Чайка сводит неделю по календарю…"
+ANALYTICS_OPTIONS_TEXT = (
+    "📊 <b>Аналитика недели</b>\n\n"
+    "Рабочий день для расчёта занятости: <b>{workday}</b>.\n"
+    "Нажми «Построить отчёт» — пришлю картинку с графиком и сводкой."
+)
+ANALYTICS_WORKDAY_APPLIED_TEXT = (
+    "📊 Готово. Рабочий день для аналитики обновлён — можно строить отчёт."
+)
+
+
+def analytics_options_screen_text(*, workday_preset: str) -> str:
+    label = "9:00–18:00" if workday_preset == "9-18" else "10:00–19:00"
+    return ANALYTICS_OPTIONS_TEXT.format(workday=label)
+
+
+def build_analytics_options_keyboard(*, workday_preset: str) -> dict:
+    wd9 = "✅ 9:00–18:00" if workday_preset == "9-18" else "9:00–18:00"
+    wd10 = "✅ 10:00–19:00" if workday_preset == "10-19" else "10:00–19:00"
+    return {
+        "inline_keyboard": [
+            [{"text": "📊 Построить отчёт", "callback_data": "analytics:run"}],
+            [
+                {"text": wd9, "callback_data": "analytics:wd:9-18"},
+                {"text": wd10, "callback_data": "analytics:wd:10-19"},
+            ],
+            [{"text": "⬅️ В настройки", "callback_data": "analytics:back"}],
+        ]
+    }
+
 SETTINGS_HUB_CLOSED_TEXT = "⚙️ Настройки закрыты. Кнопка «Настройки» на клавиатуре всегда рядом."
 
 
@@ -511,6 +545,9 @@ def build_settings_hub_keyboard(*, webapp_url: str, has_calendar: bool) -> dict:
         [{"text": "🔔 Дайджест", "callback_data": CB_SETTINGS_DIGEST}],
     ]
     if has_calendar:
+        rows.append(
+            [{"text": BUTTON_ANALYTICS, "callback_data": CB_SETTINGS_ANALYTICS}]
+        )
         rows.append(
             [{"text": BUTTON_CALENDAR_SOURCES, "callback_data": CB_SETTINGS_CALENDARS}]
         )

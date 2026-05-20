@@ -42,7 +42,7 @@ telegram_test_command.py
      (/start, /help — всем; остальное — approved + has_calendar)
   -> UserStore: статус, расшифровка credentials через TokenVault
   -> UserCalendarService → provider (mailru | yandex) per user
-  -> PlanBuilder.build_text(calendar_name или primary URL — политика вызывающего)
+  -> PlanBuilder.build_text(telegram_user_id → effective_enabled_calendar_urls)
   -> filter_events_for_user (visible + hidden meals)
   -> prepare_seagull_stats   (normalize_caldav_event only)
   -> render_digest_from_stats (rules + render_daily_digest)
@@ -75,18 +75,23 @@ telegram_test_command.py
   scheduler start/stop, graceful shutdown, Web App server bind.
 - `satellite/telegram_bot/handlers/` — package with one scenario per file:
   - `context.py` — `HandlerContext` and DTOs.
-  - `routing.py` — pure parsers.
+  - `routing.py` — `recognize_message`, pure parsers.
   - `delivery.py` — send/edit/answer, `notify_handler_failure`.
   - `dispatch.py` — message and callback entrypoints, access gating.
   - `access.py` — `/start`, заявки, gating `approved` / `has_calendar`.
   - `admin.py` — `/pending`, approve/reject callbacks.
-  - `calendar_setup.py` — connect / check / disconnect (Web App + reply-кнопки).
+  - `settings_hub.py` — inline-хаб «Настройки» (дайджест, календари, connect).
+  - `settings.py` — экран настроек дайджеста и callbacks `CB_DIGEST_*`.
+  - `calendar_setup.py` — connect / check / disconnect (Web App; check/disconnect
+    также из хаба настроек).
+  - `calendar_view.py` — общие хелперы списка CalDAV-календарей (fetch, screen lines).
+  - `calendar_sources.py` — какие календари учитывать в плане/дайджесте.
+  - `calendar_foreign.py` — просмотр пошаренных («чужих») календарей.
   - `calendar_list.py` — `/upcoming`, ближайшие 7 дней.
   - `calendar_create.py` — `/create`, пошаговый FSM создания события.
   - `calendar_manage.py` — inline-delete callback (`manage:del:`).
   - `plan.py` — command → plan → reply.
   - `subscription.py` — subscribe/unsubscribe.
-  - `settings.py` — digest settings screens and callbacks.
 - `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing.
 - `satellite/telegram_bot/chat_action.py` — `typing` during long operations.
 - `satellite/telegram_bot/message_editing.py` — edit loading message, fallback.
@@ -104,6 +109,8 @@ telegram_test_command.py
   `registry.get_provider` выбирает реализацию по `UserRecord.calendar_provider`.
 - `satellite/calendar/user_calendar_service.py` — connect, validate, list/create/delete
   events; единственная точка доступа handlers/plan/scheduler/Web App к CalDAV.
+- `satellite/calendar/selection.py` — `effective_enabled_calendar_urls`,
+  `foreign_calendar_entries` (план/дайджест vs «чужие» календари).
 - `satellite/calendar/caldav_client.py` — Mail.ru CalDAV discovery, cache, day
   search, optional PARTSTAT refresh.
 - `satellite/calendar/constants.py` — domain constants (lunch marker, all-day label).
@@ -153,6 +160,7 @@ Per-user digest schedule:
 
 ```text
 chat_id
+telegram_user_id   # ключ в users.json для шедулера (не username)
 username
 digest_enabled
 digest_days
@@ -161,6 +169,9 @@ digest_timezone
 subscribed_at
 last_digest_sent_date
 ```
+
+`unsubscribe` не удаляет запись — выставляет `digest_enabled=false`, настройки
+сохраняются для повторного включения.
 
 Writes are atomic: temporary file, flush, `fsync`, `os.replace`.
 

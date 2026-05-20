@@ -35,7 +35,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+from .calendar.constants import (
+    ANALYTICS_WORKDAY_10_19,
+    ANALYTICS_WORKDAY_9_18,
+    DEFAULT_ANALYTICS_WORKDAY,
+)
+
 log = logging.getLogger(__name__)
+
+ALLOWED_ANALYTICS_WORKDAYS = frozenset(
+    {ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_19}
+)
 
 
 USER_STATUS_PENDING = "pending"
@@ -99,6 +109,7 @@ class UserRecord:
     enabled_calendar_urls: tuple[str, ...] = ()
     calendar_connected_at: str | None = None
     calendar_last_checked_at: str | None = None
+    analytics_workday: str = DEFAULT_ANALYTICS_WORKDAY
     created_at: str = ""
     updated_at: str = ""
 
@@ -364,6 +375,25 @@ class UserStore:
             self._save_locked()
             return updated
 
+    def set_analytics_workday(self, telegram_user_id: int, *, preset: str) -> UserRecord:
+        if preset not in ALLOWED_ANALYTICS_WORKDAYS:
+            raise ValueError(f"Unknown analytics workday preset: {preset!r}")
+        now_iso = self._now_iso()
+        with self._lock:
+            existing = self._items.get(telegram_user_id)
+            if existing is None:
+                raise KeyError(telegram_user_id)
+            if existing.analytics_workday == preset:
+                return existing
+            updated = replace(
+                existing,
+                analytics_workday=preset,
+                updated_at=now_iso,
+            )
+            self._items[telegram_user_id] = updated
+            self._save_locked()
+            return updated
+
     def clear_calendar_connection(self, telegram_user_id: int) -> UserRecord:
         now_iso = self._now_iso()
         with self._lock:
@@ -512,6 +542,7 @@ def _record_to_json(rec: UserRecord) -> dict[str, object | None]:
         "enabled_calendar_urls": list(rec.enabled_calendar_urls),
         "calendar_connected_at": rec.calendar_connected_at,
         "calendar_last_checked_at": rec.calendar_last_checked_at,
+        "analytics_workday": rec.analytics_workday,
         "created_at": rec.created_at,
         "updated_at": rec.updated_at,
     }
@@ -566,6 +597,7 @@ def _record_from_json(telegram_user_id: int, raw: dict) -> UserRecord:
         enabled_calendar_urls=_parse_enabled_calendar_urls(raw.get("enabled_calendar_urls")),
         calendar_connected_at=raw.get("calendar_connected_at") or None,
         calendar_last_checked_at=raw.get("calendar_last_checked_at") or None,
+        analytics_workday=_parse_analytics_workday(raw.get("analytics_workday")),
         created_at=str(raw.get("created_at") or ""),
         updated_at=str(raw.get("updated_at") or ""),
     )
@@ -585,6 +617,13 @@ def _normalize_calendar_url_list(urls: Iterable[str]) -> tuple[str, ...]:
         seen.add(normalized)
         out.append(normalized)
     return tuple(out)
+
+
+def _parse_analytics_workday(raw: object) -> str:
+    preset = str(raw or DEFAULT_ANALYTICS_WORKDAY).strip()
+    if preset in ALLOWED_ANALYTICS_WORKDAYS:
+        return preset
+    return DEFAULT_ANALYTICS_WORKDAY
 
 
 def _parse_enabled_calendar_urls(raw: object) -> tuple[str, ...]:

@@ -123,6 +123,16 @@ Autouse-фикстура обнуляет `TYPING_DISPLAY_SECONDS`, чтобы �
 
 - `format_upcoming_events_lines` — нумерация `1️⃣`… как в дайджесте.
 
+**Calendar selection** (`test_calendar_selection.py`):
+
+- `effective_enabled_calendar_urls` — пустой список → primary;
+- `UserStore.set_enabled_calendar_urls`;
+- inline-клавиатура источников, роутинг `/calendars`.
+
+**Settings hub** (`test_digest_settings.py` и др.):
+
+- переход «Дайджест» из хаба, закрытие хаба без лишних ошибок.
+
 **Config** (`test_config.py`):
 
 - `DIGEST_MODE` из `.env` поверх env процесса;

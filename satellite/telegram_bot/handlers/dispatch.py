@@ -52,6 +52,7 @@ from .routing import (
     UpcomingCommand,
     recognize_message,
 )
+from .analytics import route_analytics_callback
 from .settings import handle_digest_time_input, route_settings_callback
 from .settings_hub import handle_open_settings_hub, route_settings_hub_callback
 from .subscription import handle_subscription_action
@@ -197,6 +198,8 @@ def _route_callback(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if route_manage_callback(ctx, cb):
         return
     if route_settings_hub_callback(ctx, cb):
+        return
+    if route_analytics_callback(ctx, cb):
         return
     if route_settings_callback(ctx, cb):
         return
