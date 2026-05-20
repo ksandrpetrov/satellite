@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any, Sequence
 from uuid import uuid4
 
@@ -300,11 +300,16 @@ class CalDAVService:
         location: str | None = None,
         description: str | None = None,
     ) -> tuple[str, str]:
-        """Создаёт VEVENT. Возвращает (uid, event_url)."""
+        """Создаёт VEVENT. Возвращает (uid, event_url).
+
+        DTSTAMP обязателен по RFC 5545; без него Mail.ru CalDAV возвращает 400
+        Bad Request, и VEVENT не сохраняется.
+        """
         handle = self._require_handle(calendar_url)
         uid = f"satellite-{uuid4()}@satellite.local"
         component = IcsEvent()
         component.add("uid", uid)
+        component.add("dtstamp", datetime.now(tz=timezone.utc))
         component.add("summary", title)
         component.add("dtstart", start)
         component.add("dtend", end)
@@ -316,7 +321,12 @@ class CalDAVService:
         ics.add("prodid", "-//Satellite Bot//calendar//RU")
         ics.add("version", "2.0")
         ics.add_component(component)
-        handle.obj.save_event(ics.to_ical())
+        try:
+            handle.obj.save_event(ics.to_ical())
+        except DAVError as exc:
+            raise CalDAVError(f"Failed to create event: {exc}") from exc
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            raise CalDAVError(f"Network error during create: {exc}") from exc
         event_url = f"{handle.url.rstrip('/')}/{uid}.ics"
         return uid, event_url
 
@@ -330,26 +340,40 @@ class CalDAVService:
         location: str | None = None,
         description: str | None = None,
     ) -> None:
-        event_obj = self._get_event_object(event_url)
-        raw = event_obj.data
-        calendar = IcsCalendar.from_ical(raw)
-        for component in calendar.walk("vevent"):
-            component["summary"] = title
-            component["dtstart"] = start
-            component["dtend"] = end
-            if location:
-                component["location"] = location
-            elif "location" in component:
-                del component["location"]
-            if description:
-                component["description"] = description
-            elif "description" in component:
-                del component["description"]
-        event_obj.save(calendar.to_ical())
+        try:
+            event_obj = self._get_event_object(event_url)
+            raw = event_obj.data
+            calendar = IcsCalendar.from_ical(raw)
+            for component in calendar.walk("vevent"):
+                component["summary"] = title
+                component["dtstart"] = start
+                component["dtend"] = end
+                # DTSTAMP должен обновляться при каждой правке (RFC 5545 §3.8.7.2).
+                if "dtstamp" in component:
+                    del component["dtstamp"]
+                component.add("dtstamp", datetime.now(tz=timezone.utc))
+                if location:
+                    component["location"] = location
+                elif "location" in component:
+                    del component["location"]
+                if description:
+                    component["description"] = description
+                elif "description" in component:
+                    del component["description"]
+            event_obj.save(calendar.to_ical())
+        except DAVError as exc:
+            raise CalDAVError(f"Failed to update event: {exc}") from exc
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            raise CalDAVError(f"Network error during update: {exc}") from exc
 
     def delete_event(self, event_url: str) -> None:
-        event_obj = self._get_event_object(event_url)
-        event_obj.delete()
+        try:
+            event_obj = self._get_event_object(event_url)
+            event_obj.delete()
+        except DAVError as exc:
+            raise CalDAVError(f"Failed to delete event: {exc}") from exc
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            raise CalDAVError(f"Network error during delete: {exc}") from exc
 
     def primary_calendar_url(self) -> str | None:
         handles, _endpoint = self.list_calendars()

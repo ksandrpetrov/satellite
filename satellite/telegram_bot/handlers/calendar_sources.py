@@ -88,13 +88,7 @@ def _handle_close(ctx: HandlerContext, cb: IncomingCallback) -> None:
     from ...messages_ru import CALENDAR_SOURCES_CLOSED_TEXT
 
     if cb.chat_id is not None and cb.message_id is not None:
-        edit_callback_message(
-            ctx,
-            cb.chat_id,
-            cb.message_id,
-            CALENDAR_SOURCES_CLOSED_TEXT,
-            reply_markup=None,
-        )
+        edit_callback_message(ctx, cb, CALENDAR_SOURCES_CLOSED_TEXT, reply_markup=None)
     safe_answer_callback(ctx, cb)
     log.info("Closed calendar sources: user_id=%s", cb.user_id)
 
@@ -145,9 +139,7 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
         calendars=[(entry.name, entry.url) for entry in calendars],
         enabled_urls=enabled_urls,
     )
-    edit_callback_message(
-        ctx, cb.chat_id, cb.message_id, text, reply_markup=keyboard
-    )
+    edit_callback_message(ctx, cb, text, reply_markup=keyboard)
     notice = calendar_sources_toggle_notice(enabled=enabled_now, name=target.name)
     safe_answer_callback(ctx, cb, text=notice)
     log.info(

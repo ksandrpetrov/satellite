@@ -17,7 +17,9 @@ from satellite.calendar.selection import (
 )
 from satellite.messages_ru import (
     BUTTON_CALENDAR_SOURCES,
+    CB_CAL_CLOSE,
     CB_CAL_TOGGLE_PREFIX,
+    ERR_GENERIC_HANDLER_TEXT,
     build_calendar_sources_keyboard,
     button_text_is_calendar_sources,
 )
@@ -246,3 +248,52 @@ def test_build_calendar_sources_keyboard_marks_enabled():
     )
     assert "✅" in kb["inline_keyboard"][0][0]["text"]
     assert "⬜" in kb["inline_keyboard"][1][0]["text"]
+
+
+# --- Регрессия: toggle/close не должны падать с TypeError в edit_callback_message --
+
+
+def _assert_no_generic_error(ctx) -> None:
+    sent_texts = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
+    assert ERR_GENERIC_HANDLER_TEXT not in sent_texts, (
+        "Пользователь получил generic error — значит хендлер кинул исключение."
+    )
+
+
+def test_toggle_updates_inline_keyboard_without_generic_error(tmp_path: Path):
+    calendars = [
+        CalendarListEntry(name="Работа", url="https://cal/work"),
+        CalendarListEntry(name="Личное", url="https://cal/home"),
+    ]
+    ctx = _ctx(tmp_path, calendars=calendars)
+    ctx.users.set_enabled_calendar_urls(
+        1, calendar_urls=["https://cal/work", "https://cal/home"]
+    )
+    cb = IncomingCallback(
+        update_id=10,
+        callback_query_id="cb-toggle",
+        chat_id=900,
+        message_id=77,
+        user_id=1,
+        username="alice",
+        data=f"{CB_CAL_TOGGLE_PREFIX}1",
+    )
+    handle_callback_query(ctx, cb)
+    ctx.telegram.edit_message_text.assert_called_once()
+    _assert_no_generic_error(ctx)
+
+
+def test_close_calendar_sources_without_generic_error(tmp_path: Path):
+    ctx = _ctx(tmp_path, calendars=None)
+    cb = IncomingCallback(
+        update_id=11,
+        callback_query_id="cb-close",
+        chat_id=900,
+        message_id=78,
+        user_id=1,
+        username="alice",
+        data=CB_CAL_CLOSE,
+    )
+    handle_callback_query(ctx, cb)
+    ctx.telegram.edit_message_text.assert_called_once()
+    _assert_no_generic_error(ctx)

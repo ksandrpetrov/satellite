@@ -1,12 +1,17 @@
-from datetime import date
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+from caldav.lib.error import PutError
+
 from satellite.calendar.caldav_client import (
+    CalDAVError,
+    CalendarHandle,
+    CalDAVService,
     build_candidate_urls,
     calendar_matches,
     login_variants_for_caldav,
 )
-from satellite.calendar.caldav_client import CalendarHandle, CalDAVService
 
 
 def test_login_variants_for_caldav_includes_local_part():
@@ -155,6 +160,75 @@ def test_search_events_enriches_missing_partstat_via_get(monkeypatch):
     assert len(events) == 1
     attendees = events[0]["attendees"]
     assert any("me@vk.team" in a and "PARTSTAT=TENTATIVE" in a for a in attendees)
+
+
+# --- Регрессия: create_event обязан добавлять DTSTAMP (RFC 5545) ----------
+
+
+class _StubCalendarObj:
+    def __init__(self):
+        self.saved_ical: bytes | None = None
+        self.raise_on_save: Exception | None = None
+
+    def save_event(self, ical: bytes) -> None:
+        if self.raise_on_save is not None:
+            raise self.raise_on_save
+        self.saved_ical = ical
+
+
+def _service_with_handle(url: str, stub: _StubCalendarObj) -> CalDAVService:
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login="me@vk.team",
+        app_password="pw",
+        cache_ttl_sec=300,
+    )
+    handle = CalendarHandle(name="primary", obj=stub, url=url)
+    # подменяем discovery: cache hit без сетевого вызова
+    from satellite.calendar.caldav_client import _DiscoveryResult
+    import time as _time
+
+    service._cache = _DiscoveryResult(
+        endpoint=url,
+        calendars=[handle],
+        cached_at=_time.monotonic(),
+    )
+    return service
+
+
+def test_create_event_includes_dtstamp_required_by_mailru():
+    """Без DTSTAMP Mail.ru CalDAV возвращает 400 — пользователь видит
+    «Календарь сейчас недоступен» при попытке создать событие."""
+    stub = _StubCalendarObj()
+    service = _service_with_handle("https://fake/calendars/primary/", stub)
+    tz = ZoneInfo("Europe/Moscow")
+    uid, _url = service.create_event(
+        calendar_url="https://fake/calendars/primary/",
+        title="Test",
+        start=datetime(2026, 5, 20, 10, 0, tzinfo=tz),
+        end=datetime(2026, 5, 20, 11, 0, tzinfo=tz),
+    )
+    assert stub.saved_ical is not None
+    body = stub.saved_ical.decode()
+    assert "DTSTAMP" in body, "VEVENT должен содержать DTSTAMP (RFC 5545)"
+    assert uid in body
+
+
+def test_create_event_converts_dav_error_to_caldav_error():
+    """DAVError (включая PutError при 400/415 от Mail.ru) должен подниматься
+    как CalDAVError, чтобы провайдер вернул понятный CREATE_FAILED код, а
+    `_run` не оборачивал его в общий «Календарь недоступен»."""
+    stub = _StubCalendarObj()
+    stub.raise_on_save = PutError("HTTP 400 Bad Request")
+    service = _service_with_handle("https://fake/calendars/primary/", stub)
+    tz = ZoneInfo("Europe/Moscow")
+    with pytest.raises(CalDAVError):
+        service.create_event(
+            calendar_url="https://fake/calendars/primary/",
+            title="Test",
+            start=datetime(2026, 5, 20, 10, 0, tzinfo=tz),
+            end=datetime(2026, 5, 20, 11, 0, tzinfo=tz),
+        )
 
 
 def test_search_events_skips_get_when_partstat_already_present(monkeypatch):
