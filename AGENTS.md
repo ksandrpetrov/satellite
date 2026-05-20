@@ -37,8 +37,9 @@ satellite/
   messages_ru.py         # ВСЕ user-facing тексты
 
   calendar/
-    providers/             # Mail.ru + Yandex skeleton, registry
-    user_calendar_service.py
+    providers/             # Mail.ru + Yandex, registry
+    user_calendar_service.py  # единый фасад для handlers/plan/scheduler/Web App
+    operation_log.py       # audit CalDAV-операций
     caldav_client.py       # Mail.ru CalDAV (per-user login/password)
     events.py, stats.py, time_utils.py, ical_parser.py, constants.py
 
@@ -51,10 +52,16 @@ satellite/
     bot.py               # lifecycle, scheduler, WebAppServer
     handlers/
       dispatch.py        # routing + access gating
-      access.py, admin.py, calendar_*.py
+      routing.py, delivery.py, context.py
+      access.py, admin.py
+      calendar_setup.py  # connect / check / disconnect
+      calendar_list.py   # /upcoming
+      calendar_create.py # /create FSM
+      calendar_manage.py # inline delete (callback)
       plan.py, settings.py, subscription.py
     api.py, chat_action.py, message_editing.py, commands.py
-    digest_state.py, offset_store.py, offset_tracker.py
+    digest_state.py, calendar_state.py
+    offset_store.py, offset_tracker.py
     concurrency.py, instance_lock.py
 ```
 
@@ -72,8 +79,11 @@ satellite/
 | Web App connect | handlers + HTTP в [`bot.py`](satellite/telegram_bot/bot.py); env — [`config.py`](satellite/config.py) |
 | Дату дайджеста (mode→дата) | [`digest_utils.py`](satellite/digest_utils.py) |
 | Парсинг .env | [`config.py`](satellite/config.py), образец [`.env.example`](.env.example) |
-| CalDAV | [`calendar/caldav_client.py`](satellite/calendar/caldav_client.py) |
+| CalDAV / провайдеры | [`calendar/caldav_client.py`](satellite/calendar/caldav_client.py), [`calendar/providers/`](satellite/calendar/providers/), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) |
+| Список / создание событий в боте | [`handlers/calendar_list.py`](satellite/telegram_bot/handlers/calendar_list.py), [`calendar_create.py`](satellite/telegram_bot/handlers/calendar_create.py) |
+| Web App REST API | [`web/server.py`](satellite/web/server.py) |
 | Сборку текста плана | [`plan_service.py`](satellite/plan_service.py) — callers передают calendar identity |
+| Диагностика CalDAV с сервера | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) — см. [troubleshooting.md](docs/troubleshooting.md) |
 
 ## Инварианты — не нарушать
 

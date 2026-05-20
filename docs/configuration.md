@@ -130,7 +130,7 @@ username           # Telegram @username (нормализован)
 display_name       # имя из Telegram
 status             # pending | approved | rejected | blocked
 access_request_*   # состояние заявки на доступ
-calendar_provider  # например mailru
+calendar_provider  # mailru | yandex
 encrypted_credentials  # Fernet-blob (login + app password)
 calendar_status    # disconnected | connected | invalid | error
 primary_calendar_url   # CalDAV URL календаря (без display name — PII)
@@ -142,7 +142,8 @@ primary_calendar_url   # CalDAV URL календаря (без display name — 
    заявка `access_request_status=pending`.
 2. Админы из `ADMIN_TELEGRAM_IDS` одобряют через `/pending` (или отклоняют).
 3. После `status=approved` пользователь подключает календарь через Web App;
-   credentials шифруются `TokenVault` и сохраняются в store.
+   выбирает провайдер (`mailru` — production; `yandex` — backend готов, в UI
+   пока disabled). Credentials шифруются `TokenVault` и сохраняются в store.
 4. Команды плана и дайджест доступны только при `has_calendar` (approved +
    connected + непустые credentials).
 

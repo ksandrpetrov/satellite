@@ -206,7 +206,7 @@ Playbook ставит Docker Engine, кладёт конфиги в `deploy_dir`
 
 | Сервис | Назначение |
 |--------|------------|
-| `traefik` | HTTPS, маршрут `Host(domain) && PathPrefix(/connect)` → бот:8080 |
+| `traefik` | HTTPS, маршрут `/connect` и `/api/calendar/*` → бот:8080 |
 | `nginx-acme` | Webroot для ACME challenge |
 | `certbot` | Выпуск и продление Let's Encrypt |
 | `satellite` | Бот; `logs/` в volume `satellite-logs` |
@@ -370,7 +370,7 @@ Internet → nginx/Caddy (TLS) → 127.0.0.1:WEBAPP_PORT
 
 ```bash
 curl -sS http://127.0.0.1:8080/healthz
-# ожидается HTTP 200 и тело ok
+# ожидается HTTP 200 и {"status":"ok"}
 ```
 
 Если connection refused — в `/opt/satellite/.env` должны быть `WEBAPP_HOST=127.0.0.1`,
@@ -383,15 +383,25 @@ curl -sS http://127.0.0.1:8080/healthz
 ```nginx
 location /connect {
     proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
 }
 location /api/calendar/ {
     proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
+}
+location = /healthz {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
 }
 ```
 
@@ -464,6 +474,15 @@ sudo bash /opt/satellite/scripts/install-server.sh
 Скрипт идемпотентен: подтянет код через `git pull --ff-only`, переустановит
 зависимости и перезапустит `satellite-bot.service`. Существующий `.env`
 сохраняется как есть.
+
+Быстрый ручной апдейт без `install-server.sh` (когда не нужно трогать
+systemd-unit и системные пакеты — только код и зависимости):
+
+```bash
+cd /opt/satellite && git pull
+source venv/bin/activate && pip install -r requirements.txt -q
+sudo systemctl restart satellite-bot.service
+```
 
 Для production достаточно `requirements.txt`; dev-зависимости нужны только
 для локальной разработки и CI.

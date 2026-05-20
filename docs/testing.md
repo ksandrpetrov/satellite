@@ -61,11 +61,12 @@ python -m pytest tests/test_calendar_stats.py tests/test_normalize_caldav_event.
   tests/test_seagull_render.py tests/test_seagull_digest.py tests/test_seagull_rules.py
 ```
 
-Config, storage, CalDAV helpers:
+Config, storage, CalDAV helpers, Web App:
 
 ```bash
 python -m pytest tests/test_config.py tests/test_subscriptions.py \
-  tests/test_caldav_candidates.py tests/test_ical_parser.py
+  tests/test_caldav_candidates.py tests/test_ical_parser.py \
+  tests/test_web_server.py tests/test_init_data.py
 ```
 
 Bot infrastructure:
@@ -119,7 +120,14 @@ Autouse-фикстура обнуляет `TYPING_DISPLAY_SECONDS`, чтобы �
 - погода из `WEATHER_LOCATION` JSON;
 - тесты `parse_user_calendar_map` — legacy, удалятся вместе с миграцией handlers.
 
-**Scheduler, settings, Telegram, weather** — см. соответствующие `test_*.py`.
+**Scheduler, settings, Telegram, weather, Web App** — см. соответствующие `test_*.py`.
+
+**Web App** (`test_web_server.py`, `test_init_data.py`):
+
+- `GET /healthz` без auth;
+- gate `approved` для `/api/calendar/*`;
+- HMAC-валидация `initData`;
+- connect/disconnect и CRUD событий (mock `UserCalendarService`).
 
 ## Static Checks
 

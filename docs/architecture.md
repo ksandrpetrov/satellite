@@ -41,7 +41,7 @@ telegram_test_command.py
   -> handlers.dispatch.handle_message / handle_callback_query
      (/start, /help — всем; остальное — approved + has_calendar)
   -> UserStore: статус, расшифровка credentials через TokenVault
-  -> CalDAVService(login, app_password) per request / per user
+  -> UserCalendarService → provider (mailru | yandex) per user
   -> PlanBuilder.build_text(calendar_name или primary URL — политика вызывающего)
   -> filter_events_for_user (visible + hidden meals)
   -> prepare_seagull_stats   (normalize_caldav_event only)
@@ -54,7 +54,8 @@ telegram_test_command.py
 
 1. Новый пользователь: `/start` → запись в `users.json`, заявка `pending`.
 2. Админ (`ADMIN_TELEGRAM_IDS`): `/pending` → approve/reject.
-3. Одобренный пользователь: Web App → encrypted credentials + `primary_calendar_url`.
+3. Одобренный пользователь: Web App → выбор провайдера (`mailru`; `yandex` в UI
+   пока «скоро», backend готов) → encrypted credentials + `primary_calendar_url`.
 4. Команды плана и дайджест — только при `UserRecord.has_calendar`.
 
 ## Users and Security
@@ -63,7 +64,10 @@ telegram_test_command.py
   Атомарная запись JSON, thread-safe lock. Не хранит сырые токены и display name
   календаря (PII).
 - `satellite/security/token_vault.py` — `TokenVault`, `ProviderCredentials`
-  (login + app password Mail.ru). Ключ — `TOKEN_ENCRYPTION_KEY` из env.
+  (login + app password). Ключ — `TOKEN_ENCRYPTION_KEY` из env.
+- `satellite/calendar/user_calendar_service.py` — единый фасад connect/list/create/delete
+  для handlers, scheduler, Web App; расшифровка credentials на время запроса.
+- `satellite/calendar/operation_log.py` — audit CalDAV-операций.
 
 ## Telegram Layer
 
@@ -74,13 +78,20 @@ telegram_test_command.py
   - `routing.py` — pure parsers.
   - `delivery.py` — send/edit/answer, `notify_handler_failure`.
   - `dispatch.py` — message and callback entrypoints, access gating.
+  - `access.py` — `/start`, заявки, gating `approved` / `has_calendar`.
+  - `admin.py` — `/pending`, approve/reject callbacks.
+  - `calendar_setup.py` — connect / check / disconnect (Web App + reply-кнопки).
+  - `calendar_list.py` — `/upcoming`, ближайшие 7 дней.
+  - `calendar_create.py` — `/create`, пошаговый FSM создания события.
+  - `calendar_manage.py` — inline-delete callback (`manage:del:`).
   - `plan.py` — command → plan → reply.
   - `subscription.py` — subscribe/unsubscribe.
   - `settings.py` — digest settings screens and callbacks.
 - `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing.
 - `satellite/telegram_bot/chat_action.py` — `typing` during long operations.
 - `satellite/telegram_bot/message_editing.py` — edit loading message, fallback.
-- `satellite/telegram_bot/digest_state.py` — in-memory state for time input.
+- `satellite/telegram_bot/digest_state.py` — in-memory state for digest time input.
+- `satellite/telegram_bot/calendar_state.py` — FSM создания события, dedup callbacks.
 - `satellite/telegram_bot/commands.py` — menu command registration.
 - `satellite/telegram_bot/concurrency.py` — `ChatLockManager`, `InflightTracker`.
 - `satellite/telegram_bot/instance_lock.py` — single-instance `fcntl` lock.
@@ -89,6 +100,10 @@ telegram_test_command.py
 
 ## Calendar Layer
 
+- `satellite/calendar/providers/` — `mailru` (production) и `yandex` (backend);
+  `registry.get_provider` выбирает реализацию по `UserRecord.calendar_provider`.
+- `satellite/calendar/user_calendar_service.py` — connect, validate, list/create/delete
+  events; единственная точка доступа handlers/plan/scheduler/Web App к CalDAV.
 - `satellite/calendar/caldav_client.py` — Mail.ru CalDAV discovery, cache, day
   search, optional PARTSTAT refresh.
 - `satellite/calendar/constants.py` — domain constants (lunch marker, all-day label).
@@ -108,7 +123,7 @@ Important invariants:
 
 - `satellite/plan_service.py` — `PlanBuilder` (CalDAV → filter → optional weather
   → render). `PlanBuilder` не читает `users.json`; callers pass calendar identity
-  and construct per-user `CalDAVService` when needed.
+  and construct per-user `UserCalendarService` when needed.
 - `satellite/seagull/digest.py` — `prepare_seagull_stats`, `render_digest_from_stats`.
 - `satellite/seagull/rules.py` — text fragments from metrics.
 - `satellite/seagull/render.py` — Telegram HTML, escaping, truncation.
@@ -168,8 +183,27 @@ Per tick:
 resolve_target_date(DIGEST_MODE, today in user timezone)
   -> load UserRecord by chat_id / telegram_user_id
   -> skip if not has_calendar
-  -> decrypt credentials, CalDAV fetch, PlanBuilder.build_text(...)
+  -> decrypt credentials, UserCalendarService, PlanBuilder.build_text(...)
 ```
+
+## Web App HTTP
+
+`satellite/web/server.py` — `ThreadingHTTPServer` в фоновом потоке бота.
+Авторизация: Telegram `initData` (HMAC) + `UserStore.status == approved`.
+
+| Метод/путь | Назначение |
+|------------|------------|
+| `GET /healthz` | Docker HEALTHCHECK; без auth |
+| `GET /connect` | SPA [`connect.html`](../satellite/web/static/connect.html) |
+| `GET /api/calendar/status` | Статус подключения |
+| `POST /api/calendar/connect` | Сохранить credentials (`provider`, `login`, `app_password`) |
+| `DELETE /api/calendar/disconnect` | Сбросить подключение |
+| `GET /api/calendar/events?from=&to=` | Список событий |
+| `POST /api/calendar/events` | Создать событие |
+| `DELETE /api/calendar/events/{uid}?url=` | Удалить событие |
+
+HTTPS — задача reverse proxy (Traefik в Docker, nginx/Caddy при systemd).
+Traefik/Docker проксирует `/connect` **и** `/api/calendar/*`.
 
 ## Logging
 

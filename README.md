@@ -14,18 +14,23 @@ Production Telegram-бот для календарных дайджестов и
 
 - Команды `td`, `tm`, `dat`.
 - Команды меню `/today`, `/tomorrow`, `/aftertomorrow`, `/after_tomorrow`.
-- `/start`, `/help`, `/settings`.
+- `/upcoming` — ближайшие события на 7 дней.
+- `/create` — пошаговое создание события в календаре.
+- `/start`, `/help`, `/settings`, `/connect`.
 - Заявка на доступ и одобрение админом (`ADMIN_TELEGRAM_IDS`, `/pending`).
 - Подключение календаря Mail.ru через Telegram Web App (per-user credentials).
+- Проверка и отключение календаря из reply-клавиатуры.
+- Web App REST API: список, создание и удаление событий.
 - Подписка и отключение дайджеста.
 - Настройки дайджеста через inline-кнопки.
 - Дни отправки: `weekdays` или `all_days`.
 - Время отправки в формате `HH:MM`, по умолчанию `09:00 Europe/Moscow`.
-- CalDAV per-user с шифрованием токенов (Fernet).
+- CalDAV per-user с шифрованием токенов (Fernet); провайдер `mailru` (Yandex — в backend, UI «скоро»).
 - Расчет занятости, свободного времени, пересечений и обеда.
 - Open-Meteo погода с кэшем и безопасным fallback.
 - `sendChatAction` во время долгих операций.
 - Паттерн `loading message -> editMessageText`.
+- Постоянная reply-клавиатура для одобренных пользователей.
 - Thread-safe JSON storage настроек и пользователей.
 
 ## Быстрый старт

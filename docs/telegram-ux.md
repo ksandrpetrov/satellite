@@ -18,10 +18,20 @@ dat
 /tomorrow
 /aftertomorrow
 /after_tomorrow
+/upcoming
+/events           # алиас /upcoming
+/create
+/addevent         # алиас /create
+/connect
 /settings
 /digest
 /stopdigest
 ```
+
+В меню Telegram (`setMyCommands`) зарегистрированы: `start`, `today`, `tomorrow`,
+`aftertomorrow`, `upcoming`, `create`, `connect`, `settings`, `help`. Короткие
+алиасы (`td`/`tm`/`dat`) и `/digest`/`/stopdigest` работают, но в меню не
+показываются.
 
 `/digest` и `/stopdigest` оставлены как текстовые команды совместимости.
 Основной интерфейс настройки подписки — `/settings`.
@@ -35,30 +45,61 @@ dat
 2. **Админ.** `/pending` показывает очередь заявок и кнопки одобрения/отклонения.
    Доступно только id из `ADMIN_TELEGRAM_IDS`.
 
-3. **После одобрения.** Пользователь подключает Mail.ru Calendar через кнопку
-   Telegram Web App (`WEBAPP_BASE_URL`). Пароль приложения шифруется и сохраняется
-   в `encrypted_credentials`; CalDAV URL — в `primary_calendar_url`.
+3. **После одобрения.** Пользователь подключает календарь через кнопку
+   «Подключить календарь» (Telegram Web App, `WEBAPP_BASE_URL`). В Web App
+   выбирается провайдер (`mailru` — Mail.ru / Mailroom; `yandex` в UI пока
+   «скоро»). Пароль приложения шифруется в `encrypted_credentials`; CalDAV URL —
+   в `primary_calendar_url`.
 
-4. **Команды плана и дайджест** работают только при `UserRecord.has_calendar`
-   (approved + connected + непустые credentials).
+4. **Команды плана, списка, создания событий и дайджест** работают только при
+   `UserRecord.has_calendar` (approved + connected + непустые credentials).
+
+5. **Проверка и отключение.** Кнопки «✅ Проверить подключение» и
+   «🗑 Отключить календарь» доступны после успешного connect.
 
 `/start` и `/help` отвечают всем остальным пользователям без проверки календаря.
+`/help` снимает старую reply-клавиатуру (`remove_keyboard`).
 
-## Buttons
+## Reply keyboard (approved)
 
-Старые reply-кнопки распознаются, даже если бот больше не отправляет новую
-постоянную reply-клавиатуру:
+После одобрения `/start` показывает постоянную reply-клавиатуру:
 
 ```text
-📅 Сегодня
+📅 Сегодня          🗓 Ближайшие события
+➕ Создать событие
+⚙️ Настройки дайджеста
+🔌 Подключить календарь   (Web App; после connect — «🔄 Переподключить»)
+✅ Проверить подключение   🗑 Отключить календарь   (только при has_calendar)
+```
+
+Legacy-тексты старой клавиатуры тоже распознаются:
+
+```text
 ➡️ Завтра
 ⏭ Послезавтра
 🔔 Подписаться на дайджест
 🔕 Отключить дайджест
-⚙️ Настройки дайджеста
+🔕 Отписаться от дайджеста
 ```
 
-Legacy-текст `🔕 Отписаться от дайджеста` тоже распознается.
+## Upcoming events
+
+`/upcoming` (или кнопка «🗓 Ближайшие события») показывает список событий на
+7 дней вперёд (до 30 штук). Отменённые события скрываются. Сценарий:
+loading message → `UserCalendarService.list_events` → edit.
+
+## Create event
+
+`/create` (или кнопка «➕ Создать событие») запускает пошаговый FSM
+(`calendar_state.py`):
+
+1. название;
+2. дата (`ДД.ММ.ГГГГ`, «сегодня», «завтра»);
+3. время (`ЧЧ:ММ`);
+4. длительность в минутах;
+5. подтверждение inline-кнопками (`create:confirm` / `create:cancel`).
+
+Событие создаётся в primary-календаре пользователя через `UserCalendarService`.
 
 ## Settings Screen
 
@@ -74,7 +115,7 @@ Callback data лежат в `satellite/messages_ru.py` как константы
 Каждый callback получает `answerCallbackQuery` best-effort. Неизвестный callback
 логируется и безопасно игнорируется.
 
-## Time Input State
+## Time Input State (digest)
 
 После кнопки `🕘 Время отправки` следующий обычный текст пользователя считается
 новым временем, если он не похож на команду.
@@ -89,14 +130,16 @@ Callback data лежат в `satellite/messages_ru.py` как константы
 - state очищается кнопками `Назад` и `Закрыть`;
 - пользователь не застревает, потому что команды и кнопки выходят из state.
 
+FSM создания события (`calendar_state`) не пересекается с digest time state.
+
 ## Loading Message
 
-Для плана дня используется сценарий:
+Для плана дня и списка upcoming используется сценарий:
 
 ```text
-sendMessage("Чайка ищет встречи...")
-build digest
-editMessageText(final digest)
+sendMessage("Чайка ищет встречи..." / "Чайка собирает ближайшие события…")
+build digest / list events
+editMessageText(final text)
 ```
 
 Если edit не удался, `edit_or_send_message` отправляет новое сообщение и пишет
@@ -126,7 +169,8 @@ warning в лог.
 |----------|---------|
 | `/start`, `/help` | всем |
 | `/pending` | `ADMIN_TELEGRAM_IDS` |
-| План, настройки, подписка | `approved` + `has_calendar` |
+| `/connect`, check/disconnect | `approved` |
+| План, upcoming, create, настройки, подписка | `approved` + `has_calendar` |
 | Web App connect | `approved` (до первого успешного connect) |
 
 Подробнее о полях store: [configuration.md](configuration.md#пользователи-и-доступ-logsusersjson).
