@@ -32,8 +32,10 @@ def handle_connect_calendar_button(ctx: HandlerContext, msg: IncomingMessage) ->
         msg.user_id and ctx.users.get(msg.user_id) and ctx.users.get(msg.user_id).has_calendar
     )
     intro = CALENDAR_RECONNECT_INTRO_HTML if reconnect else CALENDAR_NOT_CONNECTED_HTML
-    send(
-        ctx,
+    # `delivery.send` намеренно не пробрасывает reply_markup (см. его docstring и
+    # инвариант про меню команд). Web App-кнопка — единственный legit случай
+    # reply-клавиатуры; идём напрямую в TelegramClient, как делает access.py.
+    ctx.telegram.send_message(
         msg.chat_id,
         intro,
         reply_markup=build_webapp_connect_keyboard(webapp_url, reconnect=reconnect),

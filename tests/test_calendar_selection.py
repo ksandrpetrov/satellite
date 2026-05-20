@@ -12,8 +12,11 @@ import pytest
 from satellite.calendar.caldav_client import CalendarHandle, CalDAVService
 from satellite.calendar.providers.base import CalendarListEntry
 from satellite.calendar.selection import (
+    calendar_callback_token,
     effective_enabled_calendar_urls,
     effective_enabled_calendar_urls_from_parts,
+    find_calendar_entry_by_token,
+    sort_calendar_entries,
 )
 from satellite.messages_ru import (
     BUTTON_CALENDAR_SOURCES,
@@ -161,7 +164,9 @@ def test_calendar_sources_button_opens_inline_keyboard(tmp_path: Path):
     assert markup is not None
     rows = markup["inline_keyboard"]
     assert len(rows) == 3
-    assert rows[0][0]["callback_data"] == f"{CB_CAL_TOGGLE_PREFIX}0"
+    toggle_data = {row[0]["callback_data"] for row in rows[:-1]}
+    assert f"{CB_CAL_TOGGLE_PREFIX}{calendar_callback_token('https://cal/home')}" in toggle_data
+    assert f"{CB_CAL_TOGGLE_PREFIX}{calendar_callback_token('https://cal/work')}" in toggle_data
 
 
 def test_toggle_disables_secondary_calendar(tmp_path: Path):
@@ -181,7 +186,7 @@ def test_toggle_disables_secondary_calendar(tmp_path: Path):
         message_id=55,
         user_id=1,
         username="alice",
-        data=f"{CB_CAL_TOGGLE_PREFIX}1",
+        data=f"{CB_CAL_TOGGLE_PREFIX}{calendar_callback_token('https://cal/home')}",
     )
     handle_callback_query(ctx, cb)
     record = users.get(1)
@@ -204,7 +209,7 @@ def test_cannot_disable_last_calendar(tmp_path: Path):
         message_id=56,
         user_id=1,
         username="alice",
-        data=f"{CB_CAL_TOGGLE_PREFIX}0",
+        data=f"{CB_CAL_TOGGLE_PREFIX}{calendar_callback_token('https://cal/work')}",
     )
     handle_callback_query(ctx, cb)
     record = users.get(1)
@@ -241,10 +246,66 @@ def test_calendar_sources_request_recognized(raw: str):
     assert button_text_is_calendar_sources(raw) or is_calendar_sources_request(raw)
 
 
+def test_toggle_uses_url_token_when_list_order_changes(tmp_path: Path):
+    """Регрессия: индекс в callback_data ломался при другом порядке CalDAV."""
+    calendars = [
+        CalendarListEntry(name="Личное", url="https://cal/home"),
+        CalendarListEntry(name="Работа", url="https://cal/work"),
+    ]
+    ctx = _ctx(tmp_path, calendars=calendars)
+    users = ctx.users
+    users.set_enabled_calendar_urls(
+        1, calendar_urls=["https://cal/work", "https://cal/home"]
+    )
+    # Пользователь нажал кнопку «Работа», когда она была второй; CalDAV вернул её первой.
+    ctx.calendar_service.list_calendars.return_value = [
+        CalendarListEntry(name="Работа", url="https://cal/work"),
+        CalendarListEntry(name="Личное", url="https://cal/home"),
+    ]
+    cb = IncomingCallback(
+        update_id=20,
+        callback_query_id="cb-reorder",
+        chat_id=900,
+        message_id=88,
+        user_id=1,
+        username="alice",
+        data=f"{CB_CAL_TOGGLE_PREFIX}{calendar_callback_token('https://cal/work')}",
+    )
+    handle_callback_query(ctx, cb)
+    record = users.get(1)
+    assert record is not None
+    assert record.enabled_calendar_urls == ("https://cal/home",)
+
+
+def test_sort_calendar_entries_is_stable_by_url():
+    entries = sort_calendar_entries(
+        [
+            CalendarListEntry(name="Z", url="https://cal/z"),
+            CalendarListEntry(name="A", url="https://cal/a"),
+        ]
+    )
+    assert [e.url for e in entries] == ["https://cal/a", "https://cal/z"]
+
+
+def test_find_calendar_entry_by_token():
+    entries = [
+        CalendarListEntry(name="A", url="https://cal/a/"),
+        CalendarListEntry(name="B", url="https://cal/b"),
+    ]
+    token = calendar_callback_token("https://cal/b")
+    found = find_calendar_entry_by_token(entries, token)
+    assert found is not None
+    assert found.name == "B"
+
+
 def test_build_calendar_sources_keyboard_marks_enabled():
     kb = build_calendar_sources_keyboard(
         calendars=[("A", "https://cal/a"), ("B", "https://cal/b")],
         enabled_urls={"https://cal/a"},
+        url_tokens=[
+            calendar_callback_token("https://cal/a"),
+            calendar_callback_token("https://cal/b"),
+        ],
     )
     assert "✅" in kb["inline_keyboard"][0][0]["text"]
     assert "⬜" in kb["inline_keyboard"][1][0]["text"]
@@ -276,7 +337,7 @@ def test_toggle_updates_inline_keyboard_without_generic_error(tmp_path: Path):
         message_id=77,
         user_id=1,
         username="alice",
-        data=f"{CB_CAL_TOGGLE_PREFIX}1",
+        data=f"{CB_CAL_TOGGLE_PREFIX}{calendar_callback_token('https://cal/home')}",
     )
     handle_callback_query(ctx, cb)
     ctx.telegram.edit_message_text.assert_called_once()

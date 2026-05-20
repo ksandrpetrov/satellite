@@ -11,7 +11,7 @@ import pytest
 
 from satellite.calendar.events import format_single_day_events_lines
 from satellite.calendar.providers.base import CalendarListEntry
-from satellite.calendar.selection import foreign_calendar_entries
+from satellite.calendar.selection import calendar_callback_token, foreign_calendar_entries
 from satellite.messages_ru import (
     BUTTON_DAY_AFTER,
     BUTTON_FOREIGN_CALENDARS,
@@ -49,7 +49,7 @@ def test_button_and_command_routing():
 
 def test_foreign_day_keyboard_offers_today_tomorrow_and_day_after():
     """Под чужим календарём — три дня вперёд, как и в плане Чайки."""
-    kb = build_foreign_day_keyboard(calendar_idx=3)
+    kb = build_foreign_day_keyboard(calendar_token="abc123456789")
     labels = [btn["text"] for row in kb["inline_keyboard"] for btn in row]
     assert BUTTON_TODAY in labels
     assert BUTTON_TOMORROW in labels
@@ -139,7 +139,7 @@ def test_foreign_calendars_callback_flow(users: UserStore) -> None:
         message_id=5,
         user_id=user_id,
         username="petrov",
-        data=f"{CB_FOREIGN_DAY_PREFIX}0:0",
+        data=f"{CB_FOREIGN_DAY_PREFIX}{calendar_callback_token('https://cal/shared')}:0",
     )
 
     handle_callback_query(ctx, cb)

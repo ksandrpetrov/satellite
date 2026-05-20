@@ -17,7 +17,12 @@ from ...calendar.providers.base import (
     CalendarNotConnectedError,
     CalendarProviderError,
 )
-from ...calendar.selection import effective_enabled_calendar_urls
+from ...calendar.selection import (
+    calendar_callback_token,
+    effective_enabled_calendar_urls,
+    normalize_calendar_url,
+    sort_calendar_entries,
+)
 from ...messages_ru import (
     build_calendar_sources_keyboard,
     calendar_sources_screen_text,
@@ -44,10 +49,6 @@ class CalendarListResult:
     @property
     def ok(self) -> bool:
         return self.status is CalendarListStatus.OK
-
-
-def normalize_calendar_url(url: str) -> str:
-    return url.strip().rstrip("/")
 
 
 def enabled_url_set(record: UserRecord) -> set[str]:
@@ -77,7 +78,7 @@ def fetch_calendars(ctx: HandlerContext, user_id: int) -> CalendarListResult:
         return CalendarListResult(status=CalendarListStatus.UNAVAILABLE)
     return CalendarListResult(
         status=CalendarListStatus.OK,
-        calendars=tuple(calendars),
+        calendars=tuple(sort_calendar_entries(calendars)),
     )
 
 
@@ -121,9 +122,11 @@ def build_calendar_sources_screen(
         return CalendarSourcesScreen(status=CalendarSourcesScreenStatus.SINGLE)
     enabled_urls = enabled_url_set(record)
     text = calendar_sources_screen_text(lines=screen_lines(calendars, enabled_urls))
+    pairs = [(entry.name, entry.url) for entry in calendars]
     keyboard = build_calendar_sources_keyboard(
-        calendars=[(entry.name, entry.url) for entry in calendars],
+        calendars=pairs,
         enabled_urls=enabled_urls,
+        url_tokens=[calendar_callback_token(url) for _name, url in pairs],
     )
     return CalendarSourcesScreen(
         status=CalendarSourcesScreenStatus.SCREEN,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from ...calendar.selection import calendar_callback_token, find_calendar_entry_by_token
 from ...messages_ru import (
     CALENDAR_NOT_CONNECTED_HTML,
     CALENDAR_SOURCES_LAST_ENABLED_TEXT,
@@ -82,9 +83,8 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
     if record is None or not record.has_calendar:
         safe_answer_callback(ctx, cb)
         return
-    try:
-        idx = int(data[len(CB_CAL_TOGGLE_PREFIX) :])
-    except ValueError:
+    token = data[len(CB_CAL_TOGGLE_PREFIX) :].strip()
+    if not token:
         safe_answer_callback(ctx, cb)
         return
     result = fetch_calendars(ctx, cb.user_id)
@@ -92,14 +92,13 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
         safe_answer_callback(ctx, cb, text=CALENDAR_SOURCES_UPDATE_FAIL_TEXT)
         return
     calendars = list(result.calendars)
-    if idx < 0 or idx >= len(calendars):
+    target = find_calendar_entry_by_token(calendars, token)
+    if target is None:
         safe_answer_callback(ctx, cb)
         return
     if len(calendars) <= 1:
         safe_answer_callback(ctx, cb, text=CALENDAR_SOURCES_SINGLE_HTML)
         return
-
-    target = calendars[idx]
     target_url = normalize_calendar_url(target.url)
     current = set(enabled_url_set(record))
     if target_url in current:
@@ -117,9 +116,11 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
     )
     enabled_urls = enabled_url_set(updated)
     text = calendar_sources_screen_text(lines=screen_lines(calendars, enabled_urls))
+    pairs = [(entry.name, entry.url) for entry in calendars]
     keyboard = build_calendar_sources_keyboard(
-        calendars=[(entry.name, entry.url) for entry in calendars],
+        calendars=pairs,
         enabled_urls=enabled_urls,
+        url_tokens=[calendar_callback_token(url) for _name, url in pairs],
     )
     edit_callback_message(ctx, cb, text, reply_markup=keyboard)
     notice = calendar_sources_toggle_notice(enabled=enabled_now, name=target.name)

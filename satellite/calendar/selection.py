@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import TYPE_CHECKING
 
 from .providers.base import CalendarListEntry
@@ -9,9 +10,47 @@ from .providers.base import CalendarListEntry
 if TYPE_CHECKING:
     from ..users import UserRecord
 
+_CALENDAR_CALLBACK_TOKEN_LEN = 12
+
+
+def normalize_calendar_url(url: str | None) -> str:
+    return (url or "").strip().rstrip("/")
+
 
 def _normalize_url(url: str | None) -> str:
-    return (url or "").strip().rstrip("/")
+    return normalize_calendar_url(url)
+
+
+def calendar_callback_token(url: str) -> str:
+    """Короткий стабильный id календаря для ``callback_data`` (≤64 байт Telegram)."""
+    digest = hashlib.sha256(normalize_calendar_url(url).encode()).hexdigest()
+    return digest[:_CALENDAR_CALLBACK_TOKEN_LEN]
+
+
+def sort_calendar_entries(
+    calendars: list[CalendarListEntry],
+) -> list[CalendarListEntry]:
+    """Фиксированный порядок списка в UI (CalDAV может отдавать календари вразнобой)."""
+    return sorted(
+        calendars,
+        key=lambda entry: (
+            normalize_calendar_url(entry.url).casefold(),
+            entry.name.casefold(),
+        ),
+    )
+
+
+def find_calendar_entry_by_token(
+    calendars: list[CalendarListEntry],
+    token: str,
+) -> CalendarListEntry | None:
+    needle = (token or "").strip()
+    if not needle:
+        return None
+    for entry in calendars:
+        if calendar_callback_token(entry.url) == needle:
+            return entry
+    return None
 
 
 def effective_enabled_calendar_urls_from_parts(

@@ -203,13 +203,13 @@
         <option value="yandex" disabled>Яндекс (скоро)</option>
       </select>
       <label for="login">Email календаря</label>
-      <input id="login" type="email" autocomplete="username" placeholder="aleksandr.petrov@vk.team">
+      <input id="login" type="email" autocomplete="username" placeholder="you@mail.ru">
       <label for="token">Пароль приложения</label>
       <input id="token" type="password" autocomplete="off" placeholder="Токен для внешнего приложения">
-      <p class="hint">Mail.ru → «Пароли для внешних приложений» → доступ <strong>Календарь</strong> (не пароль от почты). Подходит @mail.ru и корпоративный @vk.team — сервер calendar.mail.ru.</p>
+      <p class="hint">🪶 Mail.ru → «Пароли для внешних приложений» → доступ <strong>Календарь</strong> (не пароль от почты). Подойдёт @mail.ru и корпоративная почта на calendar.mail.ru.</p>
       <label for="caldavUrl">CalDAV URL (необязательно)</label>
-      <input id="caldavUrl" type="url" autocomplete="off" placeholder="https://calendar.mail.ru/principals/vk.team/имя/">
-      <p class="hint">Оставьте пустым, если на Mac указали только calendar.mail.ru. Если там был полный principal URL — вставьте его сюда.</p>
+      <input id="caldavUrl" type="url" autocomplete="off" placeholder="https://calendar.mail.ru/…">
+      <p class="hint">🪶 Оставь пустым, если в системе указан только calendar.mail.ru — Чайка сама найдёт календари. Полный principal URL вставляй только если его дал почтовый клиент.</p>
       <button id="connectBtn" class="primary">Подключить</button>
       <button id="checkBtn" class="secondary" type="button">Проверить подключение</button>
       <button id="disconnectBtn" class="danger" type="button">Отключить календарь</button>

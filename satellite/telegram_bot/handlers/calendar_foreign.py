@@ -8,7 +8,12 @@ from datetime import datetime, timedelta
 
 from ...calendar.events import format_single_day_events_lines
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
-from ...calendar.selection import foreign_calendar_entries
+from ...calendar.selection import (
+    calendar_callback_token,
+    find_calendar_entry_by_token,
+    foreign_calendar_entries,
+    sort_calendar_entries,
+)
 from ...messages_ru import (
     CALENDAR_NOT_CONNECTED_HTML,
     CB_FOREIGN_BACK,
@@ -55,11 +60,21 @@ def _foreign_calendars(ctx: HandlerContext, user_id: int) -> _ForeignResult:
     result = fetch_calendars(ctx, user_id)
     if not result.ok:
         return _ForeignResult(status=result.status)
-    foreign = foreign_calendar_entries(
-        list(result.calendars),
-        primary_calendar_url=record.primary_calendar_url,
+    foreign = sort_calendar_entries(
+        foreign_calendar_entries(
+            list(result.calendars),
+            primary_calendar_url=record.primary_calendar_url,
+        )
     )
     return _ForeignResult(status=CalendarListStatus.OK, entries=tuple(foreign))
+
+
+def _foreign_pairs(
+    entries: list,
+) -> tuple[list[tuple[str, str]], list[str]]:
+    pairs = [(entry.name, entry.url) for entry in entries]
+    tokens = [calendar_callback_token(url) for _name, url in pairs]
+    return pairs, tokens
 
 
 def handle_open_foreign_calendars(ctx: HandlerContext, msg: IncomingMessage) -> None:
@@ -76,9 +91,8 @@ def handle_open_foreign_calendars(ctx: HandlerContext, msg: IncomingMessage) -> 
     if not foreign:
         send(ctx, msg.chat_id, FOREIGN_CALENDARS_EMPTY_HTML)
         return
-    keyboard = build_foreign_calendars_keyboard(
-        calendars=[(entry.name, entry.url) for entry in foreign],
-    )
+    pairs, tokens = _foreign_pairs(foreign)
+    keyboard = build_foreign_calendars_keyboard(calendars=pairs, url_tokens=tokens)
     ctx.telegram.send_message(
         msg.chat_id,
         FOREIGN_CALENDARS_INTRO_HTML,
@@ -125,9 +139,8 @@ def _handle_back(ctx: HandlerContext, cb: IncomingCallback) -> None:
         edit_callback_message(ctx, cb, FOREIGN_CALENDARS_EMPTY_HTML, reply_markup=None)
         safe_answer_callback(ctx, cb)
         return
-    keyboard = build_foreign_calendars_keyboard(
-        calendars=[(entry.name, entry.url) for entry in foreign],
-    )
+    pairs, tokens = _foreign_pairs(foreign)
+    keyboard = build_foreign_calendars_keyboard(calendars=pairs, url_tokens=tokens)
     edit_callback_message(ctx, cb, FOREIGN_CALENDARS_INTRO_HTML, reply_markup=keyboard)
     safe_answer_callback(ctx, cb)
 
@@ -141,17 +154,15 @@ def _handle_pick(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
         safe_answer_callback(ctx, cb, text=FOREIGN_CALENDARS_REFRESH_FAIL_TEXT)
         return
     foreign = list(result.entries)
-    try:
-        idx = int(data[len(CB_FOREIGN_PICK_PREFIX) :])
-    except ValueError:
+    token = data[len(CB_FOREIGN_PICK_PREFIX) :].strip()
+    entry = find_calendar_entry_by_token(foreign, token)
+    if entry is None:
         safe_answer_callback(ctx, cb)
         return
-    if idx < 0 or idx >= len(foreign):
-        safe_answer_callback(ctx, cb)
-        return
-    entry = foreign[idx]
     text = foreign_calendars_pick_day_text(calendar_name=entry.name)
-    keyboard = build_foreign_day_keyboard(calendar_idx=idx)
+    keyboard = build_foreign_day_keyboard(
+        calendar_token=calendar_callback_token(entry.url)
+    )
     edit_callback_message(ctx, cb, text, reply_markup=keyboard)
     safe_answer_callback(ctx, cb)
 
@@ -167,16 +178,16 @@ def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
     foreign = list(result.entries)
     payload = data[len(CB_FOREIGN_DAY_PREFIX) :]
     try:
-        idx_str, day_offset_str = payload.split(":", 1)
-        idx = int(idx_str)
+        token, day_offset_str = payload.rsplit(":", 1)
         day_offset = int(day_offset_str)
     except ValueError:
         safe_answer_callback(ctx, cb)
         return
-    if idx < 0 or idx >= len(foreign) or day_offset not in (0, 1, 2):
+    token = token.strip()
+    entry = find_calendar_entry_by_token(foreign, token)
+    if entry is None or day_offset not in (0, 1, 2):
         safe_answer_callback(ctx, cb)
         return
-    entry = foreign[idx]
     calendar_url = normalize_calendar_url(entry.url)
     today = datetime.now(tz=ctx.tz).date()
     target_date = today + timedelta(days=day_offset)
@@ -216,8 +227,8 @@ def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
 
     edit_callback_message(ctx, cb, text, reply_markup=None)
     log.info(
-        "Foreign calendar day: user_id=%s idx=%d offset=%d",
+        "Foreign calendar day: user_id=%s calendar=%s offset=%d",
         cb.user_id,
-        idx,
+        calendar_url[:48],
         day_offset,
     )

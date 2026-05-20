@@ -377,7 +377,7 @@ def build_create_duration_keyboard() -> dict:
 # --- выбор календарей для плана --------------------------------------------
 
 CB_CAL_SOURCES = "cal_sources"
-CB_CAL_TOGGLE_PREFIX = "cal:toggle:"
+CB_CAL_TOGGLE_PREFIX = "cal:t:"
 CB_CAL_CLOSE = "cal:close"
 
 CALENDAR_SOURCES_SINGLE_HTML = (
@@ -413,17 +413,17 @@ def build_calendar_sources_keyboard(
     *,
     calendars: list[tuple[str, str]],
     enabled_urls: set[str],
+    url_tokens: list[str],
 ) -> dict:
-    def _norm(url: str) -> str:
-        return url.strip().rstrip("/")
+    from .calendar.selection import normalize_calendar_url
 
     rows: list[list[dict[str, str]]] = []
-    for idx, (name, url) in enumerate(calendars):
-        mark = "✅" if _norm(url) in enabled_urls else "⬜️"
+    for (name, url), token in zip(calendars, url_tokens):
+        mark = "✅" if normalize_calendar_url(url) in enabled_urls else "⬜️"
         label = f"{mark} {name}"
         if len(label) > 60:
             label = label[:57] + "…"
-        rows.append([{"text": label, "callback_data": f"{CB_CAL_TOGGLE_PREFIX}{idx}"}])
+        rows.append([{"text": label, "callback_data": f"{CB_CAL_TOGGLE_PREFIX}{token}"}])
     rows.append([{"text": "⬅️ В Календарь", "callback_data": CB_CAL_CLOSE}])
     return {"inline_keyboard": rows}
 
@@ -472,34 +472,35 @@ def foreign_calendars_day_result_text(
 def build_foreign_calendars_keyboard(
     *,
     calendars: list[tuple[str, str]],
+    url_tokens: list[str],
 ) -> dict:
     rows: list[list[dict[str, str]]] = []
-    for idx, (name, _url) in enumerate(calendars):
+    for (name, _url), token in zip(calendars, url_tokens):
         label = name if len(name) <= 60 else name[:57] + "…"
         rows.append(
-            [{"text": label, "callback_data": f"{CB_FOREIGN_PICK_PREFIX}{idx}"}]
+            [{"text": label, "callback_data": f"{CB_FOREIGN_PICK_PREFIX}{token}"}]
         )
     rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_FOREIGN_CLOSE}])
     return {"inline_keyboard": rows}
 
 
-def build_foreign_day_keyboard(*, calendar_idx: int) -> dict:
+def build_foreign_day_keyboard(*, calendar_token: str) -> dict:
     return {
         "inline_keyboard": [
             [
                 {
                     "text": BUTTON_TODAY,
-                    "callback_data": f"{CB_FOREIGN_DAY_PREFIX}{calendar_idx}:0",
+                    "callback_data": f"{CB_FOREIGN_DAY_PREFIX}{calendar_token}:0",
                 },
                 {
                     "text": BUTTON_TOMORROW,
-                    "callback_data": f"{CB_FOREIGN_DAY_PREFIX}{calendar_idx}:1",
+                    "callback_data": f"{CB_FOREIGN_DAY_PREFIX}{calendar_token}:1",
                 },
             ],
             [
                 {
                     "text": BUTTON_DAY_AFTER,
-                    "callback_data": f"{CB_FOREIGN_DAY_PREFIX}{calendar_idx}:2",
+                    "callback_data": f"{CB_FOREIGN_DAY_PREFIX}{calendar_token}:2",
                 },
             ],
             [{"text": "⬅️ К списку", "callback_data": CB_FOREIGN_BACK}],

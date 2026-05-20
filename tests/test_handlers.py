@@ -166,6 +166,54 @@ def test_recognize_message_foreign_and_calendar_sources():
     assert isinstance(recognize_message(BUTTON_DISCONNECT_CALENDAR), DisconnectCommand)
 
 
+def test_connect_command_sends_intro_with_webapp_keyboard():
+    """`/connect` отправляет интро + Web App-кнопку, не падает на reply_markup."""
+    from satellite.messages_ru import (
+        BUTTON_CONNECT_CALENDAR,
+        BUTTON_RECONNECT_CALENDAR,
+        CALENDAR_NOT_CONNECTED_HTML,
+        CALENDAR_RECONNECT_INTRO_HTML,
+    )
+
+    ctx = _access_ctx(approved=True, has_calendar=False)
+    msg = IncomingMessage(
+        update_id=401,
+        chat_id=7777,
+        user_id=7777,
+        username="alice",
+        display_name=None,
+        text="/connect",
+    )
+    handle_message(ctx, msg)
+
+    ctx.telegram.send_message.assert_called_once()
+    call = ctx.telegram.send_message.call_args
+    assert call[0][0] == 7777
+    assert call[0][1] == CALENDAR_NOT_CONNECTED_HTML
+    markup = call.kwargs.get("reply_markup")
+    assert isinstance(markup, dict)
+    assert markup["keyboard"][0][0]["text"] == BUTTON_CONNECT_CALENDAR
+    assert "web_app" in markup["keyboard"][0][0]
+
+    ctx2 = _access_ctx(approved=True, has_calendar=True)
+    handle_message(
+        ctx2,
+        IncomingMessage(
+            update_id=402,
+            chat_id=7778,
+            user_id=7778,
+            username="alice",
+            display_name=None,
+            text="/connect",
+        ),
+    )
+    call2 = ctx2.telegram.send_message.call_args
+    assert call2[0][1] == CALENDAR_RECONNECT_INTRO_HTML
+    markup2 = call2.kwargs.get("reply_markup")
+    assert isinstance(markup2, dict)
+    assert markup2["keyboard"][0][0]["text"] == BUTTON_RECONNECT_CALENDAR
+
+
 def test_settings_command_clears_create_fsm_and_opens_hub():
     from satellite.messages_ru import BUTTON_SETTINGS, SETTINGS_HUB_TEXT
 
