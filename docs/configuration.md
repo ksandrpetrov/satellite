@@ -1,0 +1,190 @@
+# Конфигурация
+
+Настройки читаются из `.env` и переменных окружения. Файл по умолчанию:
+
+```text
+.env
+```
+
+Создать из примера:
+
+```bash
+cp .env.example .env
+```
+
+## Обязательные переменные для production-бота
+
+```env
+TELEGRAM_BOT_TOKEN=123456:your-bot-token
+TOKEN_ENCRYPTION_KEY=replace-with-fernet-key
+ADMIN_TELEGRAM_IDS=111111111
+WEBAPP_BASE_URL=https://your-domain.example/connect
+```
+
+- `TELEGRAM_BOT_TOKEN` — токен от [@BotFather](https://t.me/BotFather).
+- `TOKEN_ENCRYPTION_KEY` — симметричный ключ Fernet для шифрования
+  пользовательских CalDAV-credentials в `logs/users.json`. Сгенерировать:
+
+  ```bash
+  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+  ```
+
+  При смене ключа старые записи в `users.json` перестанут расшифровываться —
+  пользователям нужно подключить календарь заново.
+- `ADMIN_TELEGRAM_IDS` — Telegram user id админов через запятую или `;`.
+  Только они одобряют заявки на доступ и видят `/pending`.
+- `WEBAPP_BASE_URL` — публичный HTTPS URL страницы «Подключение календаря»
+  (Telegram Web App). Клиент открывает этот адрес; reverse proxy проксирует
+  на локальный сервер бота (`WEBAPP_HOST` / `WEBAPP_PORT`).
+
+Глобальные `MAIL_LOGIN`, `MAIL_APP_PASSWORD`, `USER_CALENDAR_MAP` и
+`TARGET_CALENDAR_NAME` **больше не читаются**. Учётные данные Mail.ru и URL
+календаря хранятся per-user в `logs/users.json` (зашифрованный blob).
+
+## Telegram Web App (встроенный HTTP)
+
+```env
+WEBAPP_HOST=127.0.0.1
+WEBAPP_PORT=8080
+```
+
+- `WEBAPP_HOST` / `WEBAPP_PORT` — bind встроенного HTTP-сервера в процессе бота
+  (отдельный поток). Снаружи доступ только через reverse proxy по
+  `WEBAPP_BASE_URL`; прямой проброс порта в интернет не нужен.
+
+## План и CalDAV (глобальные флаги фильтрации)
+
+```env
+TZ_NAME=Europe/Moscow
+HIDE_ALL_DAY_EVENTS=true
+HIDE_LUNCH_EVENTS=true
+CALDAV_CACHE_TTL_SEC=300
+```
+
+- `HIDE_ALL_DAY_EVENTS` скрывает all-day события из расписания.
+- `HIDE_LUNCH_EVENTS` скрывает события с `🍕` и словами `завтрак`, `обед`,
+  `ужин`; они остаются в нижней строке приёма пищи в дайджесте.
+- `TZ_NAME` задаёт локальную зону календарного плана и дефолт для новых
+  подписок на дайджест.
+- Окно рабочего дня и обед для метрик busy/free **не** настраиваются через env:
+  дефолты в коде — `10:00–19:00`, обед `13:00–14:00`
+  (`satellite/calendar/stats.py`, `WorkdayOptions`).
+- `CALDAV_CACHE_TTL_SEC` — TTL кэша discovery principal+calendars (0 = без кэша).
+
+Опциональный `CALDAV_URL` в `.env` больше не используется конфигом бота:
+endpoint выбирается при подключении календаря пользователя.
+
+## Telegram (тюнинг бота)
+
+```env
+BOT_WORKERS=4
+BOT_LONG_POLL_SEC=30
+```
+
+- `BOT_WORKERS` — размер worker pool для обработки updates.
+- `BOT_LONG_POLL_SEC` — timeout `getUpdates`.
+
+`TELEGRAM_CHAT_ID` не нужен основному боту — каждый пользователь общается с ботом
+в своём личном чате, и `chat_id` берётся из апдейта или из `logs/users.json`.
+
+## Пользователи и доступ (`logs/users.json`)
+
+Единственный источник правды по авторизации — JSON-store
+`satellite/users.py` → `logs/users.json`.
+
+Поля записи (`UserRecord`):
+
+```text
+telegram_user_id   # ключ в JSON (int)
+chat_id            # последний известный chat
+username           # Telegram @username (нормализован)
+display_name       # имя из Telegram
+status             # pending | approved | rejected | blocked
+access_request_*   # состояние заявки на доступ
+calendar_provider  # например mailru
+encrypted_credentials  # Fernet-blob (login + app password)
+calendar_status    # disconnected | connected | invalid | error
+primary_calendar_url   # CalDAV URL календаря (без display name — PII)
+```
+
+Поток для нового пользователя:
+
+1. `/start` — создаётся или обновляется запись, при необходимости открывается
+   заявка `access_request_status=pending`.
+2. Админы из `ADMIN_TELEGRAM_IDS` одобряют через `/pending` (или отклоняют).
+3. После `status=approved` пользователь подключает календарь через Web App;
+   credentials шифруются `TokenVault` и сохраняются в store.
+4. Команды плана и дайджест доступны только при `has_calendar` (approved +
+   connected + непустые credentials).
+
+Запись на диск атомарная: `tmp + fsync + os.replace` (как у `subscriptions.json`).
+
+## Digest
+
+Новые подписчики получают дефолты в `logs/subscriptions.json`:
+
+```text
+digest_enabled = false
+digest_days = weekdays
+digest_time = 09:00
+digest_timezone = Europe/Moscow
+```
+
+Персональные значения меняются через `/settings`.
+
+Глобальная переменная:
+
+```env
+DIGEST_MODE=tomorrow
+```
+
+Допустимые значения:
+
+- `today`;
+- `tomorrow`;
+- `day_after_tomorrow`.
+
+Она задаёт дату автоматического дайджеста. Время и дни отправки — per-user
+в `logs/subscriptions.json`, не в env.
+
+Значение `DIGEST_MODE` из `.env` имеет приоритет над уже заданной переменной
+окружения процесса — см. `_load_digest_config` в `satellite/config.py`.
+
+Глобальные `DIGEST_TIME`, `DIGEST_WEEKDAYS_ONLY` и `DIGEST_CATCHUP_WINDOW_HOURS`
+удалены.
+
+## Weather
+
+Погода выключена по умолчанию.
+
+```env
+WEATHER_ENABLED=true
+WEATHER_LOCATION={"name": "Москва", "latitude": 55.7558, "longitude": 37.6173, "timezone": "Europe/Moscow"}
+WEATHER_SHOW_NORMAL=true
+WEATHER_CACHE_TTL_MINUTES=30
+```
+
+Можно задать location отдельными переменными:
+
+```env
+WEATHER_LOCATION_NAME=Москва
+WEATHER_LATITUDE=55.7558
+WEATHER_LONGITUDE=37.6173
+WEATHER_TIMEZONE=Europe/Moscow
+```
+
+`WEATHER_SHOW_NORMAL=false` скрывает строку погоды, если нет предупреждений.
+
+## Logging
+
+```env
+LOG_LEVEL=INFO
+```
+
+Допустимые практические значения: `DEBUG`, `INFO`, `WARNING`, `ERROR`.
+
+## Файлы, которые нельзя коммитить
+
+- `.env`;
+- `logs/` (включая `users.json`, `subscriptions.json`, `bot.log`, lock, offset);
+- `venv/`.

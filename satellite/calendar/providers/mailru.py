@@ -1,0 +1,176 @@
+"""Mail.ru / Mailroom CalDAV provider."""
+
+from __future__ import annotations
+
+import logging
+from datetime import date, tzinfo
+
+from ..caldav_client import CalDAVError, CalDAVService
+from ...security.token_vault import ProviderCredentials
+from .base import (
+    CalendarConnectionStatus,
+    CalendarEventPayload,
+    CalendarEventRef,
+    CalendarProviderError,
+    Event,
+    UserCalendarContext,
+)
+
+log = logging.getLogger(__name__)
+
+PROVIDER_ID = "mailru"
+DEFAULT_CALDAV_URL = "https://calendar.mail.ru/"
+
+
+class MailruCalendarProvider:
+    provider_id = PROVIDER_ID
+
+    def __init__(self, *, cache_ttl_sec: int = 300) -> None:
+        self._cache_ttl_sec = cache_ttl_sec
+
+    def validate_credentials(
+        self, credentials: ProviderCredentials
+    ) -> tuple[bool, str | None, str | None]:
+        if credentials.is_empty():
+            return False, None, "INVALID_CREDENTIALS"
+        try:
+            service = self._service(credentials)
+            primary = service.primary_calendar_url()
+            if not primary:
+                return False, None, "NO_CALENDAR"
+            return True, primary, None
+        except CalDAVError:
+            log.info("Mail.ru credential validation failed for login domain only")
+            return False, None, "AUTH_FAILED"
+        except Exception:  # noqa: BLE001
+            log.exception("Unexpected Mail.ru validation error")
+            return False, None, "CALENDAR_ERROR"
+
+    def get_connection_status(
+        self, context: UserCalendarContext
+    ) -> CalendarConnectionStatus:
+        ok, _url, code = self.validate_credentials(context.credentials)
+        status = "connected" if ok else "invalid"
+        return CalendarConnectionStatus(
+            connected=ok,
+            provider_id=self.provider_id,
+            status=status if ok else (code or "error").lower(),
+        )
+
+    def list_events(
+        self,
+        context: UserCalendarContext,
+        *,
+        start_date: date,
+        end_date: date,
+        tz: tzinfo,
+    ) -> list[Event]:
+        service = self._service(context.credentials)
+        calendar_url = context.primary_calendar_url
+        if not calendar_url:
+            raise CalendarProviderError(
+                "Календарь не настроен.", error_code="NO_CALENDAR"
+            )
+        try:
+            return service.fetch_events_in_range(
+                start_date,
+                end_date,
+                tz=tz,
+                calendar_url=calendar_url,
+            )
+        except CalDAVError as exc:
+            raise CalendarProviderError(
+                "Календарь временно недоступен. Попробуйте позже.",
+                error_code="CALDAV_UNAVAILABLE",
+            ) from exc
+
+    def create_event(
+        self,
+        context: UserCalendarContext,
+        payload: CalendarEventPayload,
+        *,
+        tz: tzinfo,
+    ) -> CalendarEventRef:
+        service = self._service(context.credentials)
+        calendar_url = context.primary_calendar_url
+        if not calendar_url:
+            raise CalendarProviderError(
+                "Календарь не настроен.", error_code="NO_CALENDAR"
+            )
+        start = payload.start if payload.start.tzinfo else payload.start.replace(tzinfo=tz)
+        end = payload.end if payload.end.tzinfo else payload.end.replace(tzinfo=tz)
+        try:
+            uid, url = service.create_event(
+                calendar_url=calendar_url,
+                title=payload.title,
+                start=start,
+                end=end,
+                location=payload.location,
+                description=payload.description,
+            )
+        except CalDAVError as exc:
+            raise CalendarProviderError(
+                "Не удалось создать событие. Проверьте права доступа.",
+                error_code="CREATE_FAILED",
+            ) from exc
+        return CalendarEventRef(uid=uid, url=url)
+
+    def update_event(
+        self,
+        context: UserCalendarContext,
+        event_ref: CalendarEventRef,
+        payload: CalendarEventPayload,
+        *,
+        tz: tzinfo,
+    ) -> CalendarEventRef:
+        if not event_ref.url:
+            raise CalendarProviderError(
+                "Не удалось определить событие для изменения.",
+                error_code="MISSING_EVENT_URL",
+            )
+        service = self._service(context.credentials)
+        start = payload.start if payload.start.tzinfo else payload.start.replace(tzinfo=tz)
+        end = payload.end if payload.end.tzinfo else payload.end.replace(tzinfo=tz)
+        try:
+            service.update_event(
+                event_ref.url,
+                title=payload.title,
+                start=start,
+                end=end,
+                location=payload.location,
+                description=payload.description,
+            )
+        except CalDAVError as exc:
+            raise CalendarProviderError(
+                "Не удалось изменить событие.",
+                error_code="UPDATE_FAILED",
+            ) from exc
+        return CalendarEventRef(uid=event_ref.uid, url=event_ref.url)
+
+    def delete_event(
+        self,
+        context: UserCalendarContext,
+        event_ref: CalendarEventRef,
+    ) -> None:
+        if not event_ref.url:
+            raise CalendarProviderError(
+                "Не удалось определить событие для удаления.",
+                error_code="MISSING_EVENT_URL",
+            )
+        service = self._service(context.credentials)
+        try:
+            service.delete_event(event_ref.url)
+        except CalDAVError as exc:
+            raise CalendarProviderError(
+                "Не удалось удалить событие.",
+                error_code="DELETE_FAILED",
+            ) from exc
+
+    def _service(self, credentials: ProviderCredentials) -> CalDAVService:
+        return CalDAVService(
+            caldav_url=DEFAULT_CALDAV_URL,
+            login=credentials.login.strip(),
+            app_password=credentials.secret,
+            cache_ttl_sec=self._cache_ttl_sec,
+            partstat_refresh_limit=0,
+        )

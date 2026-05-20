@@ -1,0 +1,198 @@
+"""Точки входа для апдейтов Telegram: routing → конкретный сценарий.
+
+`handle_message` / `handle_callback_query` ловят любые исключения внутри
+сценариев, чтобы один кривой апдейт не валил процесс бота. Все безопасные
+текстовые реакции — в ``messages_ru``.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from ...messages_ru import BOT_KEYBOARD_HINT
+from ..api import TelegramError
+from .access import (
+    ensure_calendar_access,
+    ensure_calendar_connected,
+    handle_start_or_help,
+)
+from .admin import handle_pending_command, is_pending_command, route_admin_callback
+from .calendar_create import handle_create_text_input, route_create_callback, start_create_event
+from .calendar_list import handle_upcoming_events
+from .calendar_manage import route_manage_callback
+from .calendar_setup import (
+    handle_check_calendar,
+    handle_connect_calendar_button,
+    handle_disconnect_calendar,
+)
+from .context import HandlerContext, IncomingCallback, IncomingMessage
+from .delivery import notify_handler_failure, safe_answer_callback, send
+from .plan import handle_plan
+from .routing import (
+    is_check_calendar_request,
+    is_command_like_message,
+    is_connect_calendar_request,
+    is_create_event_request,
+    is_digest_settings_request,
+    is_disconnect_calendar_request,
+    is_start_command,
+    is_start_or_help_command,
+    is_upcoming_request,
+    parse_command_mode,
+    parse_subscription_action,
+)
+from .settings import (
+    handle_digest_time_input,
+    handle_open_digest_settings,
+    route_settings_callback,
+)
+from .subscription import handle_subscription_action
+
+log = logging.getLogger(__name__)
+
+
+# --- диспетчер: сообщения --------------------------------------------------
+
+
+def handle_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
+    """Точка входа для сообщений. Все исключения логируются и не пробрасываются."""
+    if msg.chat_id is None:
+        return
+
+    if is_start_or_help_command(msg.text):
+        try:
+            handle_start_or_help(
+                ctx,
+                msg,
+                is_start=is_start_command(msg.text),
+            )
+        except TelegramError as exc:
+            log.error("Telegram error while handling user_id=%s: %s", msg.user_id, exc)
+        except Exception:  # noqa: BLE001 - один апдейт не должен валить бота
+            log.exception("Unexpected error while handling user_id=%s", msg.user_id)
+            notify_handler_failure(ctx, msg.chat_id)
+        return
+
+    if is_pending_command(msg.text):
+        try:
+            handle_pending_command(ctx, msg)
+        except TelegramError as exc:
+            log.error("Telegram error in /pending user_id=%s: %s", msg.user_id, exc)
+        except Exception:  # noqa: BLE001
+            log.exception("Unexpected error in /pending user_id=%s", msg.user_id)
+            notify_handler_failure(ctx, msg.chat_id)
+        return
+
+    try:
+        _route_message(ctx, msg)
+    except TelegramError as exc:
+        log.error("Telegram error while handling user_id=%s: %s", msg.user_id, exc)
+    except Exception:  # noqa: BLE001 - один апдейт не должен валить бота
+        log.exception("Unexpected error while handling user_id=%s", msg.user_id)
+        notify_handler_failure(ctx, msg.chat_id)
+
+
+def _route_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
+    if (
+        msg.chat_id is not None
+        and ctx.digest_state.is_waiting_for_time(msg.chat_id)
+        and msg.text is not None
+        and not is_command_like_message(msg.text)
+    ):
+        if ensure_calendar_access(ctx, msg):
+            handle_digest_time_input(ctx, msg)
+        return
+
+    if handle_create_text_input(ctx, msg):
+        return
+
+    if is_connect_calendar_request(msg.text):
+        handle_connect_calendar_button(ctx, msg)
+        return
+    if is_check_calendar_request(msg.text):
+        handle_check_calendar(ctx, msg)
+        return
+    if is_disconnect_calendar_request(msg.text):
+        handle_disconnect_calendar(ctx, msg)
+        return
+    if is_upcoming_request(msg.text):
+        handle_upcoming_events(ctx, msg)
+        return
+    if is_create_event_request(msg.text):
+        start_create_event(ctx, msg)
+        return
+
+    if is_digest_settings_request(msg.text):
+        if ensure_calendar_access(ctx, msg):
+            handle_open_digest_settings(ctx, msg)
+        return
+
+    action = parse_subscription_action(msg.text)
+    if action is not None:
+        if ensure_calendar_access(ctx, msg):
+            handle_subscription_action(ctx, msg, action)
+        return
+
+    mode = parse_command_mode(msg.text)
+    if mode is not None:
+        if ensure_calendar_connected(ctx, msg):
+            handle_plan(ctx, msg, mode)
+        return
+
+    if ensure_calendar_access(ctx, msg):
+        _handle_unknown(ctx, msg)
+
+
+# --- диспетчер: callback_query ---------------------------------------------
+
+
+def handle_callback_query(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    if cb.chat_id is None or cb.user_id is None:
+        safe_answer_callback(ctx, cb)
+        return
+
+    if not ctx.digest_state.claim_callback(cb.callback_query_id):
+        log.info(
+            "Drop duplicate callback_query id=%s chat=%s data=%r",
+            cb.callback_query_id,
+            cb.chat_id,
+            cb.data,
+        )
+        safe_answer_callback(ctx, cb)
+        return
+
+    try:
+        _route_callback(ctx, cb)
+    except TelegramError as exc:
+        log.error("Telegram error in callback user_id=%s: %s", cb.user_id, exc)
+        safe_answer_callback(ctx, cb)
+    except Exception:  # noqa: BLE001 - не валим бота
+        log.exception("Unexpected error in callback user_id=%s", cb.user_id)
+        safe_answer_callback(ctx, cb)
+        notify_handler_failure(ctx, cb.chat_id)
+
+
+def _route_callback(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    if route_admin_callback(ctx, cb):
+        return
+    if route_create_callback(ctx, cb):
+        return
+    if route_manage_callback(ctx, cb):
+        return
+    if route_settings_callback(ctx, cb):
+        return
+    log.info("Unknown callback_data: %r", cb.data)
+    safe_answer_callback(ctx, cb)
+
+
+# --- unknown ---------------------------------------------------------------
+
+
+def _handle_unknown(ctx: HandlerContext, msg: IncomingMessage) -> None:
+    send(ctx, msg.chat_id, BOT_KEYBOARD_HINT)
+    log.info(
+        "Sent unknown-command hint user_id=%s text=%r (update_id=%s)",
+        msg.user_id,
+        msg.text,
+        msg.update_id,
+    )

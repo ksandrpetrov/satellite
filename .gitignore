@@ -1,0 +1,44 @@
+# Secrets and runtime data
+.env
+logs/
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Tests and tooling caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*~
+
+# Cursor local debug logs
+.cursor/
+
+# macOS
+.DS_Store
+._*
+
+# Legacy / local artifacts
+calendar_archive.json
+user-calendar-map.json
