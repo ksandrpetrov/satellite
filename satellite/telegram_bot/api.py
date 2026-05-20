@@ -151,13 +151,29 @@ class TelegramClient:
             data["message_thread_id"] = message_thread_id
         if message_effect_id:
             data["message_effect_id"] = message_effect_id
-        return self._call(
-            "sendPhoto",
-            data=data,
-            files=files,
-            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
-            max_retries=_SEND_MESSAGE_MAX_RETRIES,
-        )
+        try:
+            return self._call(
+                "sendPhoto",
+                data=data,
+                files=files,
+                timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+                max_retries=_SEND_MESSAGE_MAX_RETRIES,
+            )
+        except TelegramError as exc:
+            if message_effect_id and "message_effect" in str(exc).lower():
+                log.info(
+                    "sendPhoto message_effect_id rejected, retrying without effect: %s",
+                    exc,
+                )
+                data.pop("message_effect_id", None)
+                return self._call(
+                    "sendPhoto",
+                    data=data,
+                    files=files,
+                    timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+                    max_retries=_SEND_MESSAGE_MAX_RETRIES,
+                )
+            raise
 
     def answer_callback_query(
         self,

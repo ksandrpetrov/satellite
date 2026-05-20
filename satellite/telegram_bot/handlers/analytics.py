@@ -8,6 +8,7 @@ from datetime import datetime
 from ...analytics_service import build_week_analytics
 from ...calendar.constants import ANALYTICS_WORKDAY_10_19, ANALYTICS_WORKDAY_9_18
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
+from ..api import TelegramError
 from ...messages_ru import (
     ANALYTICS_FETCH_STATUS,
     ANALYTICS_SAVED_TOAST,
@@ -95,15 +96,27 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         safe_answer_callback(ctx, cb)
         return
 
-    stream.dismiss()
     effect = EFFECT_SPARKLES if is_private_chat(cb.chat_id) else None
-    ctx.telegram.send_photo(
-        cb.chat_id,
-        png,
-        caption=caption,
-        show_caption_above_media=True,
-        message_effect_id=effect,
-    )
+    try:
+        ctx.telegram.send_photo(
+            cb.chat_id,
+            png,
+            caption=caption,
+            show_caption_above_media=True,
+            message_effect_id=effect,
+        )
+    except TelegramError as exc:
+        log.error(
+            "Analytics sendPhoto failed user_id=%s chat_id=%s: %s",
+            cb.user_id,
+            cb.chat_id,
+            exc,
+        )
+        stream.finish(ERR_GENERIC_HANDLER_TEXT)
+        safe_answer_callback(ctx, cb)
+        return
+
+    stream.dismiss()
     safe_answer_callback(ctx, cb)
     log.info("Sent weekly analytics user_id=%s chat_id=%s", cb.user_id, cb.chat_id)
 
