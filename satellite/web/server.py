@@ -201,6 +201,23 @@ def _read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _extract_init_data(
+    handler: BaseHTTPRequestHandler,
+    body: dict[str, Any] | None = None,
+) -> str:
+    """initData из заголовка, JSON-тела или query (nginx часто не проксирует кастомные headers)."""
+    init_data = (handler.headers.get("X-Telegram-Init-Data") or "").strip()
+    if init_data:
+        return init_data
+    if body is not None:
+        from_body = str(body.get("initData") or "").strip()
+        if from_body:
+            return from_body
+    qs = parse_qs(urlparse(handler.path).query)
+    from_query = (qs.get("initData") or [""])[0].strip()
+    return from_query
+
+
 def _validated_user(
     handler: BaseHTTPRequestHandler,
     users: UserStore,
@@ -214,9 +231,7 @@ def _validated_user(
     чтобы хендлер сразу завершился. Web App доступен только тем, кому
     одобрили заявку на доступ через админский флоу.
     """
-    init_data = handler.headers.get("X-Telegram-Init-Data") or ""
-    if not init_data and body is not None:
-        init_data = str(body.get("initData") or "")
+    init_data = _extract_init_data(handler, body)
     try:
         validated = validate_init_data(init_data, bot_token=bot_token)
     except InitDataError as exc:

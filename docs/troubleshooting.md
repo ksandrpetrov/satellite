@@ -154,11 +154,15 @@ journalctl -u satellite-bot.service -n 50 | grep 'Reject WebApp'
 - `Invalid initData signature` — неверный токен в `.env`.
 - `initData expired` — закройте Web App и откройте снова.
 
-В nginx для API проксируйте заголовок (см. [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example)):
+В nginx **обязательно** проксируйте заголовок (иначе в логе `Missing initData`):
 
 ```nginx
 proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
 ```
+
+В оба `location`: `/connect` и `/api/calendar/`. Затем `sudo nginx -t && sudo systemctl reload nginx`.
+
+Начиная с актуальной версии кода, `initData` также передаётся в query (`?initData=...`) — работает даже если заголовок режется.
 
 ## Telegram token неверный (HTTP 401 Unauthorized)
 

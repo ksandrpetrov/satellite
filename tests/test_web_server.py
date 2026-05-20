@@ -167,6 +167,19 @@ def test_status_for_approved_without_calendar(started_server):
     assert body == {"connected": False, "status": "disconnected", "provider": None}
 
 
+def test_status_accepts_init_data_in_query_without_header(started_server):
+    """nginx иногда не проксирует X-Telegram-Init-Data — дублируем initData в query."""
+    from urllib.parse import quote
+
+    _server, users, _calendar, base = started_server
+    _approve_user(users, 101)
+    init = _make_init_data(101)
+    url = base + "/api/calendar/status?initData=" + quote(init, safe="")
+    status, body = _http("GET", url)
+    assert status == 200
+    assert body["connected"] is False
+
+
 def test_connect_rejects_pending_user(started_server):
     _server, users, _calendar, base = started_server
     users.upsert_from_telegram(

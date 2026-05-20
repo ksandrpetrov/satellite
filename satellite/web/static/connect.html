@@ -337,7 +337,8 @@
         },
       };
       if (body !== undefined) opts.body = JSON.stringify({ ...body, initData });
-      const resp = await fetch(path, opts);
+      const q = (path.includes('?') ? '&' : '?') + 'initData=' + encodeURIComponent(initData);
+      const resp = await fetch(path + q, opts);
       let data = {};
       try { data = await resp.json(); } catch (_) { data = {}; }
       if (!resp.ok) {
