@@ -92,9 +92,6 @@ python -m pytest tests/test_weather.py
 `normalize_caldav_event`; в тестах CalDAV-словари не подаём в `calculate_day_stats`
 напрямую.
 
-Autouse-фикстура обнуляет `TYPING_DISPLAY_SECONDS`, чтобы тесты не ждали ~5 с
-после `run_with_typing_action`.
-
 ## Что покрыто
 
 **Users / security** (по мере появления тестов):

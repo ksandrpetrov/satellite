@@ -24,7 +24,6 @@ def test_returns_fn_result() -> None:
         1,
         lambda: "digest",
         interval_seconds=10.0,
-        wait_for_typing_to_clear=False,
     )
 
     assert out == "digest"
@@ -47,7 +46,6 @@ def test_send_chat_action_called_immediately() -> None:
         42,
         fn,
         interval_seconds=60.0,
-        wait_for_typing_to_clear=False,
     )
 
     assert events[0] == "typing"
@@ -67,7 +65,6 @@ def test_repeated_send_for_long_fn() -> None:
         9,
         slow,
         interval_seconds=0.05,
-        wait_for_typing_to_clear=False,
     )
 
     assert telegram.send_chat_action.call_count >= 3
@@ -83,7 +80,6 @@ def test_send_chat_action_failure_does_not_break_fn() -> None:
             1,
             lambda: 123,
             interval_seconds=0.02,
-            wait_for_typing_to_clear=False,
         )
         == 123
     )
@@ -103,7 +99,6 @@ def test_fn_exception_propagates() -> None:
             1,
             boom,
             interval_seconds=0.05,
-            wait_for_typing_to_clear=False,
         )
 
 
@@ -116,7 +111,6 @@ def test_background_thread_stopped_after_fn() -> None:
         1,
         lambda: None,
         interval_seconds=0.05,
-        wait_for_typing_to_clear=False,
     )
 
     time.sleep(0.06)
@@ -136,7 +130,6 @@ def test_no_stale_typing_thread_after_slow_fn() -> None:
         3,
         work,
         interval_seconds=0.04,
-        wait_for_typing_to_clear=False,
     )
 
     deadline = time.monotonic() + 2.0
@@ -145,8 +138,8 @@ def test_no_stale_typing_thread_after_slow_fn() -> None:
     assert not _typing_worker_threads()
 
 
-def test_waits_for_typing_indicator_to_clear_before_returning() -> None:
-    """После fn() ждём остаток времени жизни typing, чтобы он не пережил итог."""
+def test_returns_immediately_after_fn() -> None:
+    """После fn() не должно быть никаких искусственных sleep — результат сразу."""
     telegram = MagicMock()
     telegram.send_chat_action = MagicMock(return_value=True)
 
@@ -156,77 +149,10 @@ def test_waits_for_typing_indicator_to_clear_before_returning() -> None:
         7,
         lambda: "done",
         interval_seconds=10.0,
-        wait_for_typing_to_clear=True,
-        typing_display_seconds=0.2,
     )
     elapsed = time.monotonic() - started
 
-    # Первый typing уходит сразу, fn почти мгновенный — должны ждать ~ весь
-    # typing_display_seconds. Допускаем небольшой запас в обе стороны.
-    assert elapsed >= 0.18, f"expected wait for typing to clear, got {elapsed:.3f}s"
-    assert elapsed < 1.0, f"wait should be bounded by typing_display_seconds, got {elapsed:.3f}s"
-
-
-def test_wait_skipped_when_disabled() -> None:
-    telegram = MagicMock()
-    telegram.send_chat_action = MagicMock(return_value=True)
-
-    started = time.monotonic()
-    run_with_typing_action(
-        telegram,
-        7,
-        lambda: "done",
-        interval_seconds=10.0,
-        wait_for_typing_to_clear=False,
-        typing_display_seconds=0.5,
-    )
-    elapsed = time.monotonic() - started
-
-    assert elapsed < 0.2, f"expected no wait, got {elapsed:.3f}s"
-
-
-def test_wait_skipped_when_typing_failed_to_send() -> None:
-    """Если sendChatAction вообще не доехал до Telegram, ждать нечего."""
-    telegram = MagicMock()
-    telegram.send_chat_action = MagicMock(side_effect=RuntimeError("network"))
-
-    started = time.monotonic()
-    run_with_typing_action(
-        telegram,
-        7,
-        lambda: "done",
-        interval_seconds=10.0,
-        wait_for_typing_to_clear=True,
-        typing_display_seconds=0.5,
-    )
-    elapsed = time.monotonic() - started
-
-    assert elapsed < 0.2, f"no typing was sent, wait should be skipped, got {elapsed:.3f}s"
-
-
-def test_wait_accounts_for_time_already_elapsed_since_last_typing() -> None:
-    """Если fn() сам шёл достаточно долго, оставшегося ожидания должно быть мало."""
-    telegram = MagicMock()
-    telegram.send_chat_action = MagicMock(return_value=True)
-
-    def slow() -> str:
-        time.sleep(0.3)
-        return "done"
-
-    started = time.monotonic()
-    run_with_typing_action(
-        telegram,
-        7,
-        slow,
-        interval_seconds=10.0,  # никаких повторных typing внутри fn
-        wait_for_typing_to_clear=True,
-        typing_display_seconds=0.2,
-    )
-    elapsed = time.monotonic() - started
-
-    # fn идёт 0.3s, typing живёт 0.2s — он давно истёк к моменту возврата.
-    # Ожидаем, что общий тайминг ≈ fn без заметной доплаты на typing.
-    assert elapsed < 0.5, f"expected no extra wait, got {elapsed:.3f}s"
+    assert elapsed < 0.2, f"expected no artificial wait, got {elapsed:.3f}s"
 
 
 def test_no_typing_sent_after_stop_signal() -> None:
@@ -241,8 +167,6 @@ def test_no_typing_sent_after_stop_signal() -> None:
     telegram.send_chat_action = MagicMock(side_effect=record_typing)
 
     def slow() -> str:
-        # Достаточно долго, чтобы фоновый поток вышел из stop.wait по таймауту
-        # и попытался отправить ещё один typing ровно на финише.
         time.sleep(0.12)
         return "done"
 
@@ -258,10 +182,10 @@ def test_no_typing_sent_after_stop_signal() -> None:
         9,
         fn,
         interval_seconds=0.05,
-        wait_for_typing_to_clear=False,
     )
 
     # Любой typing, отправленный после возврата fn(), означает, что индикатор
-    # «печатает» переживёт итоговое сообщение — этого допускать нельзя.
+    # «печатает» переживёт итоговое сообщение дольше естественных ~5 с — этого
+    # допускать нельзя.
     after_fn = [t for t in call_times if t > stop_observed_at[0]]
     assert not after_fn, f"typing leaked after fn returned: {after_fn}"
