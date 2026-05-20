@@ -104,6 +104,23 @@ def is_declined_event_for_user(event: Event, login: str) -> bool:
     return False
 
 
+def _login_match_needles(login: str) -> list[str]:
+    """Варианты логина для поиска в строке ATTENDEE (полный email и local-part)."""
+    normalized = (login or "").strip().casefold()
+    if not normalized:
+        return []
+    needles = [normalized]
+    local, sep, _domain = normalized.partition("@")
+    if sep and local and local not in needles:
+        needles.append(local)
+    return needles
+
+
+def _attendee_line_matches_login(attendee_line: str, login: str) -> bool:
+    blob = (attendee_line or "").casefold()
+    return any(needle in blob for needle in _login_match_needles(login))
+
+
 def is_pending_invitation_for_user(event: Event, login: str) -> bool:
     """True, если пользователю нужно ответить на приглашение (NEEDS-ACTION / DELEGATED)."""
     status = user_partstat(event, login)
@@ -135,7 +152,7 @@ def user_partstat(event: Event, login: str) -> str | None:
     best: str | None = None
     for attendee in event.get("attendees", []):
         attendee_norm = str(attendee).casefold()
-        if login_norm not in attendee_norm:
+        if not _attendee_line_matches_login(attendee_norm, login):
             continue
         idx = attendee_norm.find("partstat=")
         if idx < 0:

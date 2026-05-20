@@ -75,6 +75,19 @@ def _bump_vevent_dtstamp(component: Any) -> None:
     component.add("dtstamp", datetime.now(tz=timezone.utc))
 
 
+def _bump_vevent_sequence(component: Any) -> None:
+    """Инкремент SEQUENCE перед PUT (Mail.ru отклоняет устаревшую версию без него)."""
+    seq = component.get("SEQUENCE")
+    try:
+        next_seq = int(seq) + 1 if seq is not None else 0
+    except (TypeError, ValueError):
+        next_seq = 1
+    for prop in ("sequence", "SEQUENCE"):
+        if prop in component:
+            del component[prop]
+    component.add("sequence", next_seq)
+
+
 def _update_vevent_attendee_partstat(
     component: Any, login_variants: Sequence[str], partstat: str
 ) -> bool:
@@ -90,6 +103,24 @@ def _update_vevent_attendee_partstat(
         attendee.params["PARTSTAT"] = partstat
         updated = True
     return updated
+
+
+def _update_vevent_pending_attendee_partstat(component: Any, partstat: str) -> bool:
+    """Обновляет первого ATTENDEE с NEEDS-ACTION/DELEGATED, если логин не совпал.
+
+    Mail.ru иногда кладёт в ICS другой mailto, чем логин CalDAV (алиас/CN), а
+    единственная строка с ожиданием ответа — с PARTSTAT=NEEDS-ACTION.
+    """
+    raw_attendees = component.get("ATTENDEE")
+    if raw_attendees is None:
+        return False
+    items = raw_attendees if isinstance(raw_attendees, list) else [raw_attendees]
+    for attendee in items:
+        blob = _attendee_to_str(attendee).casefold()
+        if "partstat=needs-action" in blob or "partstat=delegated" in blob:
+            attendee.params["PARTSTAT"] = partstat
+            return True
+    return False
 
 
 def _add_vevent_attendee(component: Any, login: str, partstat: str) -> None:
@@ -379,12 +410,9 @@ class CalDAVService:
     def set_attendee_partstat(self, event_url: str, partstat: str) -> None:
         """Обновляет PARTSTAT текущего пользователя в ATTENDEE события.
 
-        Важно: в ``caldav>=2.x`` ``Event.save(...)`` НЕ принимает ICS позиционно
-        (первый аргумент — ``no_overwrite: bool``). Передача байтов туда
-        тихо превращалась в ``no_overwrite=True`` и реальный PUT не уходил.
-        Поэтому новые данные кладём через ``event_obj.data = ...``, а
-        ``save()`` вызываем без аргументов. SEQUENCE инкрементируется самим
-        ``caldav`` (``increase_seqno=True`` по умолчанию).
+        Загрузка/сохранение через HTTP (как PARTSTAT refresh): у Mail.ru тот же
+        auth, что и для GET. ``caldav.Event.save()`` с ``only_this_recurrence=True``
+        по умолчанию ломает повторяющиеся приглашения; прямой PUT + SEQUENCE надёжнее.
         """
         normalized = (partstat or "").strip().upper()
         allowed = {"ACCEPTED", "DECLINED", "TENTATIVE", "NEEDS-ACTION", "DELEGATED"}
@@ -396,27 +424,28 @@ class CalDAVService:
         try:
             with self._partstat_cache_lock:
                 self._partstat_cache.pop(event_url, None)
-            event_obj = self._get_event_object(event_url)
-            event_obj.load(only_if_unloaded=True)
-            raw = event_obj.data
-            if not raw:
-                raise CalDAVError("Empty event data")
-            payload = raw.encode() if isinstance(raw, str) else raw
+            payload = self._get_event_ics_via_http(event_url)
             calendar = IcsCalendar.from_ical(payload)
             updated = False
             vevents = list(calendar.walk("vevent"))
             for component in vevents:
                 if _update_vevent_attendee_partstat(component, login_variants, normalized):
                     _bump_vevent_dtstamp(component)
+                    _bump_vevent_sequence(component)
+                    updated = True
+                    continue
+                if _update_vevent_pending_attendee_partstat(component, normalized):
+                    _bump_vevent_dtstamp(component)
+                    _bump_vevent_sequence(component)
                     updated = True
             if not updated and vevents:
                 _add_vevent_attendee(vevents[0], self._login, normalized)
                 _bump_vevent_dtstamp(vevents[0])
+                _bump_vevent_sequence(vevents[0])
                 updated = True
             if not updated:
                 raise CalDAVError("No VEVENT in event data")
-            event_obj.data = calendar.to_ical()
-            event_obj.save()
+            self._put_event_ics_via_http(event_url, calendar.to_ical())
             with self._partstat_cache_lock:
                 self._partstat_cache.pop(event_url, None)
         except DAVError as exc:
@@ -429,6 +458,8 @@ class CalDAVService:
             raise CalDAVError(f"Failed to update invitation response: {exc}") from exc
         except ValueError as exc:
             raise CalDAVError(f"Invalid event ICS: {exc}") from exc
+        except requests.RequestException as exc:
+            raise CalDAVError(f"Network error during PARTSTAT update: {exc}") from exc
         except (ConnectionError, TimeoutError, OSError) as exc:
             raise CalDAVError(f"Network error during PARTSTAT update: {exc}") from exc
 
@@ -741,15 +772,65 @@ class CalDAVService:
         текущего пользователя. Если хоть в одном occurrence PARTSTAT есть —
         повторно ходить за тем же resource'ом смысла нет.
         """
-        login_norm = (self._login or "").strip().casefold()
-        if not login_norm:
+        if not (self._login or "").strip():
             return True
+        login_variants = login_variants_for_caldav(self._login)
         for ev in events:
             for attendee in ev.get("attendees", []) or []:
                 attendee_norm = str(attendee).casefold()
-                if login_norm in attendee_norm and "partstat=" in attendee_norm:
+                if not any(
+                    (variant or "").strip().casefold() in attendee_norm
+                    for variant in login_variants
+                ):
+                    continue
+                if "partstat=" in attendee_norm:
                     return True
         return False
+
+    def _get_event_ics_via_http(self, event_url: str) -> bytes:
+        """GET ресурса события (тот же путь, что PARTSTAT refresh)."""
+        response = requests.get(
+            event_url,
+            auth=(self._auth_username(), self._app_password),
+            timeout=self._partstat_refresh_timeout_sec,
+            headers={"Accept": "text/calendar"},
+        )
+        if response.status_code != 200 or not response.content:
+            raise CalDAVError(
+                f"Failed to load event ICS (HTTP {response.status_code})"
+            )
+        return response.content
+
+    def _put_event_ics_via_http(self, event_url: str, ics: bytes) -> None:
+        """PUT обновлённого ICS с If-Match, если сервер отдал ETag."""
+        auth = (self._auth_username(), self._app_password)
+        headers = {"Content-Type": "text/calendar; charset=utf-8"}
+        try:
+            head = requests.head(
+                event_url,
+                auth=auth,
+                timeout=self._partstat_refresh_timeout_sec,
+            )
+            etag = head.headers.get("ETag")
+            if etag:
+                headers["If-Match"] = etag
+        except requests.RequestException as exc:
+            log.debug(
+                "PARTSTAT update HEAD failed url=%s: %s",
+                _redact_url(event_url),
+                exc.__class__.__name__,
+            )
+        response = requests.put(
+            event_url,
+            data=ics,
+            auth=auth,
+            headers=headers,
+            timeout=max(self._partstat_refresh_timeout_sec, 3.0),
+        )
+        if response.status_code not in (200, 201, 204):
+            raise CalDAVError(
+                f"Failed to save event ICS (HTTP {response.status_code})"
+            )
 
     def _refresh_attendees_via_get(
         self, event_url: str
