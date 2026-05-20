@@ -26,7 +26,8 @@ BUTTON_CREATE_EVENT = "➕ Создать событие"
 BUTTON_SUBSCRIBE = "🔔 Подписаться на дайджест"
 BUTTON_UNSUBSCRIBE = "🔕 Отключить дайджест"
 BUTTON_UNSUBSCRIBE_LEGACY = "🔕 Отписаться от дайджеста"
-BUTTON_DIGEST_SETTINGS = "⚙️ Настройки дайджеста"
+BUTTON_SETTINGS = "⚙️ Настройки"
+BUTTON_DIGEST_SETTINGS = "⚙️ Настройки дайджеста"  # legacy reply-кнопка
 BUTTON_CONNECT_CALENDAR = "🔌 Подключить календарь"
 BUTTON_RECONNECT_CALENDAR = "🔄 Переподключить календарь"
 BUTTON_DISCONNECT_CALENDAR = "🗑 Отключить календарь"
@@ -71,6 +72,7 @@ _NORMALIZED_BUTTON_UNSUBSCRIBE = {
     normalize_button_text(BUTTON_UNSUBSCRIBE),
     normalize_button_text(BUTTON_UNSUBSCRIBE_LEGACY),
 }
+_NORMALIZED_BUTTON_SETTINGS = normalize_button_text(BUTTON_SETTINGS)
 _NORMALIZED_BUTTON_DIGEST_SETTINGS = normalize_button_text(BUTTON_DIGEST_SETTINGS)
 _NORMALIZED_BUTTON_UPCOMING = normalize_button_text(BUTTON_UPCOMING)
 _NORMALIZED_BUTTON_CREATE_EVENT = normalize_button_text(BUTTON_CREATE_EVENT)
@@ -99,10 +101,19 @@ def button_text_is_unsubscribe(text: str | None) -> bool:
     return normalize_button_text(text) in _NORMALIZED_BUTTON_UNSUBSCRIBE
 
 
-def button_text_is_digest_settings(text: str | None) -> bool:
+def button_text_is_settings(text: str | None) -> bool:
     if not text:
         return False
-    return normalize_button_text(text) == _NORMALIZED_BUTTON_DIGEST_SETTINGS
+    normalized = normalize_button_text(text)
+    return normalized in {
+        _NORMALIZED_BUTTON_SETTINGS,
+        _NORMALIZED_BUTTON_DIGEST_SETTINGS,
+    }
+
+
+def button_text_is_digest_settings(text: str | None) -> bool:
+    """Legacy alias: старая кнопка «Настройки дайджеста» открывает общий экран настроек."""
+    return button_text_is_settings(text)
 
 
 def button_text_is_upcoming(text: str | None) -> bool:
@@ -157,8 +168,7 @@ BOT_WELCOME_HTML = (
     "📅 /today — встречи на сегодня\n"
     "🗓 /upcoming — ближайшие события\n"
     "➕ /create — создать событие\n"
-    "⚙️ /settings — настройки дайджеста\n"
-    "📚 /calendars — какие календари показывать в плане\n\n"
+    "⚙️ /settings — дайджест, календари, подключение\n\n"
     "🍕 Чтобы чайка видела обед, добавь в календарь встречу с эмоджи 🍕 и словом «обед»."
 )
 
@@ -170,15 +180,14 @@ BOT_HELP_HTML = (
     "📅 /today, /tomorrow, /aftertomorrow — план на день\n"
     "🗓 /upcoming — ближайшие события\n"
     "➕ /create — создать событие\n"
-    "⚙️ /settings — дайджест\n"
-    "📚 /calendars — выбор календарей для плана\n"
-    "🔌 /connect — подключить календарь\n\n"
+    "⚙️ /settings — дайджест, календари, подключение\n"
+    "🔌 /connect — подключить календарь (также в /settings)\n\n"
     "Короткие: <code>td</code>, <code>tm</code>, <code>dat</code>."
 )
 
 BOT_KEYBOARD_HINT = (
     "🪶 Не понял команду.\n"
-    "Открой меню или используй /today, /upcoming, /create, /settings, /calendars, /connect, /help"
+    "Открой меню или используй /today, /upcoming, /create, /settings, /help"
 )
 
 # --- Access control ---
@@ -337,30 +346,60 @@ def build_webapp_connect_keyboard(webapp_url: str, *, reconnect: bool = False) -
     }
 
 
-def build_approved_main_keyboard(*, webapp_url: str, has_calendar: bool) -> dict:
-    rows = [
-        [{"text": BUTTON_TODAY}, {"text": BUTTON_UPCOMING}],
-        [{"text": BUTTON_CREATE_EVENT}],
-        [{"text": BUTTON_DIGEST_SETTINGS}],
-    ]
-    connect_label = (
-        BUTTON_RECONNECT_CALENDAR if has_calendar else BUTTON_CONNECT_CALENDAR
-    )
-    rows.append([{"text": connect_label, "web_app": {"url": webapp_url}}])
-    if has_calendar:
-        rows.append([{"text": BUTTON_CALENDAR_SOURCES}])
-        rows.append(
-            [
-                {"text": BUTTON_CHECK_CALENDAR},
-                {"text": BUTTON_DISCONNECT_CALENDAR},
-            ]
-        )
+def build_approved_main_keyboard() -> dict:
+    """Компактная главная клавиатура: просмотр и создание событий + вход в настройки."""
     return {
-        "keyboard": rows,
+        "keyboard": [
+            [{"text": BUTTON_TODAY}, {"text": BUTTON_UPCOMING}],
+            [{"text": BUTTON_CREATE_EVENT}],
+            [{"text": BUTTON_SETTINGS}],
+        ],
         "resize_keyboard": True,
         "is_persistent": True,
         "input_field_placeholder": BOT_INPUT_PLACEHOLDER,
     }
+
+
+# --- общий экран настроек (inline-хаб) ---------------------------------------
+
+CB_SETTINGS_DIGEST = "settings_digest"
+CB_SETTINGS_CALENDARS = "settings_calendars"
+CB_SETTINGS_CHECK = "settings_check"
+CB_SETTINGS_DISCONNECT = "settings_disconnect"
+CB_SETTINGS_BACK = "settings_back"
+CB_SETTINGS_CLOSE = "settings_close"
+
+SETTINGS_HUB_TEXT = (
+    "⚙️ Настройки\n\n"
+    "Дайджест, календари в плане и подключение — всё здесь. Выбери раздел:"
+)
+SETTINGS_HUB_CLOSED_TEXT = "⚙️ Настройки закрыты. Кнопка «Настройки» на клавиатуре всегда рядом."
+
+
+def build_settings_hub_keyboard(*, webapp_url: str, has_calendar: bool) -> dict:
+    connect_label = (
+        BUTTON_RECONNECT_CALENDAR if has_calendar else BUTTON_CONNECT_CALENDAR
+    )
+    rows: list[list[dict[str, str | dict[str, str]]]] = [
+        [{"text": "🔔 Дайджест", "callback_data": CB_SETTINGS_DIGEST}],
+    ]
+    if has_calendar:
+        rows.append(
+            [{"text": BUTTON_CALENDAR_SOURCES, "callback_data": CB_SETTINGS_CALENDARS}]
+        )
+        rows.append(
+            [
+                {"text": BUTTON_CHECK_CALENDAR, "callback_data": CB_SETTINGS_CHECK},
+                {
+                    "text": BUTTON_DISCONNECT_CALENDAR,
+                    "callback_data": CB_SETTINGS_DISCONNECT,
+                },
+            ]
+        )
+    if webapp_url:
+        rows.append([{"text": connect_label, "web_app": {"url": webapp_url}}])
+    rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_SETTINGS_CLOSE}])
+    return {"inline_keyboard": rows}
 
 
 def subscribe_confirmation_text(time_str: str, weekdays_only: bool) -> str:
@@ -472,7 +511,7 @@ def build_digest_settings_keyboard(*, digest_enabled: bool) -> dict:
             [{"text": "📆 Дни отправки", "callback_data": CB_DIGEST_DAYS}],
             [{"text": "🕘 Время отправки", "callback_data": CB_DIGEST_TIME}],
             [{"text": toggle_label, "callback_data": CB_DIGEST_TOGGLE}],
-            [{"text": "⬅️ Назад", "callback_data": CB_DIGEST_CLOSE}],
+            [{"text": "⬅️ В настройки", "callback_data": CB_SETTINGS_BACK}],
         ]
     }
 

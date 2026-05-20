@@ -1,7 +1,11 @@
 from satellite.messages_ru import (
+    BUTTON_CREATE_EVENT,
     BUTTON_DAY_AFTER,
+    BUTTON_SETTINGS,
     BUTTON_TODAY,
     BUTTON_TOMORROW,
+    BUTTON_UPCOMING,
+    build_approved_main_keyboard,
     button_text_to_mode,
     format_duration_ru,
     normalize_button_text,
@@ -22,6 +26,17 @@ def test_button_text_to_mode_unknown():
     assert button_text_to_mode("td") is None
     assert button_text_to_mode("") is None
     assert button_text_to_mode(None) is None
+
+
+def test_approved_main_keyboard_is_compact():
+    kb = build_approved_main_keyboard()
+    labels = [btn["text"] for row in kb["keyboard"] for btn in row]
+    assert labels == [
+        BUTTON_TODAY,
+        BUTTON_UPCOMING,
+        BUTTON_CREATE_EVENT,
+        BUTTON_SETTINGS,
+    ]
 
 
 def test_format_duration_ru():

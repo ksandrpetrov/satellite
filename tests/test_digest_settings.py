@@ -20,6 +20,9 @@ import pytest
 from satellite.calendar.time_utils import normalize_hhmm_input
 from satellite.messages_ru import (
     BUTTON_DIGEST_SETTINGS,
+    BUTTON_SETTINGS,
+    CB_SETTINGS_DIGEST,
+    SETTINGS_HUB_TEXT,
     CB_DIGEST_BACK,
     CB_DIGEST_CLOSE,
     CB_DIGEST_DAYS,
@@ -294,7 +297,9 @@ def _ctx(tmp_path: Path, *, username: str = "alice"):
 
 def test_button_text_is_digest_settings_recognized():
     assert button_text_is_digest_settings(BUTTON_DIGEST_SETTINGS)
+    assert button_text_is_digest_settings(BUTTON_SETTINGS)
     assert is_digest_settings_request(BUTTON_DIGEST_SETTINGS)
+    assert is_digest_settings_request(BUTTON_SETTINGS)
     # /settings — единственная команда, открывающая экран настроек.
     # /digest теперь сразу включает подписку (см. parse_subscription_action).
     assert is_digest_settings_request("/settings")
@@ -306,35 +311,47 @@ def test_button_text_is_digest_settings_recognized():
 def test_digest_settings_button_sends_inline_settings_screen(tmp_path: Path):
     ctx, store, _state = _ctx(tmp_path)
     msg = IncomingMessage(
-        update_id=1, chat_id=900, user_id=1, username="alice", display_name=None, text=BUTTON_DIGEST_SETTINGS
+        update_id=1, chat_id=900, user_id=1, username="alice", display_name=None, text=BUTTON_SETTINGS
     )
     handle_message(ctx, msg)
 
-    # отправили inline-сообщение с настройками
     ctx.telegram.send_message.assert_called_once()
     call = ctx.telegram.send_message.call_args
     assert call.args[0] == 900
-    text = call.args[1]
-    assert "Настройки дайджеста" in text
-    # статус отключён, дефолтные дни/время
-    assert "🔕" in text
-    assert "будни" in text
-    assert "09:00 МСК" in text
-    # клавиатура inline
+    assert call.args[1] == SETTINGS_HUB_TEXT
     keyboard = call.kwargs.get("reply_markup")
     assert keyboard is not None
     assert "inline_keyboard" in keyboard
+    labels = [btn["text"] for row in keyboard["inline_keyboard"] for btn in row]
+    assert "🔔 Дайджест" in labels
+
+
+def test_settings_hub_digest_button_opens_digest_screen(tmp_path: Path):
+    ctx, store, _state = _ctx(tmp_path)
+    msg = IncomingMessage(
+        update_id=1, chat_id=900, user_id=1, username="alice", display_name=None, text=BUTTON_SETTINGS
+    )
+    handle_message(ctx, msg)
+
+    handle_callback_query(ctx, _callback(900, CB_SETTINGS_DIGEST))
+
+    text = ctx.telegram.edit_message_text.call_args.args[2]
+    assert "Настройки дайджеста" in text
+    assert "🔕" in text
+    assert "будни" in text
+    assert "09:00 МСК" in text
 
 
 def test_digest_settings_screen_shows_enabled_status_after_subscribe(tmp_path: Path):
     ctx, store, _state = _ctx(tmp_path)
     store.subscribe(900, "alice")
     msg = IncomingMessage(
-        update_id=2, chat_id=900, user_id=1, username="alice", display_name=None, text=BUTTON_DIGEST_SETTINGS
+        update_id=2, chat_id=900, user_id=1, username="alice", display_name=None, text=BUTTON_SETTINGS
     )
     handle_message(ctx, msg)
+    handle_callback_query(ctx, _callback(900, CB_SETTINGS_DIGEST))
 
-    text = ctx.telegram.send_message.call_args.args[1]
+    text = ctx.telegram.edit_message_text.call_args.args[2]
     assert "🔔" in text
     assert "включён" in text
 
@@ -696,7 +713,7 @@ def test_stopdigest_command_disables_but_keeps_days_and_time(tmp_path: Path):
 
 
 def test_settings_command_opens_inline_screen(tmp_path: Path):
-    """`/settings` показывает inline-экран настроек дайджеста."""
+    """`/settings` открывает общий экран настроек."""
     ctx, store, _state = _ctx(tmp_path)
     store.get_or_create(900, "alice")
 
@@ -706,7 +723,7 @@ def test_settings_command_opens_inline_screen(tmp_path: Path):
     ctx.telegram.send_message.assert_called_once()
     call = ctx.telegram.send_message.call_args
     text = call.args[1]
-    assert "Настройки дайджеста" in text
+    assert text == SETTINGS_HUB_TEXT
     keyboard = call.kwargs.get("reply_markup")
     assert keyboard is not None
     assert "inline_keyboard" in keyboard

@@ -93,11 +93,7 @@ def _handle_start_flow(ctx: HandlerContext, msg: IncomingMessage, status: str) -
     webapp_url = ctx.webapp.base_url.rstrip("/")
     if webapp_url and not webapp_url.endswith("/connect"):
         webapp_url = f"{webapp_url}/connect"
-    markup = (
-        build_approved_main_keyboard(webapp_url=webapp_url, has_calendar=has_calendar)
-        if webapp_url
-        else REPLY_KEYBOARD_REMOVE
-    )
+    markup = build_approved_main_keyboard() if webapp_url else REPLY_KEYBOARD_REMOVE
     ctx.telegram.send_message(
         msg.chat_id,
         ACCESS_APPROVED_HTML if not has_calendar else BOT_WELCOME_HTML,

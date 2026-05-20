@@ -302,8 +302,10 @@ class CalDAVService:
     ) -> tuple[str, str]:
         """Создаёт VEVENT. Возвращает (uid, event_url).
 
-        DTSTAMP обязателен по RFC 5545; без него Mail.ru CalDAV возвращает 400
-        Bad Request, и VEVENT не сохраняется.
+        DTSTAMP обязателен по RFC 5545. Время приводится к UTC и сериализуется
+        как ``20260520T070000Z`` — иначе ``icalendar`` пишет
+        ``DTSTART;TZID=Europe/Moscow:...`` без сопровождающего ``VTIMEZONE``,
+        а Mail.ru CalDAV в этом случае отвечает 400 и событие не создаётся.
         """
         handle = self._require_handle(calendar_url)
         uid = f"satellite-{uuid4()}@satellite.local"
@@ -311,8 +313,8 @@ class CalDAVService:
         component.add("uid", uid)
         component.add("dtstamp", datetime.now(tz=timezone.utc))
         component.add("summary", title)
-        component.add("dtstart", start)
-        component.add("dtend", end)
+        component.add("dtstart", _to_utc(start))
+        component.add("dtend", _to_utc(end))
         if location:
             component.add("location", location)
         if description:
@@ -324,6 +326,12 @@ class CalDAVService:
         try:
             handle.obj.save_event(ics.to_ical())
         except DAVError as exc:
+            log.warning(
+                "CalDAV create_event failed url=%s status=%s: %s",
+                _redact_url(handle.url),
+                _dav_status(exc),
+                _dav_reason(exc),
+            )
             raise CalDAVError(f"Failed to create event: {exc}") from exc
         except (ConnectionError, TimeoutError, OSError) as exc:
             raise CalDAVError(f"Network error during create: {exc}") from exc
@@ -344,13 +352,16 @@ class CalDAVService:
             event_obj = self._get_event_object(event_url)
             raw = event_obj.data
             calendar = IcsCalendar.from_ical(raw)
+            utc_start = _to_utc(start)
+            utc_end = _to_utc(end)
             for component in calendar.walk("vevent"):
                 component["summary"] = title
-                component["dtstart"] = start
-                component["dtend"] = end
-                # DTSTAMP должен обновляться при каждой правке (RFC 5545 §3.8.7.2).
-                if "dtstamp" in component:
-                    del component["dtstamp"]
+                # DTSTART/DTEND/DTSTAMP в UTC — без VTIMEZONE блок Mail.ru не примет.
+                for prop in ("dtstart", "dtend", "dtstamp"):
+                    if prop in component:
+                        del component[prop]
+                component.add("dtstart", utc_start)
+                component.add("dtend", utc_end)
                 component.add("dtstamp", datetime.now(tz=timezone.utc))
                 if location:
                     component["location"] = location
@@ -362,6 +373,12 @@ class CalDAVService:
                     del component["description"]
             event_obj.save(calendar.to_ical())
         except DAVError as exc:
+            log.warning(
+                "CalDAV update_event failed url=%s status=%s: %s",
+                _redact_url(event_url),
+                _dav_status(exc),
+                _dav_reason(exc),
+            )
             raise CalDAVError(f"Failed to update event: {exc}") from exc
         except (ConnectionError, TimeoutError, OSError) as exc:
             raise CalDAVError(f"Network error during update: {exc}") from exc
@@ -371,6 +388,12 @@ class CalDAVService:
             event_obj = self._get_event_object(event_url)
             event_obj.delete()
         except DAVError as exc:
+            log.warning(
+                "CalDAV delete_event failed url=%s status=%s: %s",
+                _redact_url(event_url),
+                _dav_status(exc),
+                _dav_reason(exc),
+            )
             raise CalDAVError(f"Failed to delete event: {exc}") from exc
         except (ConnectionError, TimeoutError, OSError) as exc:
             raise CalDAVError(f"Network error during delete: {exc}") from exc
@@ -622,6 +645,28 @@ class CalDAVService:
 
 def _normalize_calendar_url(url: str) -> str:
     return (url or "").strip().rstrip("/")
+
+
+def _to_utc(value: datetime) -> datetime:
+    """Приводит datetime к UTC. Naive значения трактуются как UTC."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _dav_status(exc: BaseException) -> str:
+    """Достаёт HTTP-статус из ``DAVError`` (best-effort), не падает на отсутствии."""
+    status = getattr(exc, "status", None)
+    if status is None:
+        status = getattr(exc, "code", None)
+    return str(status) if status is not None else "?"
+
+
+def _dav_reason(exc: BaseException) -> str:
+    """Безопасное краткое описание DAV-ошибки для лога (без тела body)."""
+    reason = getattr(exc, "reason", None)
+    text = str(reason) if reason else str(exc)
+    return text.splitlines()[0][:200] if text else exc.__class__.__name__
 
 
 def _redact_url(url: str) -> str:

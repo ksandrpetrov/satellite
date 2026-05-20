@@ -13,6 +13,7 @@ from ...calendar.time_utils import normalize_hhmm_input
 from ...messages_ru import (
     CB_DIGEST_BACK,
     CB_DIGEST_CLOSE,
+    CB_SETTINGS_BACK,
     CB_DIGEST_DAYS,
     CB_DIGEST_DAYS_ALL,
     CB_DIGEST_DAYS_WEEKDAYS,
@@ -243,5 +244,10 @@ def route_settings_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
         return True
     if data == CB_DIGEST_CLOSE:
         handle_callback_close(ctx, cb)
+        return True
+    if data == CB_SETTINGS_BACK:
+        from .settings_hub import show_settings_hub_screen
+
+        show_settings_hub_screen(ctx, cb)
         return True
     return False

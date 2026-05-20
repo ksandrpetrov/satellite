@@ -38,7 +38,7 @@ from .routing import (
     is_command_like_message,
     is_connect_calendar_request,
     is_create_event_request,
-    is_digest_settings_request,
+    is_settings_request,
     is_disconnect_calendar_request,
     is_start_command,
     is_start_or_help_command,
@@ -46,11 +46,8 @@ from .routing import (
     parse_command_mode,
     parse_subscription_action,
 )
-from .settings import (
-    handle_digest_time_input,
-    handle_open_digest_settings,
-    route_settings_callback,
-)
+from .settings import handle_digest_time_input, route_settings_callback
+from .settings_hub import handle_open_settings_hub, route_settings_hub_callback
 from .subscription import handle_subscription_action
 
 log = logging.getLogger(__name__)
@@ -131,9 +128,9 @@ def _route_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
             handle_open_calendar_sources(ctx, msg)
         return
 
-    if is_digest_settings_request(msg.text):
+    if is_settings_request(msg.text):
         if ensure_calendar_access(ctx, msg):
-            handle_open_digest_settings(ctx, msg)
+            handle_open_settings_hub(ctx, msg)
         return
 
     action = parse_subscription_action(msg.text)
@@ -187,6 +184,8 @@ def _route_callback(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if route_create_callback(ctx, cb):
         return
     if route_manage_callback(ctx, cb):
+        return
+    if route_settings_hub_callback(ctx, cb):
         return
     if route_settings_callback(ctx, cb):
         return

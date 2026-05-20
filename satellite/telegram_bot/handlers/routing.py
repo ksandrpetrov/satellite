@@ -12,7 +12,7 @@ from ...messages_ru import (
     button_text_is_check_calendar,
     button_text_is_connect_calendar,
     button_text_is_create_event,
-    button_text_is_digest_settings,
+    button_text_is_settings,
     button_text_is_disconnect_calendar,
     button_text_is_subscribe,
     button_text_is_unsubscribe,
@@ -95,14 +95,19 @@ def parse_subscription_action(text: str | None) -> SubscriptionAction | None:
     return None
 
 
-def is_digest_settings_request(text: str | None) -> bool:
+def is_settings_request(text: str | None) -> bool:
     if not text:
         return False
     raw = text.strip()
-    if button_text_is_digest_settings(raw):
+    if button_text_is_settings(raw):
         return True
     command_part = raw.split(maxsplit=1)[0].lower()
     return bool(_CMD_DIGEST_SETTINGS.fullmatch(command_part))
+
+
+def is_digest_settings_request(text: str | None) -> bool:
+    """Alias для обратной совместимости тестов и импортов."""
+    return is_settings_request(text)
 
 
 def is_upcoming_request(text: str | None) -> bool:
@@ -159,7 +164,7 @@ def is_command_like_message(text: str) -> bool:
         return True
     if parse_subscription_action(text) is not None:
         return True
-    if is_digest_settings_request(text):
+    if is_settings_request(text):
         return True
     if is_start_or_help_command(text):
         return True

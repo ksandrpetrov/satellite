@@ -134,6 +134,10 @@ class MailruCalendarProvider:
                 description=payload.description,
             )
         except CalDAVError as exc:
+            log.warning(
+                "Mail.ru create_event failed: %s",
+                str(exc).splitlines()[-1][:200],
+            )
             raise CalendarProviderError(
                 "Не удалось создать событие. Проверьте права доступа.",
                 error_code="CREATE_FAILED",
@@ -166,6 +170,10 @@ class MailruCalendarProvider:
                 description=payload.description,
             )
         except CalDAVError as exc:
+            log.warning(
+                "Mail.ru update_event failed: %s",
+                str(exc).splitlines()[-1][:200],
+            )
             raise CalendarProviderError(
                 "Не удалось изменить событие.",
                 error_code="UPDATE_FAILED",
@@ -186,6 +194,10 @@ class MailruCalendarProvider:
         try:
             service.delete_event(event_ref.url)
         except CalDAVError as exc:
+            log.warning(
+                "Mail.ru delete_event failed: %s",
+                str(exc).splitlines()[-1][:200],
+            )
             raise CalendarProviderError(
                 "Не удалось удалить событие.",
                 error_code="DELETE_FAILED",

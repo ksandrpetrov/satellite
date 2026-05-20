@@ -196,9 +196,10 @@ def _service_with_handle(url: str, stub: _StubCalendarObj) -> CalDAVService:
     return service
 
 
-def test_create_event_includes_dtstamp_required_by_mailru():
-    """Без DTSTAMP Mail.ru CalDAV возвращает 400 — пользователь видит
-    «Календарь сейчас недоступен» при попытке создать событие."""
+def test_create_event_serializes_dtstart_dtend_in_utc_with_dtstamp():
+    """Mail.ru CalDAV отвергает VEVENT, если есть TZID без VTIMEZONE, или если
+    нет DTSTAMP. Поэтому DTSTART/DTEND приводим к UTC (формат ``...Z``), а
+    DTSTAMP добавляем явно — это RFC 5545-совместимо и принимается Mail.ru."""
     stub = _StubCalendarObj()
     service = _service_with_handle("https://fake/calendars/primary/", stub)
     tz = ZoneInfo("Europe/Moscow")
@@ -211,7 +212,30 @@ def test_create_event_includes_dtstamp_required_by_mailru():
     assert stub.saved_ical is not None
     body = stub.saved_ical.decode()
     assert "DTSTAMP" in body, "VEVENT должен содержать DTSTAMP (RFC 5545)"
+    assert "TZID" not in body, (
+        "DTSTART/DTEND с TZID без VTIMEZONE Mail.ru CalDAV отвергает; "
+        "вместо TZID должен быть формат с явным UTC-суффиксом Z."
+    )
+    # Москва на 3 часа впереди UTC → 10:00 MSK == 07:00 UTC.
+    assert "DTSTART:20260520T070000Z" in body
+    assert "DTEND:20260520T080000Z" in body
     assert uid in body
+
+
+def test_create_event_treats_naive_datetime_as_utc():
+    """Если в datetime нет tzinfo — трактуем как UTC, не падаем."""
+    stub = _StubCalendarObj()
+    service = _service_with_handle("https://fake/calendars/primary/", stub)
+    service.create_event(
+        calendar_url="https://fake/calendars/primary/",
+        title="Naive",
+        start=datetime(2026, 5, 20, 10, 0),
+        end=datetime(2026, 5, 20, 11, 0),
+    )
+    assert stub.saved_ical is not None
+    body = stub.saved_ical.decode()
+    assert "DTSTART:20260520T100000Z" in body
+    assert "DTEND:20260520T110000Z" in body
 
 
 def test_create_event_converts_dav_error_to_caldav_error():
