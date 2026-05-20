@@ -68,6 +68,9 @@ def _ctx(tmp_path: Path, *, has_calendar: bool = True) -> MagicMock:
     ctx.admin.is_admin = MagicMock(return_value=False)
     ctx.webapp = MagicMock()
     ctx.webapp.base_url = _WEBAPP
+    from satellite.web.connect_token import ConnectTokenStore
+
+    ctx.connect_tokens = ConnectTokenStore()
     ctx.calendar_state = MagicMock()
     ctx.calendar_state.get = MagicMock(return_value=None)
     ctx.tz = ZoneInfo("Europe/Moscow")

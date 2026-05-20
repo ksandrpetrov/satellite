@@ -35,6 +35,7 @@ from ..calendar.providers.registry import PROVIDER_IDS, PROVIDER_MAILRU, PROVIDE
 from ..calendar.user_calendar_service import UserCalendarService
 from ..security.token_vault import ProviderCredentials
 from ..users import USER_STATUS_APPROVED, UserStore, UserStorePersistenceError
+from .connect_token import ConnectTokenStore
 from .init_data import InitDataError, validate_init_data
 
 log = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ class WebAppServerConfig:
     port: int
     bot_token: str
     tz_name: str = "Europe/Moscow"
+    connect_tokens: ConnectTokenStore | None = None
 
 
 class WebAppServer:
@@ -67,6 +69,7 @@ class WebAppServer:
         self._config = config
         self._calendar = calendar_service
         self._users = users
+        self._connect_tokens = config.connect_tokens or ConnectTokenStore()
         self._tz: tzinfo = _safe_zone(config.tz_name)
         self._thread: threading.Thread | None = None
         self._httpd: ThreadingHTTPServer | None = None
@@ -103,6 +106,7 @@ class WebAppServer:
     def _make_handler(self):
         calendar = self._calendar
         users = self._users
+        connect_tokens = self._connect_tokens
         bot_token = self._config.bot_token
         tz = self._tz
 
@@ -122,30 +126,38 @@ class WebAppServer:
                     _json_response(self, HTTPStatus.OK, {"status": "ok"})
                     return
                 if path == "/api/calendar/status":
-                    _handle_status(self, calendar, users, bot_token)
+                    _handle_status(self, calendar, users, bot_token, connect_tokens)
                     return
                 if path == "/api/calendar/events":
-                    _handle_list_events(self, calendar, users, bot_token, tz)
+                    _handle_list_events(
+                        self, calendar, users, bot_token, connect_tokens, tz
+                    )
                     return
                 _json_response(self, HTTPStatus.NOT_FOUND, {"error": "not_found"})
 
             def do_POST(self) -> None:  # noqa: N802
                 path = urlparse(self.path).path
                 if path == "/api/calendar/connect":
-                    _handle_connect(self, calendar, users, bot_token)
+                    _handle_connect(self, calendar, users, bot_token, connect_tokens)
                     return
                 if path == "/api/calendar/events":
-                    _handle_create_event(self, calendar, users, bot_token, tz)
+                    _handle_create_event(
+                        self, calendar, users, bot_token, connect_tokens, tz
+                    )
                     return
                 _json_response(self, HTTPStatus.NOT_FOUND, {"error": "not_found"})
 
             def do_DELETE(self) -> None:  # noqa: N802
                 path = urlparse(self.path).path
                 if path == "/api/calendar/disconnect":
-                    _handle_disconnect(self, calendar, users, bot_token)
+                    _handle_disconnect(
+                        self, calendar, users, bot_token, connect_tokens
+                    )
                     return
                 if path.startswith("/api/calendar/events/"):
-                    _handle_delete_event(self, calendar, users, bot_token, path)
+                    _handle_delete_event(
+                        self, calendar, users, bot_token, connect_tokens, path
+                    )
                     return
                 _json_response(self, HTTPStatus.NOT_FOUND, {"error": "not_found"})
 
@@ -220,10 +232,57 @@ def _extract_init_data(
     return from_query
 
 
+def _extract_connect_token(
+    handler: BaseHTTPRequestHandler,
+    body: dict[str, Any] | None = None,
+) -> str:
+    token = (handler.headers.get("X-Connect-Token") or "").strip()
+    if token:
+        return token
+    if body is not None:
+        from_body = str(body.get("t") or body.get("connect_token") or "").strip()
+        if from_body:
+            return from_body
+    qs = parse_qs(urlparse(handler.path).query)
+    return (qs.get("t") or [""])[0].strip()
+
+
+def _user_id_from_connect_token(
+    handler: BaseHTTPRequestHandler,
+    users: UserStore,
+    connect_tokens: ConnectTokenStore,
+    *,
+    body: dict[str, Any] | None = None,
+) -> int | None:
+    token = _extract_connect_token(handler, body)
+    if not token:
+        return None
+    user_id = connect_tokens.resolve(token)
+    if user_id is None:
+        log.info("Reject WebApp request: invalid or expired connect token")
+        _json_response(
+            handler,
+            HTTPStatus.UNAUTHORIZED,
+            {"error": "connect_token_invalid", "message": "Connect link expired"},
+        )
+        raise _AbortRequest()
+    record = users.get(user_id)
+    if record is None or record.status != USER_STATUS_APPROVED:
+        log.info(
+            "Reject WebApp request: connect token user_id=%s not approved (status=%s)",
+            user_id,
+            getattr(record, "status", None),
+        )
+        _json_response(handler, HTTPStatus.FORBIDDEN, {"error": "not_approved"})
+        raise _AbortRequest()
+    return user_id
+
+
 def _validated_user(
     handler: BaseHTTPRequestHandler,
     users: UserStore,
     bot_token: str,
+    connect_tokens: ConnectTokenStore,
     *,
     body: dict[str, Any] | None = None,
 ) -> int:
@@ -234,26 +293,44 @@ def _validated_user(
     одобрили заявку на доступ через админский флоу.
     """
     init_data = _extract_init_data(handler, body)
-    try:
-        validated = validate_init_data(init_data, bot_token=bot_token)
-    except InitDataError as exc:
-        log.info("Reject WebApp request: %s", exc)
-        _json_response(
-            handler,
-            HTTPStatus.UNAUTHORIZED,
-            {"error": exc.code, "message": str(exc)},
-        )
-        raise _AbortRequest()
-    record = users.get(validated.user.id)
-    if record is None or record.status != USER_STATUS_APPROVED:
-        log.info(
-            "Reject WebApp request: user_id=%s not approved (status=%s)",
-            validated.user.id,
-            getattr(record, "status", None),
-        )
-        _json_response(handler, HTTPStatus.FORBIDDEN, {"error": "not_approved"})
-        raise _AbortRequest()
-    return validated.user.id
+    if init_data:
+        try:
+            validated = validate_init_data(init_data, bot_token=bot_token)
+        except InitDataError as exc:
+            log.info("Reject WebApp request: %s", exc)
+            _json_response(
+                handler,
+                HTTPStatus.UNAUTHORIZED,
+                {"error": exc.code, "message": str(exc)},
+            )
+            raise _AbortRequest()
+        record = users.get(validated.user.id)
+        if record is None or record.status != USER_STATUS_APPROVED:
+            log.info(
+                "Reject WebApp request: user_id=%s not approved (status=%s)",
+                validated.user.id,
+                getattr(record, "status", None),
+            )
+            _json_response(handler, HTTPStatus.FORBIDDEN, {"error": "not_approved"})
+            raise _AbortRequest()
+        return validated.user.id
+
+    user_id = _user_id_from_connect_token(
+        handler, users, connect_tokens, body=body
+    )
+    if user_id is not None:
+        return user_id
+
+    log.info("Reject WebApp request: missing initData and connect token")
+    _json_response(
+        handler,
+        HTTPStatus.UNAUTHORIZED,
+        {
+            "error": "no_init_data",
+            "message": "Missing initData (open Web App from Telegram bot button)",
+        },
+    )
+    raise _AbortRequest()
 
 
 class _AbortRequest(Exception):
@@ -265,10 +342,13 @@ def _handle_connect(
     calendar: UserCalendarService,
     users: UserStore,
     bot_token: str,
+    connect_tokens: ConnectTokenStore,
 ) -> None:
     body = _read_json(handler)
     try:
-        user_id = _validated_user(handler, users, bot_token, body=body)
+        user_id = _validated_user(
+            handler, users, bot_token, connect_tokens, body=body
+        )
     except _AbortRequest:
         return
     provider = str(body.get("provider") or PROVIDER_MAILRU).strip().lower()
@@ -324,9 +404,10 @@ def _handle_disconnect(
     calendar: UserCalendarService,
     users: UserStore,
     bot_token: str,
+    connect_tokens: ConnectTokenStore,
 ) -> None:
     try:
-        user_id = _validated_user(handler, users, bot_token)
+        user_id = _validated_user(handler, users, bot_token, connect_tokens)
     except _AbortRequest:
         return
     try:
@@ -352,9 +433,10 @@ def _handle_status(
     calendar: UserCalendarService,
     users: UserStore,
     bot_token: str,
+    connect_tokens: ConnectTokenStore,
 ) -> None:
     try:
-        user_id = _validated_user(handler, users, bot_token)
+        user_id = _validated_user(handler, users, bot_token, connect_tokens)
     except _AbortRequest:
         return
     record = users.get(user_id)
@@ -393,10 +475,11 @@ def _handle_list_events(
     calendar: UserCalendarService,
     users: UserStore,
     bot_token: str,
+    connect_tokens: ConnectTokenStore,
     tz: tzinfo,
 ) -> None:
     try:
-        user_id = _validated_user(handler, users, bot_token)
+        user_id = _validated_user(handler, users, bot_token, connect_tokens)
     except _AbortRequest:
         return
     qs = parse_qs(urlparse(handler.path).query)
@@ -480,11 +563,14 @@ def _handle_create_event(
     calendar: UserCalendarService,
     users: UserStore,
     bot_token: str,
+    connect_tokens: ConnectTokenStore,
     tz: tzinfo,
 ) -> None:
     body = _read_json(handler)
     try:
-        user_id = _validated_user(handler, users, bot_token, body=body)
+        user_id = _validated_user(
+            handler, users, bot_token, connect_tokens, body=body
+        )
     except _AbortRequest:
         return
     title = str(body.get("title") or "").strip()
@@ -548,10 +634,11 @@ def _handle_delete_event(
     calendar: UserCalendarService,
     users: UserStore,
     bot_token: str,
+    connect_tokens: ConnectTokenStore,
     path: str,
 ) -> None:
     try:
-        user_id = _validated_user(handler, users, bot_token)
+        user_id = _validated_user(handler, users, bot_token, connect_tokens)
     except _AbortRequest:
         return
     uid = path[len("/api/calendar/events/"):].strip("/")

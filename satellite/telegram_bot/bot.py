@@ -19,6 +19,7 @@ from ..security.token_vault import TokenVault
 from ..subscriptions import SubscriptionStore
 from ..users import UserStore
 from ..weather.client import WeatherForecastClient
+from ..web.connect_token import ConnectTokenStore
 from ..web.server import WebAppServer, WebAppServerConfig
 from .api import TelegramClient, TelegramError
 from .calendar_state import CalendarStateStore
@@ -81,12 +82,14 @@ class TelegramBot:
         self._stop_event = threading.Event()
         self._shutdown_done = False
         self._shutdown_lock = threading.Lock()
+        self._connect_tokens = ConnectTokenStore()
         self._webapp = WebAppServer(
             config=WebAppServerConfig(
                 host=settings.webapp.host,
                 port=settings.webapp.port,
                 bot_token=settings.telegram.bot_token,
                 tz_name=settings.plan.tz_name,
+                connect_tokens=self._connect_tokens,
             ),
             calendar_service=self._calendar_service,
             users=self._users,
@@ -170,6 +173,7 @@ class TelegramBot:
             tz=self._tz,
             admin=self._settings.admin,
             webapp=self._settings.webapp,
+            connect_tokens=self._connect_tokens,
             subscriptions=self._subscriptions,
             weather_config=self._settings.weather,
             weather_client=self._weather_client,

@@ -84,7 +84,7 @@ def _handle_approve(ctx: HandlerContext, cb: IncomingCallback, target_id: int) -
     except KeyError:
         safe_answer_callback(ctx, cb, text="Пользователь не найден")
         return
-    webapp_url = webapp_connect_url(ctx)
+    webapp_url = webapp_connect_url(ctx, target_id)
     if record.chat_id is not None:
         notify_user_access_decision(
             ctx, chat_id=record.chat_id, approved=True, webapp_url=webapp_url

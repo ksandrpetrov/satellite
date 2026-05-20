@@ -142,7 +142,7 @@ def ensure_calendar_connected(ctx: HandlerContext, msg: IncomingMessage) -> bool
     assert msg.user_id is not None
     record = ctx.users.get(msg.user_id)
     if record is None or not record.has_calendar:
-        webapp_url = webapp_connect_url(ctx)
+        webapp_url = webapp_connect_url(ctx, msg.user_id)
         markup = (
             build_webapp_connect_keyboard(webapp_url)
             if webapp_url

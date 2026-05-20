@@ -143,6 +143,15 @@ def test_status_without_init_data_returns_401(started_server):
     assert body["error"] == "no_init_data"
 
 
+def test_status_with_connect_token_without_init_data(started_server):
+    server, users, _calendar, base = started_server
+    _approve_user(users, 200)
+    token = server._connect_tokens.issue(200)
+    status, body = _http("GET", base + f"/api/calendar/status?t={token}")
+    assert status == 200
+    assert body["connected"] is False
+
+
 def test_status_for_pending_user_returns_403(started_server):
     _server, users, _calendar, base = started_server
     users.upsert_from_telegram(

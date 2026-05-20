@@ -99,17 +99,25 @@ def safe_answer_callback(
         log.warning("Unexpected answerCallbackQuery failure: %s", exc)
 
 
-def webapp_connect_url(ctx: HandlerContext) -> str:
+def webapp_connect_url(
+    ctx: HandlerContext,
+    telegram_user_id: int | None = None,
+) -> str:
     """Базовый URL Web App для подключения календаря.
 
     Дописывает суффикс ``/connect`` если ``WEBAPP_BASE_URL`` указан без него.
-    Используется во всех точках входа (`/start`, approve, кнопки настроек,
-    подэкран «Календарь») — чтобы не дублировать нормализацию пути.
+    С ``telegram_user_id`` добавляет ``?t=…`` — запасной вход без initData
+    (reply-клавиатура, menu button как URL).
     """
     base = (ctx.webapp.base_url or "").rstrip("/")
     if not base:
         return ""
-    return base if base.endswith("/connect") else f"{base}/connect"
+    url = base if base.endswith("/connect") else f"{base}/connect"
+    if telegram_user_id is None:
+        return url
+    token = ctx.connect_tokens.issue(telegram_user_id)
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}t={token}"
 
 
 def notify_handler_failure(ctx: HandlerContext, chat_id: int | None) -> None:

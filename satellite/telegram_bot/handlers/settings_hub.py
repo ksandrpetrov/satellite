@@ -77,7 +77,7 @@ def handle_open_settings_hub(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if msg.chat_id is None or msg.user_id is None:
         return
     ctx.digest_state.clear(msg.chat_id)
-    webapp_url = webapp_connect_url(ctx)
+    webapp_url = webapp_connect_url(ctx, msg.user_id)
     keyboard = build_settings_hub_keyboard(
         webapp_url=webapp_url,
         has_calendar=_has_calendar(ctx, msg.user_id),
@@ -90,7 +90,7 @@ def show_settings_hub_screen(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.chat_id is None or cb.user_id is None:
         return
     ctx.digest_state.clear(cb.chat_id)
-    webapp_url = webapp_connect_url(ctx)
+    webapp_url = webapp_connect_url(ctx, cb.user_id)
     keyboard = build_settings_hub_keyboard(
         webapp_url=webapp_url,
         has_calendar=_has_calendar(ctx, cb.user_id),
@@ -110,7 +110,9 @@ def show_settings_calendar_menu(ctx: HandlerContext, cb: IncomingCallback) -> No
         show_settings_hub_screen(ctx, cb)
         safe_answer_callback(ctx, cb)
         return
-    keyboard = build_settings_calendar_menu_keyboard(webapp_url=webapp_connect_url(ctx))
+    keyboard = build_settings_calendar_menu_keyboard(
+        webapp_url=webapp_connect_url(ctx, cb.user_id)
+    )
     edit_callback_message(ctx, cb, SETTINGS_CALENDAR_MENU_TEXT, keyboard)
     safe_answer_callback(ctx, cb)
 

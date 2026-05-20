@@ -50,6 +50,9 @@ def _ctx(users: UserStore) -> MagicMock:
     ctx.admin = AdminConfig(telegram_ids=(ADMIN_ID,))
     ctx.webapp = MagicMock()
     ctx.webapp.base_url = "https://example.com"
+    from satellite.web.connect_token import ConnectTokenStore
+
+    ctx.connect_tokens = ConnectTokenStore()
     ctx.telegram = MagicMock()
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 1})
     ctx.telegram.answer_callback_query = MagicMock()

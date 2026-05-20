@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 def handle_connect_calendar_button(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_access(ctx, msg) or msg.chat_id is None:
         return
-    webapp_url = webapp_connect_url(ctx)
+    webapp_url = webapp_connect_url(ctx, msg.user_id)
     if not webapp_url:
         send(ctx, msg.chat_id, CALENDAR_NOT_CONNECTED_HTML)
         return

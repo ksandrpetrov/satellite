@@ -71,6 +71,9 @@ def _access_ctx(*, approved: bool = True, has_calendar: bool = True) -> MagicMoc
     ctx.admin.telegram_ids = ()
     ctx.webapp = MagicMock()
     ctx.webapp.base_url = "https://example.com/connect"
+    from satellite.web.connect_token import ConnectTokenStore
+
+    ctx.connect_tokens = ConnectTokenStore()
     ctx.digest_state = MagicMock()
     ctx.digest_state.is_waiting_for_time = MagicMock(return_value=False)
     ctx.digest_state.clear = MagicMock()
@@ -194,6 +197,9 @@ def test_connect_command_sends_intro_with_webapp_keyboard():
     assert isinstance(markup, dict)
     assert markup["inline_keyboard"][0][0]["text"] == BUTTON_CONNECT_CALENDAR
     assert "web_app" in markup["inline_keyboard"][0][0]
+    webapp_url = markup["inline_keyboard"][0][0]["web_app"]["url"]
+    assert "t=" in webapp_url
+    assert ctx.connect_tokens.resolve(webapp_url.split("t=", 1)[1].split("&", 1)[0]) == 7777
 
     ctx2 = _access_ctx(approved=True, has_calendar=True)
     handle_message(

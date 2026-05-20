@@ -11,6 +11,7 @@ from ...plan_service import PlanBuilder
 from ...subscriptions import SubscriptionStore
 from ...users import UserStore
 from ...weather.client import WeatherForecastClient
+from ...web.connect_token import ConnectTokenStore
 from ..api import TelegramClient
 from ..calendar_state import CalendarStateStore
 from ..digest_state import DigestStateStore
@@ -29,6 +30,7 @@ class HandlerContext:
     tz: tzinfo
     admin: AdminConfig
     webapp: WebAppConfig
+    connect_tokens: ConnectTokenStore
     subscriptions: SubscriptionStore
     weather_config: WeatherConfig
     weather_client: WeatherForecastClient | None
