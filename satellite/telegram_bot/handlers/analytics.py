@@ -21,7 +21,6 @@ from ...messages_ru import (
     analytics_options_screen_text,
     build_analytics_options_keyboard,
 )
-from ..chat_action import run_with_typing_action
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
@@ -74,7 +73,7 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         )
 
     try:
-        png, caption = run_with_typing_action(ctx.telegram, cb.chat_id, build)
+        png, caption = build()
     except CalendarNotConnectedError:
         finalize_message(ctx, cb.chat_id, loading_id, ERR_CALDAV_UNAVAILABLE_TEXT)
         safe_answer_callback(ctx, cb)

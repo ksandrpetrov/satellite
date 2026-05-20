@@ -195,7 +195,6 @@ def _make_scheduler(
             primary_calendar_url="https://example/caldav/",
         )
     telegram = MagicMock()
-    telegram.send_chat_action = MagicMock(return_value=True)
     telegram.send_message = MagicMock(return_value={"message_id": 1})
     calendar_service = MagicMock()
     digest_config = DigestConfig(mode="tomorrow")

@@ -68,6 +68,46 @@ def _attendee_matches_login_variants(
     return False
 
 
+def _bump_vevent_dtstamp(component: Any) -> None:
+    for prop in ("dtstamp", "DTSTAMP"):
+        if prop in component:
+            del component[prop]
+    component.add("dtstamp", datetime.now(tz=timezone.utc))
+
+
+def _update_vevent_attendee_partstat(
+    component: Any, login_variants: Sequence[str], partstat: str
+) -> bool:
+    """Обновляет PARTSTAT существующего ATTENDEE; False, если совпадений нет."""
+    raw_attendees = component.get("ATTENDEE")
+    if raw_attendees is None:
+        return False
+    items = raw_attendees if isinstance(raw_attendees, list) else [raw_attendees]
+    updated = False
+    for attendee in items:
+        if not _attendee_matches_login_variants(attendee, login_variants):
+            continue
+        attendee.params["PARTSTAT"] = partstat
+        updated = True
+    return updated
+
+
+def _add_vevent_attendee(component: Any, login: str, partstat: str) -> None:
+    """Добавляет ATTENDEE для логина (Mail.ru иногда отдаёт PARTSTAT только в GET)."""
+    mailto = (login or "").strip()
+    if not mailto:
+        raise CalDAVError("Login is required to add ATTENDEE")
+    component.add(
+        "attendee",
+        f"mailto:{mailto}",
+        parameters={
+            "PARTSTAT": partstat,
+            "RSVP": "TRUE",
+            "ROLE": "REQ-PARTICIPANT",
+        },
+    )
+
+
 def build_candidate_urls(caldav_url: str | None, login: str) -> list[str]:
     """Возвращает порядок эндпоинтов для попыток discovery (наиболее вероятные сверху)."""
     login_name, _, domain = (login or "").partition("@")
@@ -136,6 +176,7 @@ class _DiscoveryResult:
     endpoint: str
     calendars: list[CalendarHandle]
     cached_at: float
+    auth_username: str
 
 
 class CalDAVError(RuntimeError):
@@ -361,25 +402,17 @@ class CalDAVService:
             payload = raw.encode() if isinstance(raw, str) else raw
             calendar = IcsCalendar.from_ical(payload)
             updated = False
-            for component in calendar.walk("vevent"):
-                raw_attendees = component.get("ATTENDEE")
-                if raw_attendees is None:
-                    continue
-                items = (
-                    raw_attendees if isinstance(raw_attendees, list) else [raw_attendees]
-                )
-                for attendee in items:
-                    if not _attendee_matches_login_variants(attendee, login_variants):
-                        continue
-                    attendee.params["PARTSTAT"] = normalized
+            vevents = list(calendar.walk("vevent"))
+            for component in vevents:
+                if _update_vevent_attendee_partstat(component, login_variants, normalized):
+                    _bump_vevent_dtstamp(component)
                     updated = True
-                if updated:
-                    for prop in ("dtstamp", "DTSTAMP"):
-                        if prop in component:
-                            del component[prop]
-                    component.add("dtstamp", datetime.now(tz=timezone.utc))
+            if not updated and vevents:
+                _add_vevent_attendee(vevents[0], self._login, normalized)
+                _bump_vevent_dtstamp(vevents[0])
+                updated = True
             if not updated:
-                raise CalDAVError("Attendee not found in event")
+                raise CalDAVError("No VEVENT in event data")
             event_obj.data = calendar.to_ical()
             event_obj.save()
             with self._partstat_cache_lock:
@@ -563,6 +596,7 @@ class CalDAVService:
                         endpoint=candidate,
                         calendars=handles,
                         cached_at=time.monotonic(),
+                        auth_username=username,
                     )
                 except Exception as exc:  # noqa: BLE001 - server-specific errors vary
                     user_label = "email" if username == self._login else "local-part"
@@ -675,19 +709,21 @@ class CalDAVService:
             return handle
         raise CalDAVError("Calendar handle not found")
 
+    def _auth_username(self) -> str:
+        return self._ensure_discovery().auth_username or self._login
+
+    def _dav_client(self) -> DAVClient:
+        result = self._ensure_discovery()
+        return DAVClient(
+            url=result.endpoint,
+            username=result.auth_username,
+            password=self._app_password,
+        )
+
     def _get_event_object(self, event_url: str) -> Any:
         from caldav import Event as CaldavEvent
 
-        return CaldavEvent(client=self._client_for_url(event_url), url=event_url)
-
-    def _client_for_url(self, event_url: str) -> DAVClient:
-        result = self._ensure_discovery()
-        _ = result  # discovery ensures credentials work
-        return DAVClient(
-            url=event_url,
-            username=self._login,
-            password=self._app_password,
-        )
+        return CaldavEvent(client=self._dav_client(), url=event_url)
 
     def _partstat_refresh_budget_left(self, started_at: float) -> bool:
         if self._partstat_refresh_limit <= 0:
@@ -729,7 +765,7 @@ class CalDAVService:
         try:
             response = requests.get(
                 event_url,
-                auth=(self._login, self._app_password),
+                auth=(self._auth_username(), self._app_password),
                 timeout=self._partstat_refresh_timeout_sec,
                 headers={"Accept": "text/calendar"},
             )

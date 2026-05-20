@@ -296,7 +296,6 @@ def _ctx(tmp_path: Path, *, username: str = "alice"):
     ctx.telegram = MagicMock()
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 1001})
     ctx.telegram.edit_message_text = MagicMock(return_value={})
-    ctx.telegram.send_chat_action = MagicMock(return_value=True)
     ctx.telegram.answer_callback_query = MagicMock(return_value=True)
     return ctx, store, state
 

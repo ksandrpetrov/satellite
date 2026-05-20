@@ -41,7 +41,6 @@ from ..calendar_state import (
     STATE_CREATE_TIME,
     STATE_CREATE_TITLE,
 )
-from ..chat_action import run_with_typing_action
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import edit_callback_message, safe_answer_callback, send
@@ -249,7 +248,7 @@ def _confirm_create(ctx: HandlerContext, cb: IncomingCallback) -> None:
         ctx.calendar_service.create_event(cb.user_id, payload, tz=ctx.tz)
 
     try:
-        run_with_typing_action(ctx.telegram, cb.chat_id, do_create)
+        do_create()
     except CalendarProviderError as exc:
         log.error("Create event failed user_id=%s code=%s", cb.user_id, exc.error_code)
         ctx.calendar_state.clear(cb.chat_id)

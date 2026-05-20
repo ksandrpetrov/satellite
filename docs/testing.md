@@ -51,7 +51,7 @@ python -m pytest tests/test_scheduler.py tests/test_digest_settings.py
 Telegram helpers:
 
 ```bash
-python -m pytest tests/test_handlers.py tests/test_chat_action.py tests/test_message_editing.py
+python -m pytest tests/test_handlers.py tests/test_message_editing.py
 ```
 
 Calendar, plan service и digest:

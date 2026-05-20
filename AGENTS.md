@@ -67,7 +67,7 @@ satellite/
       calendar_invitations.py # /invitations, PARTSTAT ACCEPTED/DECLINED/TENTATIVE
       calendar_create.py # /create FSM
       plan.py, settings.py, subscription.py
-    api.py, chat_action.py, message_editing.py, commands.py
+    api.py, message_editing.py, commands.py
     digest_state.py, calendar_state.py
     offset_store.py, offset_tracker.py
     concurrency.py, instance_lock.py

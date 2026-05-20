@@ -66,7 +66,6 @@ def _ctx(tmp_path: Path, *, build_side_effect):
     ctx.telegram = MagicMock()
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 7777})
     ctx.telegram.edit_message_text = MagicMock(return_value={})
-    ctx.telegram.send_chat_action = MagicMock(return_value=True)
     ctx.telegram.send_photo = MagicMock(return_value={"message_id": 7778})
     ctx.telegram.delete_message = MagicMock(return_value=True)
     ctx.telegram.answer_callback_query = MagicMock(return_value=True)

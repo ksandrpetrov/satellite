@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from ...calendar.events import format_upcoming_events_lines
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...messages_ru import ERR_CALDAV_UNAVAILABLE_TEXT, UPCOMING_EMPTY_HTML, UPCOMING_FETCH_STATUS
-from ..chat_action import run_with_typing_action
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingMessage
 from .delivery import finalize_message, try_send_return_message_id
@@ -38,7 +37,7 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
         return "\n".join(["🗓 <b>Ближайшие события</b>", "", *body])
 
     try:
-        text = run_with_typing_action(ctx.telegram, msg.chat_id, build)
+        text = build()
     except CalendarNotConnectedError:
         text = ERR_CALDAV_UNAVAILABLE_TEXT
     except CalendarProviderError as exc:

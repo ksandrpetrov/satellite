@@ -26,7 +26,6 @@ from .digest_utils import is_digest_day_allowed, resolve_target_date
 from .plan_service import PlanBuilder
 from .subscriptions import DigestSettings, SubscriptionStore
 from .telegram_bot.api import TelegramClient, TelegramError
-from .telegram_bot.chat_action import run_with_typing_action
 from .users import UserStore
 from .weather.client import WeatherForecastClient
 
@@ -222,14 +221,10 @@ class DigestScheduler:
         target_date = resolve_target_date(self._digest_config.mode, today)
 
         try:
-            plan_text = run_with_typing_action(
-                self._telegram,
-                sub.chat_id,
-                lambda: self._plan_builder.build_text(
-                    telegram_user_id=telegram_user_id,
-                    target_date=target_date,
-                    reference_date=today,
-                ),
+            plan_text = self._plan_builder.build_text(
+                telegram_user_id=telegram_user_id,
+                target_date=target_date,
+                reference_date=today,
             )
         except (CalendarNotConnectedError, CalendarProviderError) as exc:
             log.error(

@@ -12,12 +12,12 @@ import requests
 from satellite.telegram_bot.api import TelegramClient, TelegramError
 
 
-def test_send_chat_action_is_best_effort_without_retries() -> None:
+def test_answer_callback_query_is_best_effort_without_retries() -> None:
     client = TelegramClient("token")
     client._session.request = MagicMock(side_effect=requests.Timeout("slow"))  # noqa: SLF001
 
     with pytest.raises(TelegramError, match="after 0 retries"):
-        client.send_chat_action(123, timeout=0.1)
+        client.answer_callback_query("cb-1")
 
     client._session.request.assert_called_once()  # noqa: SLF001
 
@@ -32,7 +32,7 @@ def test_network_error_does_not_leak_bot_token() -> None:
     )
 
     with pytest.raises(TelegramError) as exc_info:
-        client.send_chat_action(123, timeout=0.1)
+        client.send_message(123, "hi")
 
     message = str(exc_info.value)
     assert token not in message

@@ -34,7 +34,6 @@ from ...messages_ru import (
     foreign_calendars_day_result_text,
     foreign_calendars_pick_day_text,
 )
-from ..chat_action import run_with_typing_action
 from .access import ensure_calendar_connected
 from .calendar_view import CalendarListStatus, fetch_calendars, normalize_calendar_url
 from .context import HandlerContext, IncomingCallback, IncomingMessage
@@ -213,7 +212,7 @@ def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
         )
 
     try:
-        text = run_with_typing_action(ctx.telegram, cb.chat_id, build)
+        text = build()
     except CalendarNotConnectedError:
         text = ERR_CALDAV_UNAVAILABLE_TEXT
     except CalendarProviderError as exc:

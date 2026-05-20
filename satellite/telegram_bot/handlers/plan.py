@@ -17,7 +17,6 @@ from ...messages_ru import (
     ERR_DIGEST_BUILD_FAILED_TEXT,
     PLAN_FETCH_STATUS_TEXT,
 )
-from ..chat_action import run_with_typing_action
 from .context import HandlerContext, IncomingMessage, PlanMode
 from .delivery import finalize_message, try_send_return_message_id
 
@@ -37,11 +36,7 @@ def handle_plan(ctx: HandlerContext, msg: IncomingMessage, mode: PlanMode) -> No
         return build_plan_for_user(ctx, telegram_user_id=msg.user_id, mode=mode)
 
     try:
-        plan_text = run_with_typing_action(
-            ctx.telegram,
-            msg.chat_id,
-            build_plan,
-        )
+        plan_text = build_plan()
     except (CalendarNotConnectedError, CalendarProviderError) as exc:
         log.error("Calendar failure for user_id=%s: %s", msg.user_id, exc)
         finalize_message(

@@ -39,8 +39,8 @@ class TelegramClient:
       соединении до 30 секунд, и его нельзя ставить в общий пул: иначе исходящие
       ``sendMessage``/``editMessageText`` могут оказаться позади long-poll'а и
       ждать его таймаута (наблюдалось в проде: задержка ответа до 60 с).
-    * ``_session`` — для всех исходящих запросов (sendMessage, editMessageText,
-      sendChatAction). Воркер-пул шлёт их параллельно; разделяемого состояния
+    * ``_session`` — для всех исходящих запросов (sendMessage, editMessageText).
+      Воркер-пул шлёт их параллельно; разделяемого состояния
       у клиента нет, поэтому глобальный мьютекс не нужен —
       ``HTTPAdapter`` с пулом соединений безопасно обслуживает конкурентные вызовы.
     """
@@ -140,28 +140,6 @@ class TelegramClient:
             files=files,
             timeout=_SEND_MESSAGE_TIMEOUT_SEC,
             max_retries=_SEND_MESSAGE_MAX_RETRIES,
-        )
-
-    def send_chat_action(
-        self,
-        chat_id: int | str,
-        action: str = "typing",
-        *,
-        timeout: float | None = None,
-        max_retries: int | None = 0,
-    ) -> dict[str, Any] | bool:
-        """``sendChatAction``. Возвращает результат Telegram (часто ``True``).
-
-        ``timeout`` позволяет вызывающему ограничить HTTP-таймаут: typing-индикатор
-        — best-effort, и если сеть Telegram тормозит, нет смысла ретраить его как
-        обычную отправку сообщения и задерживать итоговый ответ.
-        """
-        data: dict[str, Any] = {"chat_id": chat_id, "action": action}
-        return self._call(
-            "sendChatAction",
-            data=data,
-            timeout=timeout,
-            max_retries=max_retries,
         )
 
     def answer_callback_query(

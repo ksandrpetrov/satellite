@@ -14,5 +14,6 @@ def calendar_callback_token(url: str) -> str:
 
 
 def event_callback_token(event_url: str) -> str:
-    digest = hashlib.sha256((event_url or "").strip().encode()).hexdigest()
+    normalized = (event_url or "").strip().rstrip("/")
+    digest = hashlib.sha256(normalized.encode()).hexdigest()
     return digest[:_TOKEN_LEN]

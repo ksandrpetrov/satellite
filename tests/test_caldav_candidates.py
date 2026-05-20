@@ -133,7 +133,16 @@ def test_search_events_enriches_missing_partstat_via_get(monkeypatch):
         caldav_url="https://fake/",
         login="me@vk.team",
         app_password="pw",
-        cache_ttl_sec=0,
+        cache_ttl_sec=300,
+    )
+    from satellite.calendar.caldav_client import _DiscoveryResult
+    import time as _time
+
+    service._cache = _DiscoveryResult(
+        endpoint="https://fake/",
+        calendars=handles,
+        cached_at=_time.monotonic(),
+        auth_username="me",
     )
 
     captured: dict = {}
@@ -156,7 +165,7 @@ def test_search_events_enriches_missing_partstat_via_get(monkeypatch):
     )
 
     assert captured["url"] == "https://fake/calendars/cal/abc.ics"
-    assert captured["auth"] == ("me@vk.team", "pw")
+    assert captured["auth"] == ("me", "pw")
     assert len(events) == 1
     attendees = events[0]["attendees"]
     assert any("me@vk.team" in a and "PARTSTAT=TENTATIVE" in a for a in attendees)
@@ -192,6 +201,7 @@ def _service_with_handle(url: str, stub: _StubCalendarObj) -> CalDAVService:
         endpoint=url,
         calendars=[handle],
         cached_at=_time.monotonic(),
+        auth_username="me@vk.team",
     )
     return service
 
@@ -264,6 +274,7 @@ def test_require_handle_invalidates_cache_on_miss():
         endpoint="https://fake/",
         calendars=[stale],
         cached_at=_time.monotonic(),
+        auth_username="me@vk.team",
     )
     discovery_calls = {"count": 0}
     real_discovery = service._do_discovery
@@ -280,6 +291,7 @@ def test_require_handle_invalidates_cache_on_miss():
                 )
             ],
             cached_at=_time.monotonic(),
+            auth_username="me@vk.team",
         )
 
     service._do_discovery = counting_discovery  # type: ignore[method-assign]

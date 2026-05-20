@@ -95,7 +95,6 @@ telegram_test_command.py
   - `plan.py` — command → plan → reply.
   - `subscription.py` — subscribe/unsubscribe.
 - `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing.
-- `satellite/telegram_bot/chat_action.py` — `typing` during long operations.
 - `satellite/telegram_bot/message_editing.py` — edit loading message, fallback.
 - `satellite/telegram_bot/digest_state.py` — in-memory state for digest time input.
 - `satellite/telegram_bot/calendar_state.py` — FSM создания события, dedup callbacks.

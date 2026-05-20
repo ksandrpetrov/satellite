@@ -32,7 +32,6 @@ from ...messages_ru import (
     build_invitations_keyboard,
     invitations_list_html,
 )
-from ..chat_action import run_with_typing_action
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from ..message_editing import edit_or_send_message
@@ -129,7 +128,7 @@ def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
         return _load_screen(ctx, msg.user_id)
 
     try:
-        text, keyboard = run_with_typing_action(ctx.telegram, msg.chat_id, build)
+        text, keyboard = build()
     except CalendarNotConnectedError:
         text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
     except CalendarProviderError as exc:

@@ -79,7 +79,6 @@ def _ctx(tmp_path: Path, *, has_calendar: bool = True) -> MagicMock:
     ctx.telegram = MagicMock()
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 100})
     ctx.telegram.edit_message_text = MagicMock(return_value={})
-    ctx.telegram.send_chat_action = MagicMock(return_value=True)
     ctx.telegram.answer_callback_query = MagicMock(return_value=True)
     ctx.calendar_service = MagicMock()
     ctx.calendar_service.disconnect = MagicMock()

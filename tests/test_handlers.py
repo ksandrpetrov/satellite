@@ -96,7 +96,6 @@ def _plan_handler_context() -> MagicMock:
     ctx.weather_config.enabled = False
     ctx.weather_client = None
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 501})
-    ctx.telegram.send_chat_action = MagicMock(return_value=True)
     ctx.telegram.edit_message_text = MagicMock(return_value={})
     pb = MagicMock()
     pb.build_text = MagicMock(return_value="<b>Plan HTML</b>")
@@ -393,7 +392,6 @@ def test_plan_text_command_sends_loading_then_edits_to_digest():
     msg = IncomingMessage(update_id=2, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td")
     handle_message(ctx, msg)
 
-    ctx.telegram.send_chat_action.assert_called()
     assert ctx.telegram.send_message.call_count == 1
     assert ctx.telegram.send_message.call_args[0][1] == PLAN_FETCH_STATUS_TEXT["today"]
     ctx.telegram.edit_message_text.assert_called_once()
@@ -410,7 +408,6 @@ def test_plan_button_sends_loading_then_edits_to_digest():
     msg = IncomingMessage(update_id=3, chat_id=9002, user_id=1, username="alice", display_name=None, text=BUTTON_TODAY)
     handle_message(ctx, msg)
 
-    ctx.telegram.send_chat_action.assert_called()
     assert ctx.telegram.send_message.call_count == 1
     assert ctx.telegram.send_message.call_args[0][1] == PLAN_FETCH_STATUS_TEXT["today"]
     ctx.telegram.edit_message_text.assert_called_once()

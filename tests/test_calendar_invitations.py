@@ -143,6 +143,47 @@ def test_set_attendee_partstat_updates_ics(monkeypatch):
         assert attendee.params["PARTSTAT"] == "ACCEPTED"
 
 
+def test_set_attendee_partstat_adds_attendee_when_missing(monkeypatch):
+    component = IcsEvent()
+    component.add("uid", "u@test")
+    component.add("dtstart", datetime(2026, 5, 20, 10, 0))
+    component.add("dtend", datetime(2026, 5, 20, 11, 0))
+    cal = IcsCalendar()
+    cal.add_component(component)
+    stub = _StubEventObj(cal.to_ical())
+
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login="me@mail.ru",
+        app_password="pw",
+        cache_ttl_sec=0,
+    )
+    from satellite.calendar.caldav_client import _DiscoveryResult
+    import time as _time
+
+    service._cache = _DiscoveryResult(
+        endpoint="https://fake/",
+        calendars=[],
+        cached_at=_time.monotonic(),
+        auth_username="me@mail.ru",
+    )
+    monkeypatch.setattr(service, "_get_event_object", lambda _url: stub)
+
+    service.set_attendee_partstat("https://fake/e.ics", "ACCEPTED")
+
+    updated = IcsCalendar.from_ical(stub.data)
+    for vevent in updated.walk("vevent"):
+        attendee = vevent.get("ATTENDEE")
+        assert attendee is not None
+        assert attendee.params["PARTSTAT"] == "ACCEPTED"
+        assert "me@mail.ru" in str(attendee).casefold()
+
+
+def test_event_callback_token_ignores_trailing_slash():
+    url = "https://calendar.mail.ru/cal/abc.ics"
+    assert event_callback_token(url) == event_callback_token(url + "/")
+
+
 def test_set_attendee_partstat_loads_before_read(monkeypatch):
     component = IcsEvent()
     component.add("uid", "u@test")
