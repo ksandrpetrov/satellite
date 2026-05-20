@@ -2,7 +2,7 @@
 
 ## Бот не запускается
 
-### Missing env vars
+### Missing / invalid env vars
 
 Проверьте `.env`:
 
@@ -14,6 +14,15 @@ WEBAPP_BASE_URL=...
 ```
 
 `MAIL_LOGIN`, `USER_CALENDAR_MAP` и `TARGET_CALENDAR_NAME` больше не используются.
+
+**ADMIN_TELEGRAM_IDS** — только **числовой** Telegram user id (`123456789`), через
+запятую. `@username` не подходит: бот проигнорирует его и упадёт с
+`ADMIN_TELEGRAM_IDS: нет ни одного числового id`. Свой id: [@userinfobot](https://t.me/userinfobot).
+
+**TELEGRAM_BOT_TOKEN** — полный токен от @BotFather (`123456789:AAH...`). Значения
+`123456:your-bot-token` из `.env.example` дают HTTP 401 Unauthorized.
+
+**WEBAPP_BASE_URL** — реальный HTTPS, не `https://your-domain.example/connect`.
 
 ### Неверный ключ шифрования
 

@@ -12,6 +12,10 @@
 cp .env.example .env
 ```
 
+Альтернатива — `bash scripts/install.sh` (или `make install`). Скрипт
+скопирует `.env.example`, подставит сгенерированный `TOKEN_ENCRYPTION_KEY`
+и создаст `venv/` и `logs/`. Существующий `.env` не перезаписывается.
+
 ## Обязательные переменные для production-бота
 
 ```env
@@ -23,14 +27,18 @@ WEBAPP_BASE_URL=https://your-domain.example/connect
 
 - `TELEGRAM_BOT_TOKEN` — токен от [@BotFather](https://t.me/BotFather).
 - `TOKEN_ENCRYPTION_KEY` — симметричный ключ Fernet для шифрования
-  пользовательских CalDAV-credentials в `logs/users.json`. Сгенерировать:
+  пользовательских CalDAV-credentials в `logs/users.json`.
+
+  Если вы ставили проект через `scripts/install.sh` или `scripts/install-server.sh`,
+  ключ уже сгенерирован и записан в `.env`. Если собираете `.env` руками:
 
   ```bash
   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
   ```
 
   При смене ключа старые записи в `users.json` перестанут расшифровываться —
-  пользователям нужно подключить календарь заново.
+  пользователям нужно подключить календарь заново. Сохраняйте резервную копию
+  `.env` вместе с `users.json`.
 - `ADMIN_TELEGRAM_IDS` — Telegram user id админов через запятую или `;`.
   Только они одобряют заявки на доступ и видят `/pending`.
 - `WEBAPP_BASE_URL` — публичный HTTPS URL страницы «Подключение календаря»

@@ -90,6 +90,7 @@ if [[ ! -d "${SATELLITE_DIR}/.git" ]]; then
     fi
 else
     log "Репозиторий уже есть, делаю git pull"
+    github_ensure_safe_directory "${SATELLITE_DIR}"
     ORIGIN_CLEAN="$(github_strip_https_auth "$(github_git -C "${SATELLITE_DIR}" config --get remote.origin.url)")"
     github_git -C "${SATELLITE_DIR}" remote set-url origin "$(github_authenticated_url "${ORIGIN_CLEAN}")"
     github_git -C "${SATELLITE_DIR}" fetch --prune origin
@@ -144,8 +145,11 @@ cat <<EOF
 Сервис:      ${SERVICE_NAME}
 
 Дальше:
-  1) Отредактируйте ${SATELLITE_DIR}/.env (TELEGRAM_BOT_TOKEN, ADMIN_TELEGRAM_IDS,
-     WEBAPP_BASE_URL — TOKEN_ENCRYPTION_KEY уже сгенерирован).
+  1) Отредактируйте ${SATELLITE_DIR}/.env:
+     TELEGRAM_BOT_TOKEN — от @BotFather;
+     ADMIN_TELEGRAM_IDS — числовой user id (узнать: @userinfobot), не @username;
+     WEBAPP_BASE_URL — публичный HTTPS (/connect).
+     TOKEN_ENCRYPTION_KEY уже сгенерирован.
   2) Перезапустите сервис:   sudo systemctl restart ${SERVICE_NAME}
   3) Логи:                   journalctl -u ${SERVICE_NAME} -f
                              tail -f ${SATELLITE_DIR}/logs/bot.log

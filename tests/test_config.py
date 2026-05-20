@@ -88,3 +88,51 @@ def test_load_settings_requires_bot_env(tmp_path: Path, monkeypatch):
     assert "TOKEN_ENCRYPTION_KEY" in msg
     assert "ADMIN_TELEGRAM_IDS" in msg
     assert "WEBAPP_BASE_URL" in msg
+
+
+def test_load_settings_rejects_username_as_admin_id(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TOKEN_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("ADMIN_TELEGRAM_IDS", raising=False)
+    monkeypatch.delenv("WEBAPP_BASE_URL", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "TELEGRAM_BOT_TOKEN=1:abc\n"
+        "TOKEN_ENCRYPTION_KEY=key\n"
+        "ADMIN_TELEGRAM_IDS=aleksanderpetrov\n"
+        "WEBAPP_BASE_URL=https://example.com/connect\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError) as exc_info:
+        load_settings(
+            env_path=env_file,
+            require_telegram=True,
+            require_admin=True,
+            require_webapp=True,
+            require_encryption_key=True,
+        )
+    assert "не @username" in str(exc_info.value)
+
+
+def test_load_settings_rejects_placeholder_bot_token(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TOKEN_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("ADMIN_TELEGRAM_IDS", raising=False)
+    monkeypatch.delenv("WEBAPP_BASE_URL", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "TELEGRAM_BOT_TOKEN=123456:your-bot-token\n"
+        "TOKEN_ENCRYPTION_KEY=key\n"
+        "ADMIN_TELEGRAM_IDS=1\n"
+        "WEBAPP_BASE_URL=https://example.com/connect\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError) as exc_info:
+        load_settings(
+            env_path=env_file,
+            require_telegram=True,
+            require_admin=True,
+            require_webapp=True,
+            require_encryption_key=True,
+        )
+    assert "BotFather" in str(exc_info.value)

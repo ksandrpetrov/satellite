@@ -2,6 +2,16 @@
 
 ## Установка dev-зависимостей
 
+Через bootstrap-скрипт (создаст venv, поставит prod + dev зависимости,
+сгенерирует `.env` с Fernet-ключом, создаст `logs/`):
+
+```bash
+bash scripts/install.sh --dev
+# или: make install-dev
+```
+
+Если venv уже существует:
+
 ```bash
 source venv/bin/activate
 pip install -r requirements.txt
@@ -12,6 +22,7 @@ pip install -r requirements-dev.txt
 
 ```bash
 python -m pytest
+# или: make test
 ```
 
 В CI (GitHub Actions) используется Python 3.11: compile-check всех модулей,
@@ -124,3 +135,5 @@ mypy .
 find satellite tests -name '*.py' ! -name '._*' -print0 \
   | xargs -0 python -m py_compile
 ```
+
+Эквивалент через Makefile: `make compile`.

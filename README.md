@@ -30,42 +30,98 @@ Production Telegram-бот для календарных дайджестов и
 
 ## Быстрый старт
 
+Один из вариантов на выбор.
+
+**Через bootstrap-скрипт (рекомендуется).** Создаёт `venv/`, ставит зависимости,
+готовит `logs/` и `.env` с автосгенерированным `TOKEN_ENCRYPTION_KEY`:
+
 ```bash
-python3 -m venv venv
+git clone https://github.com/ksandrpetrov/satellite.git
+cd satellite
+bash scripts/install.sh --dev    # без --dev для production-only зависимостей
+```
+
+**Через Makefile:**
+
+```bash
+git clone https://github.com/ksandrpetrov/satellite.git
+cd satellite
+make install-dev
+```
+
+Затем впишите в `.env` минимум `TELEGRAM_BOT_TOKEN`, `ADMIN_TELEGRAM_IDS`,
+`WEBAPP_BASE_URL` (`TOKEN_ENCRYPTION_KEY` уже сгенерирован). Полный список
+переменных — [docs/configuration.md](docs/configuration.md).
+
+Запустить long-polling бота:
+
+```bash
 source venv/bin/activate
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-cp .env.example .env
-```
-
-Заполните `.env` (минимум — см. [docs/configuration.md](docs/configuration.md)),
-затем запустите long-polling бота:
-
-```bash
 python telegram_test_command.py
+# или: make run
 ```
 
-Запустить тесты:
+Прогон тестов:
 
 ```bash
 python -m pytest
+# или: make test
 ```
 
 ## Запуск на сервере
 
-На VPS или домашнем сервере бот обычно крутится как systemd-сервис: один процесс
-long-polling, автоперезапуск при падении, логи в `logs/bot.log` и `journalctl`.
+### Развертывание одной командой
 
-Перед production настройте reverse proxy на `WEBAPP_BASE_URL` →
-`WEBAPP_HOST:WEBAPP_PORT` (см. [docs/operations.md](docs/operations.md)).
-
-После обновления кода перезапустите уже запущенный сервис:
+На чистом Debian/Ubuntu с systemd — клонирует репозиторий в `/opt/satellite`,
+ставит Python-окружение, генерирует `.env` с `TOKEN_ENCRYPTION_KEY`,
+регистрирует и запускает `satellite-bot.service`:
 
 ```bash
-sudo systemctl restart satellite-bot.service
+sudo GITHUB_TOKEN=ghp_xxxxxxxx bash -c 'set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y && apt-get install -y git
+tmp=$(mktemp -d)
+trap "rm -rf \"$tmp\"" EXIT
+git clone --depth 1 -b main \
+  "https://x-access-token:${GITHUB_TOKEN}@github.com/ksandrpetrov/satellite.git" "$tmp"
+GITHUB_TOKEN="${GITHUB_TOKEN}" bash "$tmp/scripts/install-server.sh"'
 ```
 
-Пошаговая установка: [docs/operations.md](docs/operations.md#запуск-на-сервере).
+Замените `ghp_xxxxxxxx` на реальный PAT — для приватного repo он обязателен,
+пароль GitHub по HTTPS не работает (`Password authentication is not supported`).
+Bootstrap клонирует репо во временный каталог, а сам `install-server.sh` уже
+кладёт код в `/opt/satellite` — это безопасно повторять при ошибках.
+
+Подробности и troubleshooting: [docs/operations.md](docs/operations.md#запуск-на-сервере).
+
+Скрипт идемпотентен: следующий запуск делает `git pull` + переустановку
+зависимостей + `systemctl restart` (это же и обновление сервера). Существующий
+`.env` сохраняется.
+
+После первой установки:
+
+```bash
+sudo nano /opt/satellite/.env                     # TELEGRAM_BOT_TOKEN, ADMIN_TELEGRAM_IDS, WEBAPP_BASE_URL
+sudo systemctl restart satellite-bot.service
+journalctl -u satellite-bot.service -f
+```
+
+Если репозиторий уже на сервере — `sudo bash /opt/satellite/scripts/install-server.sh`.
+
+Перед production настройте reverse proxy на `WEBAPP_BASE_URL` →
+`WEBAPP_HOST:WEBAPP_PORT` (см. [docs/operations.md](docs/operations.md#reverse-proxy-для-web-app)).
+
+### Альтернатива: Docker (Traefik + Certbot)
+
+Образ публикуется в GHCR на GitHub Release. Деплой одной командой после правки
+`deploy/ansible/inventory.yml` и `deploy/ansible/group_vars/all.yml`:
+
+```bash
+make deploy
+```
+
+Подробности и ручной вариант: [deploy/README.md](deploy/README.md),
+[docs/operations.md](docs/operations.md#запуск-на-сервере).
 
 ## Главное про конфиг
 

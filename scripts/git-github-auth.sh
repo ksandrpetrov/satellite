@@ -48,6 +48,15 @@ github_authenticated_url() {
     esac
 }
 
+# Git 2.35+ отказывается работать в каталоге с «чужим» владельцем (root vs satellite).
+github_ensure_safe_directory() {
+    local dir="$1"
+    if [[ -z "${dir}" || ! -d "${dir}/.git" ]]; then
+        return 0
+    fi
+    git config --system --add safe.directory "${dir}" 2>/dev/null || true
+}
+
 github_git() {
     GIT_TERMINAL_PROMPT=0 git "$@"
 }

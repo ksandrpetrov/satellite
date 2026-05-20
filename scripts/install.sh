@@ -97,7 +97,7 @@ if [[ ! -f ".env" ]]; then
     fi
 
     log ".env создан. Сгенерирован TOKEN_ENCRYPTION_KEY."
-    warn "Откройте .env и впишите TELEGRAM_BOT_TOKEN, ADMIN_TELEGRAM_IDS, WEBAPP_BASE_URL."
+    warn "Откройте .env: TELEGRAM_BOT_TOKEN (@BotFather), ADMIN_TELEGRAM_IDS (числовой id от @userinfobot), WEBAPP_BASE_URL (HTTPS)."
 else
     log ".env уже существует — не трогаю"
 fi
@@ -106,7 +106,7 @@ cat <<'EOF'
 
 Готово. Дальше:
 
-  1) Отредактируйте .env: TELEGRAM_BOT_TOKEN, ADMIN_TELEGRAM_IDS, WEBAPP_BASE_URL.
+  1) Отредактируйте .env: TELEGRAM_BOT_TOKEN, ADMIN_TELEGRAM_IDS (числовой id), WEBAPP_BASE_URL.
   2) Активируйте окружение:        source venv/bin/activate
   3) Запустите бота:               python telegram_test_command.py
      или прогон тестов:            python -m pytest

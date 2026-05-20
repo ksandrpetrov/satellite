@@ -40,6 +40,10 @@ DEFAULT_WEATHER_CACHE_TTL_MINUTES = 30
 DEFAULT_WEBAPP_HOST = "127.0.0.1"
 DEFAULT_WEBAPP_PORT = 8080
 
+# Значения-заглушки из .env.example — при require_* считаются «не настроено».
+PLACEHOLDER_TELEGRAM_BOT_TOKEN = "123456:your-bot-token"
+PLACEHOLDER_WEBAPP_BASE_URL = "https://your-domain.example/connect"
+
 
 def default_weather_config() -> WeatherConfig:
     """Значения по умолчанию (погода выключена; координаты только для .env).
@@ -274,26 +278,51 @@ def load_settings(
 
     bot_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
     encryption_key = (os.getenv("TOKEN_ENCRYPTION_KEY") or "").strip()
-    admin_ids = parse_admin_ids(os.getenv("ADMIN_TELEGRAM_IDS"))
+    admin_ids_raw = os.getenv("ADMIN_TELEGRAM_IDS")
+    admin_ids = parse_admin_ids(admin_ids_raw)
     webapp_host = (os.getenv("WEBAPP_HOST") or DEFAULT_WEBAPP_HOST).strip() or DEFAULT_WEBAPP_HOST
     webapp_port = max(1, _parse_int(os.getenv("WEBAPP_PORT"), DEFAULT_WEBAPP_PORT))
     webapp_base_url = (os.getenv("WEBAPP_BASE_URL") or "").strip()
 
-    required: dict[str, str] = {}
-    if require_telegram:
-        required["TELEGRAM_BOT_TOKEN"] = bot_token
-    if require_encryption_key:
-        required["TOKEN_ENCRYPTION_KEY"] = encryption_key
-    if require_admin and not admin_ids:
-        required["ADMIN_TELEGRAM_IDS"] = ""
-    if require_webapp and not webapp_base_url:
-        required["WEBAPP_BASE_URL"] = ""
-
-    missing = [name for name, value in required.items() if not value]
-    if missing:
-        raise ValueError(
-            f"Missing env vars: {', '.join(missing)}. Add them to your .env file."
+    env_errors: list[str] = []
+    if require_telegram and (
+        not bot_token
+        or bot_token == PLACEHOLDER_TELEGRAM_BOT_TOKEN
+        or "your-bot-token" in bot_token
+    ):
+        env_errors.append(
+            "TELEGRAM_BOT_TOKEN: укажите токен от @BotFather (формат 123456789:AAH...), "
+            "не значение из .env.example"
         )
+    if require_encryption_key and not encryption_key:
+        env_errors.append(
+            "TOKEN_ENCRYPTION_KEY: сгенерируйте Fernet-ключ (см. .env.example) "
+            "или запустите scripts/install.sh"
+        )
+    if require_admin:
+        if not admin_ids:
+            raw = (admin_ids_raw or "").strip()
+            if not raw:
+                env_errors.append(
+                    "ADMIN_TELEGRAM_IDS: укажите числовые Telegram user id через запятую "
+                    "(узнать свой id: @userinfobot)"
+                )
+            else:
+                env_errors.append(
+                    f"ADMIN_TELEGRAM_IDS: нет ни одного числового id (значение {raw!r}). "
+                    "Нужен user id (например 123456789), не @username"
+                )
+    if require_webapp and (
+        not webapp_base_url
+        or webapp_base_url == PLACEHOLDER_WEBAPP_BASE_URL
+        or "your-domain.example" in webapp_base_url
+    ):
+        env_errors.append(
+            "WEBAPP_BASE_URL: укажите публичный HTTPS URL страницы подключения календаря "
+            "(например https://bot.example.com/connect)"
+        )
+    if env_errors:
+        raise ValueError("Invalid .env:\n- " + "\n- ".join(env_errors))
 
     settings = Settings(
         telegram=TelegramConfig(bot_token=bot_token),

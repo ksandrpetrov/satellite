@@ -109,14 +109,28 @@ satellite/
 
 ## Команды разработки
 
+Первичная установка (создаст venv + поставит prod+dev зависимости + сгенерирует
+`.env` с Fernet-ключом + создаст `logs/`):
+
 ```bash
-source venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest
-find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 python -m py_compile
+bash scripts/install.sh --dev   # или: make install-dev
 ```
 
-CI: [`.github/workflows/test.yml`](.github/workflows/test.yml).
+Дальше:
+
+```bash
+source venv/bin/activate
+python -m pytest                                  # make test
+find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 python -m py_compile  # make compile
+python telegram_test_command.py                   # make run
+```
+
+Серверная установка: `sudo bash scripts/install-server.sh`
+(см. [docs/operations.md](docs/operations.md#запуск-на-сервере)).
+
+CI: [`.github/workflows/test.yml`](.github/workflows/test.yml). Образ в GHCR:
+[`.github/workflows/release-docker.yml`](.github/workflows/release-docker.yml) (на GitHub Release).
+Деплой Docker: `make deploy` → [`deploy/README.md`](deploy/README.md).
 
 ## Runtime-артефакты
 
