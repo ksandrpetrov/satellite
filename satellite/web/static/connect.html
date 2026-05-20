@@ -350,6 +350,14 @@
       });
     }
 
+    function canUseSendData() {
+      return !!(tg && typeof tg.sendData === 'function');
+    }
+
+    function hasRestAuth(auth) {
+      return !!(auth.initData || auth.connectToken);
+    }
+
     async function waitForAuth(maxMs) {
       const initData = await waitForInitData(maxMs);
       if (initData) return { initData, connectToken: '' };
@@ -450,6 +458,13 @@
     }
 
     async function refreshStatus() {
+      const auth = await waitForAuth(1500);
+      if (!hasRestAuth(auth)) {
+        badge('готов к подключению');
+        document.getElementById('userHint').textContent =
+          'Введите логин и пароль приложения, затем нажмите «Подключить».';
+        return;
+      }
       badge('проверяем…');
       try {
         const data = await api('GET', '/api/calendar/status');
@@ -468,12 +483,24 @@
           document.getElementById('userHint').textContent =
             'Доступ ещё не одобрен админом. Ожидайте сообщения от бота.';
         } else if (e.status === 401) {
-          badge('нет сессии Telegram', 'err');
-          document.getElementById('userHint').textContent = telegramErrorMessage(e.code);
+          badge('не подключено');
+          document.getElementById('userHint').textContent =
+            'Введите данные и нажмите «Подключить».';
         } else {
           badge('ошибка проверки', 'err');
         }
       }
+    }
+
+    function buildConnectPayload() {
+      const caldavUrl = document.getElementById('caldavUrl').value.trim();
+      return {
+        action: 'connect',
+        provider: document.getElementById('provider').value,
+        login: document.getElementById('login').value.trim(),
+        app_password: document.getElementById('token').value.trim(),
+        ...(caldavUrl ? { caldav_url: caldavUrl } : {}),
+      };
     }
 
     document.getElementById('connectBtn').addEventListener('click', async () => {
@@ -481,13 +508,28 @@
       const btn = document.getElementById('connectBtn');
       btn.disabled = true;
       try {
-        const caldavUrl = document.getElementById('caldavUrl').value.trim();
-        await api('POST', '/api/calendar/connect', {
-          provider: document.getElementById('provider').value,
-          login: document.getElementById('login').value.trim(),
-          app_password: document.getElementById('token').value.trim(),
-          ...(caldavUrl ? { caldav_url: caldavUrl } : {}),
-        });
+        const payload = buildConnectPayload();
+        if (!payload.login || !payload.app_password) {
+          showStatus('connectStatus', 'Укажите email и пароль приложения.', 'err');
+          return;
+        }
+        const auth = await waitForAuth(3000);
+        if (!hasRestAuth(auth) && canUseSendData()) {
+          tg.sendData(JSON.stringify(payload));
+          document.getElementById('token').value = '';
+          showStatus('connectStatus', 'Отправлено боту. Проверьте чат…', 'ok');
+          setTimeout(() => { if (tg) tg.close(); }, 900);
+          return;
+        }
+        if (!hasRestAuth(auth)) {
+          showStatus(
+            'connectStatus',
+            'Откройте окно снова из бота: /connect → кнопка под сообщением.',
+            'err'
+          );
+          return;
+        }
+        await api('POST', '/api/calendar/connect', payload);
         document.getElementById('token').value = '';
         showStatus('connectStatus', 'Календарь подключён.', 'ok');
         await refreshStatus();
@@ -511,6 +553,17 @@
 
     document.getElementById('checkBtn').addEventListener('click', async () => {
       clearStatus('connectStatus');
+      const auth = await waitForAuth(1500);
+      if (!hasRestAuth(auth)) {
+        showStatus(
+          'connectStatus',
+          canUseSendData()
+            ? 'Сначала нажмите «Подключить» — проверка будет в чате с ботом.'
+            : 'Сначала подключите календарь кнопкой «Подключить».',
+          'err'
+        );
+        return;
+      }
       try {
         const data = await api('GET', '/api/calendar/status');
         showStatus(

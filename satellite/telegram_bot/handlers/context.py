@@ -50,6 +50,7 @@ class IncomingMessage:
     username: str | None
     display_name: str | None
     text: str | None
+    web_app_data: str | None = None
 
 
 @dataclass(frozen=True)

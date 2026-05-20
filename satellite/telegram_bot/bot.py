@@ -83,7 +83,9 @@ class TelegramBot:
         self._stop_event = threading.Event()
         self._shutdown_done = False
         self._shutdown_lock = threading.Lock()
-        self._connect_tokens = ConnectTokenStore()
+        self._connect_tokens = ConnectTokenStore(
+            storage_path=logs_dir / "connect-tokens.json",
+        )
         self._webapp = WebAppServer(
             config=WebAppServerConfig(
                 host=settings.webapp.host,

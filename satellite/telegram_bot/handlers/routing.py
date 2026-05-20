@@ -316,6 +316,12 @@ def extract_message(update: dict) -> IncomingMessage:
     user_id_raw = from_user.get("id")
     chat = message.get("chat") or {}
     chat_id_raw = chat.get("id")
+    web_app_raw = message.get("web_app_data")
+    web_app_data: str | None = None
+    if isinstance(web_app_raw, dict):
+        raw_data = web_app_raw.get("data")
+        if isinstance(raw_data, str) and raw_data.strip():
+            web_app_data = raw_data
     return IncomingMessage(
         update_id=int(update.get("update_id") or 0),
         chat_id=int(chat_id_raw) if isinstance(chat_id_raw, int) else None,
@@ -323,6 +329,7 @@ def extract_message(update: dict) -> IncomingMessage:
         username=username,
         display_name=_display_name(from_user),
         text=text,
+        web_app_data=web_app_data,
     )
 
 

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
+from ...calendar.providers.registry import PROVIDER_IDS, PROVIDER_MAILRU, PROVIDER_YANDEX
+from ...security.token_vault import ProviderCredentials
+from ...users import UserStorePersistenceError
 from ...messages_ru import (
     CALENDAR_CHECK_FAIL_HTML,
     CALENDAR_CHECK_OK_HTML,
@@ -19,6 +23,48 @@ from .context import HandlerContext, IncomingMessage
 from .delivery import send, webapp_connect_url
 
 log = logging.getLogger(__name__)
+
+
+def handle_web_app_connect(ctx: HandlerContext, msg: IncomingMessage) -> None:
+    """Подключение календаря через ``Telegram.WebApp.sendData`` (без initData)."""
+    if not ensure_calendar_access(ctx, msg) or msg.chat_id is None or msg.user_id is None:
+        return
+    if not msg.web_app_data:
+        return
+    try:
+        payload = json.loads(msg.web_app_data)
+    except json.JSONDecodeError:
+        send(ctx, msg.chat_id, CALENDAR_CHECK_FAIL_HTML)
+        return
+    if not isinstance(payload, dict) or payload.get("action") != "connect":
+        return
+    provider = str(payload.get("provider") or PROVIDER_MAILRU).strip().lower()
+    login = str(payload.get("login") or "").strip()
+    app_password = str(
+        payload.get("app_password") or payload.get("token") or ""
+    ).strip()
+    if provider not in PROVIDER_IDS:
+        send(ctx, msg.chat_id, CALENDAR_CHECK_FAIL_HTML)
+        return
+    if provider == PROVIDER_YANDEX:
+        send(ctx, msg.chat_id, CALENDAR_CHECK_FAIL_HTML)
+        return
+    if not login or not app_password:
+        send(ctx, msg.chat_id, CALENDAR_NOT_CONNECTED_HTML)
+        return
+    caldav_url = str(payload.get("caldav_url") or "").strip() or None
+    try:
+        ctx.calendar_service.connect(
+            msg.user_id,
+            provider_id=provider,
+            credentials=ProviderCredentials(login=login, secret=app_password),
+            caldav_url=caldav_url,
+        )
+        send(ctx, msg.chat_id, CALENDAR_CONNECTED_HTML)
+    except CalendarProviderError:
+        send(ctx, msg.chat_id, CALENDAR_CHECK_FAIL_HTML)
+    except UserStorePersistenceError:
+        send(ctx, msg.chat_id, CALENDAR_CHECK_FAIL_HTML)
 
 
 def handle_connect_calendar_button(ctx: HandlerContext, msg: IncomingMessage) -> None:

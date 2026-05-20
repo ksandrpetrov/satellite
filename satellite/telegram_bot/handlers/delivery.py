@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import quote
 
 from ...config import WebAppConfig
 from ...messages_ru import ERR_GENERIC_HANDLER_TEXT
@@ -122,7 +123,8 @@ def webapp_connect_url(
     if not url or telegram_user_id is None:
         return url
     token = ctx.connect_tokens.issue(telegram_user_id)
-    return f"{url}/{token}"
+    # Путь + hash: Telegram иногда открывает только /connect без query/path.
+    return f"{url}/{token}#t={quote(token, safe='')}"
 
 
 def notify_handler_failure(ctx: HandlerContext, chat_id: int | None) -> None:

@@ -23,6 +23,7 @@ from .calendar_setup import (
     handle_check_calendar,
     handle_connect_calendar_button,
     handle_disconnect_calendar,
+    handle_web_app_connect,
 )
 from .calendar_foreign import (
     handle_open_foreign_calendars,
@@ -65,6 +66,16 @@ log = logging.getLogger(__name__)
 def handle_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
     """Точка входа для сообщений. Все исключения логируются и не пробрасываются."""
     if msg.chat_id is None:
+        return
+
+    if msg.web_app_data:
+        try:
+            handle_web_app_connect(ctx, msg)
+        except TelegramError as exc:
+            log.error("Telegram error on web_app_data user_id=%s: %s", msg.user_id, exc)
+        except Exception:  # noqa: BLE001
+            log.exception("Unexpected error on web_app_data user_id=%s", msg.user_id)
+            notify_handler_failure(ctx, msg.chat_id)
         return
 
     cmd = recognize_message(msg.text)
