@@ -339,7 +339,6 @@ CB_CREATE_DATE_TODAY = "create:date:today"
 CB_CREATE_DATE_TOMORROW = "create:date:tomorrow"
 CB_CREATE_DURATION_PREFIX = "create:dur:"
 CREATE_EVENT_DURATION_PRESETS_MIN: tuple[int, ...] = (15, 30, 45, 60)
-CB_MANAGE_DELETE_PREFIX = "manage:del:"
 
 
 def build_create_date_keyboard() -> dict:
@@ -389,6 +388,8 @@ CALENDAR_SOURCES_LOAD_FAIL_HTML = (
     "⚠️ Чайка не смогла принести список календарей.\n"
     "Попробуй ещё раз через минуту."
 )
+CALENDAR_SOURCES_UNAVAILABLE_TEXT = "Календари не отвечают"
+CALENDAR_SOURCES_UPDATE_FAIL_TEXT = "Не удалось обновить список"
 CALENDAR_SOURCES_CLOSED_TEXT = "📚 Закрыли список календарей. Возвращайся, когда понадобится."
 
 
@@ -448,6 +449,7 @@ FOREIGN_CALENDARS_LOAD_FAIL_HTML = (
     "⚠️ Чайка не смогла принести список чужих календарей.\n"
     "Попробуй ещё раз через минуту."
 )
+FOREIGN_CALENDARS_REFRESH_FAIL_TEXT = "Не удалось обновить список"
 FOREIGN_CALENDARS_CLOSED_TEXT = "👥 Закрыли чужие календари. Возвращайся, когда понадобится."
 FOREIGN_CALENDARS_FETCH_STATUS = "⏳ Чайка облетает чужой календарь…"
 FOREIGN_CALENDARS_DAY_EMPTY_HTML = "🪶 В этот день встреч у коллеги нет."
@@ -550,6 +552,15 @@ CB_SETTINGS_DISCONNECT = "settings_disconnect"
 CB_SETTINGS_DISCONNECT_CONFIRM = "settings_disconnect_confirm"
 CB_SETTINGS_BACK = "settings_back"
 CB_SETTINGS_CLOSE = "settings_close"
+
+CB_ANALYTICS_RUN = "analytics:run"
+CB_ANALYTICS_WORKDAY_9 = "analytics:wd:9-18"
+CB_ANALYTICS_WORKDAY_10 = "analytics:wd:10-19"
+CB_ANALYTICS_BACK = "analytics:back"
+
+CALENDAR_DISCONNECT_TOAST = "Отключено"
+ANALYTICS_SAVED_TOAST = "Сохранено"
+FOREIGN_CALENDARS_LOADING_TOAST = "Загружаю…"
 
 BUTTON_ANALYTICS = "📊 Аналитика недели"
 BUTTON_CALENDAR_MENU = "📅 Календарь"
@@ -834,6 +845,11 @@ ERR_CALDAV_UNAVAILABLE_TEXT = (
 ERR_DIGEST_BUILD_FAILED_TEXT = (
     "⚠️ Чайка вернулась без сводки.\n\n"
     "Крылья целы, но календарь сейчас не отвечает. Попробуй ещё раз чуть позже."
+)
+
+ERR_USERS_SAVE_FAILED_TEXT = (
+    "⚠️ Не удалось сохранить настройки.\n"
+    "Чайка попробует снова при следующем действии."
 )
 
 # Универсальный текст для непредвиденных ошибок в диспетчере: пользователь

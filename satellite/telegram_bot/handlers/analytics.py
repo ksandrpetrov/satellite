@@ -10,7 +10,12 @@ from ...calendar.constants import ANALYTICS_WORKDAY_10_19, ANALYTICS_WORKDAY_9_1
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...messages_ru import (
     ANALYTICS_FETCH_STATUS,
+    ANALYTICS_SAVED_TOAST,
     ANALYTICS_WORKDAY_APPLIED_TEXT,
+    CB_ANALYTICS_BACK,
+    CB_ANALYTICS_RUN,
+    CB_ANALYTICS_WORKDAY_9,
+    CB_ANALYTICS_WORKDAY_10,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_GENERIC_HANDLER_TEXT,
     analytics_options_screen_text,
@@ -19,14 +24,14 @@ from ...messages_ru import (
 from ..chat_action import run_with_typing_action
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from .delivery import edit_callback_message, safe_answer_callback, try_send_return_message_id
+from .delivery import (
+    edit_callback_message,
+    finalize_message,
+    safe_answer_callback,
+    try_send_return_message_id,
+)
 
 log = logging.getLogger(__name__)
-
-CB_ANALYTICS_RUN = "analytics:run"
-CB_ANALYTICS_WORKDAY_9 = "analytics:wd:9-18"
-CB_ANALYTICS_WORKDAY_10 = "analytics:wd:10-19"
-CB_ANALYTICS_BACK = "analytics:back"
 
 
 def handle_open_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
@@ -71,17 +76,17 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
     try:
         png, caption = run_with_typing_action(ctx.telegram, cb.chat_id, build)
     except CalendarNotConnectedError:
-        _finish_analytics_error(ctx, cb.chat_id, loading_id, ERR_CALDAV_UNAVAILABLE_TEXT)
+        finalize_message(ctx, cb.chat_id, loading_id, ERR_CALDAV_UNAVAILABLE_TEXT)
         safe_answer_callback(ctx, cb)
         return
     except CalendarProviderError as exc:
         log.error("Analytics failed user_id=%s: %s", cb.user_id, exc.error_code)
-        _finish_analytics_error(ctx, cb.chat_id, loading_id, ERR_CALDAV_UNAVAILABLE_TEXT)
+        finalize_message(ctx, cb.chat_id, loading_id, ERR_CALDAV_UNAVAILABLE_TEXT)
         safe_answer_callback(ctx, cb)
         return
     except Exception:  # noqa: BLE001 - не оставляем «сводит неделю…» висеть в чате
         log.exception("Analytics build failed user_id=%s", cb.user_id)
-        _finish_analytics_error(ctx, cb.chat_id, loading_id, ERR_GENERIC_HANDLER_TEXT)
+        finalize_message(ctx, cb.chat_id, loading_id, ERR_GENERIC_HANDLER_TEXT)
         safe_answer_callback(ctx, cb)
         return
 
@@ -111,7 +116,7 @@ def handle_set_analytics_workday(ctx: HandlerContext, cb: IncomingCallback, pres
         ANALYTICS_WORKDAY_APPLIED_TEXT,
         build_analytics_options_keyboard(workday_preset=preset),
     )
-    safe_answer_callback(ctx, cb, text="Сохранено")
+    safe_answer_callback(ctx, cb, text=ANALYTICS_SAVED_TOAST)
 
 
 def route_analytics_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
@@ -125,27 +130,7 @@ def route_analytics_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
     if data == CB_ANALYTICS_WORKDAY_10:
         handle_set_analytics_workday(ctx, cb, ANALYTICS_WORKDAY_10_19)
         return True
-    if data == CB_ANALYTICS_BACK:
-        from .settings_hub import show_settings_hub_screen
-
-        show_settings_hub_screen(ctx, cb)
-        return True
     return False
-
-
-def _finish_analytics_error(
-    ctx: HandlerContext,
-    chat_id: int,
-    loading_id: int | None,
-    text: str,
-) -> None:
-    if loading_id is not None:
-        try:
-            ctx.telegram.edit_message_text(chat_id, loading_id, text)
-            return
-        except Exception:  # noqa: BLE001
-            pass
-    ctx.telegram.send_message(chat_id, text)
 
 
 def _msg_from_cb(cb: IncomingCallback) -> IncomingMessage:

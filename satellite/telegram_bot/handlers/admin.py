@@ -8,7 +8,6 @@ from ...messages_ru import (
     ADMIN_ACTION_FORBIDDEN_HTML,
     CB_ADMIN_APPROVE_PREFIX,
     CB_ADMIN_REJECT_PREFIX,
-    CMD_PENDING,
     admin_access_request_html,
     admin_pending_list_html,
     build_admin_access_keyboard,
@@ -16,7 +15,7 @@ from ...messages_ru import (
 from ..api import TelegramError
 from .access import notify_user_access_decision
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from .delivery import safe_answer_callback, send
+from .delivery import safe_answer_callback, send, webapp_connect_url
 
 log = logging.getLogger(__name__)
 
@@ -85,9 +84,7 @@ def _handle_approve(ctx: HandlerContext, cb: IncomingCallback, target_id: int) -
     except KeyError:
         safe_answer_callback(ctx, cb, text="Пользователь не найден")
         return
-    webapp_url = ctx.webapp.base_url.rstrip("/")
-    if webapp_url and not webapp_url.endswith("/connect"):
-        webapp_url += "/connect"
+    webapp_url = webapp_connect_url(ctx)
     if record.chat_id is not None:
         notify_user_access_decision(
             ctx, chat_id=record.chat_id, approved=True, webapp_url=webapp_url
@@ -111,9 +108,3 @@ def _handle_reject(ctx: HandlerContext, cb: IncomingCallback, target_id: int) ->
         )
     safe_answer_callback(ctx, cb, text="Отклонено")
     log.info("Admin %s rejected user %s", cb.user_id, target_id)
-
-
-def is_pending_command(text: str | None) -> bool:
-    if not text:
-        return False
-    return text.strip().split()[0].lower().startswith(CMD_PENDING)

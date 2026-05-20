@@ -16,7 +16,7 @@ from ...messages_ru import (
 )
 from .access import ensure_calendar_access
 from .context import HandlerContext, IncomingMessage
-from .delivery import send
+from .delivery import send, webapp_connect_url
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 def handle_connect_calendar_button(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_access(ctx, msg) or msg.chat_id is None:
         return
-    webapp_url = _webapp_url(ctx)
+    webapp_url = webapp_connect_url(ctx)
     if not webapp_url:
         send(ctx, msg.chat_id, CALENDAR_NOT_CONNECTED_HTML)
         return
@@ -62,10 +62,3 @@ def handle_disconnect_calendar(ctx: HandlerContext, msg: IncomingMessage) -> Non
         send(ctx, msg.chat_id, CALENDAR_DISCONNECTED_HTML)
     except KeyError:
         send(ctx, msg.chat_id, CALENDAR_NOT_CONNECTED_HTML)
-
-
-def _webapp_url(ctx: HandlerContext) -> str:
-    base = ctx.webapp.base_url.rstrip("/")
-    if not base:
-        return ""
-    return base if base.endswith("/connect") else f"{base}/connect"

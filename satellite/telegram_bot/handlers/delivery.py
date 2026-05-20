@@ -99,6 +99,19 @@ def safe_answer_callback(
         log.warning("Unexpected answerCallbackQuery failure: %s", exc)
 
 
+def webapp_connect_url(ctx: HandlerContext) -> str:
+    """Базовый URL Web App для подключения календаря.
+
+    Дописывает суффикс ``/connect`` если ``WEBAPP_BASE_URL`` указан без него.
+    Используется во всех точках входа (`/start`, approve, кнопки настроек,
+    подэкран «Календарь») — чтобы не дублировать нормализацию пути.
+    """
+    base = (ctx.webapp.base_url or "").rstrip("/")
+    if not base:
+        return ""
+    return base if base.endswith("/connect") else f"{base}/connect"
+
+
 def notify_handler_failure(ctx: HandlerContext, chat_id: int | None) -> None:
     """Best-effort отправка нейтрального текста при необработанной ошибке хендлера.
 

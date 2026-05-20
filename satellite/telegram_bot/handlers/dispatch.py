@@ -19,7 +19,6 @@ from .access import (
 from .admin import handle_pending_command, route_admin_callback
 from .calendar_create import handle_create_text_input, route_create_callback, start_create_event
 from .calendar_list import handle_upcoming_events
-from .calendar_manage import route_manage_callback
 from .calendar_setup import (
     handle_check_calendar,
     handle_connect_calendar_button,
@@ -90,7 +89,7 @@ def handle_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
         return
 
     try:
-        _route_message(ctx, msg)
+        _route_message(ctx, msg, cmd)
     except TelegramError as exc:
         log.error("Telegram error while handling user_id=%s: %s", msg.user_id, exc)
     except Exception:  # noqa: BLE001 - один апдейт не должен валить бота
@@ -98,8 +97,9 @@ def handle_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
         notify_handler_failure(ctx, msg.chat_id)
 
 
-def _route_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
-    cmd = recognize_message(msg.text)
+def _route_message(
+    ctx: HandlerContext, msg: IncomingMessage, cmd: RecognizedCommand | None
+) -> None:
     if cmd is None:
         if (
             msg.chat_id is not None
@@ -194,8 +194,6 @@ def _route_callback(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if route_admin_callback(ctx, cb):
         return
     if route_create_callback(ctx, cb):
-        return
-    if route_manage_callback(ctx, cb):
         return
     if route_settings_hub_callback(ctx, cb):
         return

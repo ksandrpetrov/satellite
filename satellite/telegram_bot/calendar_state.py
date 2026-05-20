@@ -29,7 +29,6 @@ class CreateEventDraft:
 class CalendarFlowState:
     state: str
     draft: CreateEventDraft = field(default_factory=CreateEventDraft)
-    manage_events: list[dict] = field(default_factory=list)
 
 
 class CalendarStateStore:

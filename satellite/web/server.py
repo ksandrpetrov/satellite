@@ -34,7 +34,7 @@ from ..calendar.providers.base import (
 from ..calendar.providers.registry import PROVIDER_IDS, PROVIDER_MAILRU, PROVIDER_YANDEX
 from ..calendar.user_calendar_service import UserCalendarService
 from ..security.token_vault import ProviderCredentials
-from ..users import USER_STATUS_APPROVED, UserStore
+from ..users import USER_STATUS_APPROVED, UserStore, UserStorePersistenceError
 from .init_data import InitDataError, validate_init_data
 
 log = logging.getLogger(__name__)
@@ -304,6 +304,14 @@ def _handle_connect(
             {"error": exc.error_code, "message": str(exc)},
         )
         return
+    except UserStorePersistenceError as exc:
+        log.error("Persistence error during connect: %s", exc)
+        _json_response(
+            handler,
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+            {"error": "storage_unavailable"},
+        )
+        return
     _json_response(
         handler,
         HTTPStatus.OK,
@@ -326,6 +334,14 @@ def _handle_disconnect(
     except KeyError:
         _json_response(
             handler, HTTPStatus.OK, {"status": "disconnected"}
+        )
+        return
+    except UserStorePersistenceError as exc:
+        log.error("Persistence error during disconnect: %s", exc)
+        _json_response(
+            handler,
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+            {"error": "storage_unavailable"},
         )
         return
     _json_response(handler, HTTPStatus.OK, {"status": "disconnected"})

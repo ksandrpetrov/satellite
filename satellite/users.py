@@ -43,6 +43,17 @@ from .calendar.constants import (
 
 log = logging.getLogger(__name__)
 
+
+class UserStorePersistenceError(RuntimeError):
+    """Не удалось записать ``users.json`` на диск.
+
+    Пробрасывается из ``UserStore._save_locked`` вместо тихого логирования —
+    in-memory состояние при этом уже обновлено и будет сохранено при следующей
+    успешной записи (мы сериализуем весь словарь, а не дельту). Caller должен
+    показать пользователю безопасный текст из ``messages_ru``.
+    """
+
+
 ALLOWED_ANALYTICS_WORKDAYS = frozenset(
     {ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_19}
 )
@@ -523,6 +534,9 @@ class UserStore:
                 raise
         except OSError as exc:
             log.error("Failed to persist users to %s: %s", self._path, exc)
+            raise UserStorePersistenceError(
+                f"Failed to persist users to {self._path}: {exc}"
+            ) from exc
 
 
 def _record_to_json(rec: UserRecord) -> dict[str, object | None]:

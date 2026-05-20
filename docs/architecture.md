@@ -62,7 +62,8 @@ telegram_test_command.py
 
 - `satellite/users.py` — `UserStore`, `UserRecord`, статусы доступа и календаря.
   Атомарная запись JSON, thread-safe lock. Не хранит сырые токены и display name
-  календаря (PII).
+  календаря (PII). Сбой записи на диск поднимает `UserStorePersistenceError`
+  (а не тихо логируется), чтобы caller показал пользователю безопасный текст.
 - `satellite/security/token_vault.py` — `TokenVault`, `ProviderCredentials`
   (login + app password). Ключ — `TOKEN_ENCRYPTION_KEY` из env.
 - `satellite/calendar/user_calendar_service.py` — единый фасад connect/list/create/delete
@@ -89,7 +90,6 @@ telegram_test_command.py
   - `calendar_foreign.py` — просмотр пошаренных («чужих») календарей.
   - `calendar_list.py` — `/upcoming`, ближайшие 7 дней.
   - `calendar_create.py` — `/create`, пошаговый FSM создания события.
-  - `calendar_manage.py` — inline-delete callback (`manage:del:`).
   - `plan.py` — command → plan → reply.
   - `subscription.py` — subscribe/unsubscribe.
 - `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing.

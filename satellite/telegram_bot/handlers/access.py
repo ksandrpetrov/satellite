@@ -26,6 +26,7 @@ from ...users import (
 )
 from ..api import TelegramError
 from .context import HandlerContext, IncomingCallback, IncomingMessage
+from .delivery import webapp_connect_url
 
 log = logging.getLogger(__name__)
 
@@ -97,9 +98,7 @@ def _handle_start_flow(ctx: HandlerContext, msg: IncomingMessage, status: str) -
     # approved
     record = ctx.users.get(msg.user_id)
     has_calendar = bool(record and record.has_calendar)
-    webapp_url = ctx.webapp.base_url.rstrip("/")
-    if webapp_url and not webapp_url.endswith("/connect"):
-        webapp_url = f"{webapp_url}/connect"
+    webapp_url = webapp_connect_url(ctx)
     markup = build_approved_main_keyboard() if webapp_url else REPLY_KEYBOARD_REMOVE
     ctx.telegram.send_message(
         msg.chat_id,
@@ -142,9 +141,7 @@ def ensure_calendar_connected(ctx: HandlerContext, msg: IncomingMessage) -> bool
     assert msg.user_id is not None
     record = ctx.users.get(msg.user_id)
     if record is None or not record.has_calendar:
-        webapp_url = ctx.webapp.base_url.rstrip("/")
-        if webapp_url and not webapp_url.endswith("/connect"):
-            webapp_url += "/connect"
+        webapp_url = webapp_connect_url(ctx)
         markup = (
             build_webapp_connect_keyboard(webapp_url)
             if webapp_url

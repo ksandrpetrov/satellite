@@ -1,15 +1,49 @@
-"""Общие хелперы UI для списка календарей (sources / foreign / settings hub)."""
+"""Общие хелперы UI для списка календарей (sources / foreign / settings hub).
+
+`fetch_calendars` — единая точка получения списка CalDAV-календарей в UI.
+Возвращает структурированный `CalendarListResult`, чтобы callers могли
+разделять «не подключён» и «сеть/пароль не отвечает», не дублируя
+обработку `CalendarProviderError`.
+"""
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
+from enum import Enum
 
-from ...calendar.providers.base import CalendarListEntry, CalendarProviderError
+from ...calendar.providers.base import (
+    CalendarListEntry,
+    CalendarNotConnectedError,
+    CalendarProviderError,
+)
 from ...calendar.selection import effective_enabled_calendar_urls
+from ...messages_ru import (
+    build_calendar_sources_keyboard,
+    calendar_sources_screen_text,
+)
 from ...users import UserRecord
 from .context import HandlerContext
 
 log = logging.getLogger(__name__)
+
+
+class CalendarListStatus(str, Enum):
+    """Исход попытки получить список календарей пользователя."""
+
+    OK = "ok"
+    NOT_CONNECTED = "not_connected"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class CalendarListResult:
+    status: CalendarListStatus
+    calendars: tuple[CalendarListEntry, ...] = field(default_factory=tuple)
+
+    @property
+    def ok(self) -> bool:
+        return self.status is CalendarListStatus.OK
 
 
 def normalize_calendar_url(url: str) -> str:
@@ -30,11 +64,69 @@ def screen_lines(
     return lines
 
 
-def fetch_calendars(
-    ctx: HandlerContext, user_id: int
-) -> list[CalendarListEntry] | None:
+def fetch_calendars(ctx: HandlerContext, user_id: int) -> CalendarListResult:
     try:
-        return ctx.calendar_service.list_calendars(user_id)
-    except CalendarProviderError:
-        log.warning("Failed to list calendars for user_id=%s", user_id)
-        return None
+        calendars = ctx.calendar_service.list_calendars(user_id)
+    except CalendarNotConnectedError:
+        log.info("List calendars: user_id=%s not connected", user_id)
+        return CalendarListResult(status=CalendarListStatus.NOT_CONNECTED)
+    except CalendarProviderError as exc:
+        log.warning(
+            "List calendars failed user_id=%s code=%s", user_id, exc.error_code
+        )
+        return CalendarListResult(status=CalendarListStatus.UNAVAILABLE)
+    return CalendarListResult(
+        status=CalendarListStatus.OK,
+        calendars=tuple(calendars),
+    )
+
+
+class CalendarSourcesScreenStatus(str, Enum):
+    """Готовый экран «Календари в плане» либо причина, почему его нет."""
+
+    SCREEN = "screen"
+    SINGLE = "single"
+    NOT_CONNECTED = "not_connected"
+    UNAVAILABLE = "unavailable"
+    NO_RECORD = "no_record"
+
+
+@dataclass(frozen=True)
+class CalendarSourcesScreen:
+    status: CalendarSourcesScreenStatus
+    text: str | None = None
+    keyboard: dict | None = None
+
+
+def build_calendar_sources_screen(
+    ctx: HandlerContext, user_id: int
+) -> CalendarSourcesScreen:
+    """Единый builder экрана «Календари в плане».
+
+    Возвращает либо готовые ``text`` + ``keyboard`` (``SCREEN``), либо
+    причину отсутствия экрана (``SINGLE`` / ``NOT_CONNECTED`` / ``UNAVAILABLE``
+    / ``NO_RECORD``) — конкретное UI-поведение (send / edit, toast / message)
+    выбирает caller.
+    """
+    record = ctx.users.get(user_id)
+    if record is None:
+        return CalendarSourcesScreen(status=CalendarSourcesScreenStatus.NO_RECORD)
+    result = fetch_calendars(ctx, user_id)
+    if result.status is CalendarListStatus.NOT_CONNECTED:
+        return CalendarSourcesScreen(status=CalendarSourcesScreenStatus.NOT_CONNECTED)
+    if not result.ok:
+        return CalendarSourcesScreen(status=CalendarSourcesScreenStatus.UNAVAILABLE)
+    calendars = list(result.calendars)
+    if len(calendars) <= 1:
+        return CalendarSourcesScreen(status=CalendarSourcesScreenStatus.SINGLE)
+    enabled_urls = enabled_url_set(record)
+    text = calendar_sources_screen_text(lines=screen_lines(calendars, enabled_urls))
+    keyboard = build_calendar_sources_keyboard(
+        calendars=[(entry.name, entry.url) for entry in calendars],
+        enabled_urls=enabled_urls,
+    )
+    return CalendarSourcesScreen(
+        status=CalendarSourcesScreenStatus.SCREEN,
+        text=text,
+        keyboard=keyboard,
+    )

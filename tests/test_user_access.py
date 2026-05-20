@@ -29,6 +29,7 @@ from satellite.users import (
     USER_STATUS_PENDING,
     USER_STATUS_REJECTED,
     UserStore,
+    UserStorePersistenceError,
 )
 
 ADMIN_ID = 9001
@@ -183,6 +184,29 @@ def test_non_admin_cannot_approve(users: UserStore) -> None:
 
     assert users.get(USER_ID).status == USER_STATUS_PENDING
     ctx.telegram.answer_callback_query.assert_called_with("cb1", text="Недостаточно прав")
+
+
+def test_save_raises_persistence_error_on_disk_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OSError при записи не должен теряться: caller должен видеть исключение."""
+    store = UserStore(tmp_path / "users.json")
+    real_replace = __import__("os").replace
+
+    def failing_replace(src: str, dst: str) -> None:
+        if str(dst).endswith("users.json"):
+            raise OSError("disk full")
+        real_replace(src, dst)
+
+    monkeypatch.setattr("os.replace", failing_replace)
+
+    with pytest.raises(UserStorePersistenceError):
+        store.upsert_from_telegram(
+            telegram_user_id=USER_ID,
+            chat_id=CHAT_ID,
+            username="newbie",
+            display_name="New",
+        )
 
 
 def test_pending_command_lists_open_requests(users: UserStore) -> None:

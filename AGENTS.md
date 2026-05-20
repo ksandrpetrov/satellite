@@ -65,7 +65,6 @@ satellite/
       calendar_sources.py # календари в плане/дайджесте
       calendar_foreign.py # чужие (пошаренные) календари
       calendar_create.py # /create FSM
-      calendar_manage.py # inline delete (callback)
       plan.py, settings.py, subscription.py
     api.py, chat_action.py, message_editing.py, commands.py
     digest_state.py, calendar_state.py
@@ -81,9 +80,11 @@ satellite/
 | Логику дайджеста (метрики) | [`calendar/stats.py`](satellite/calendar/stats.py) |
 | Финальный рендер | [`seagull/render.py`](satellite/seagull/render.py), [`seagull/rules.py`](satellite/seagull/rules.py) |
 | Команду / кнопку | [`recognize_message`](satellite/telegram_bot/handlers/routing.py) → [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py) |
-| Хаб настроек / дайджест | [`handlers/settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py), [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) |
+| Хаб настроек / дайджест | [`handlers/settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py) (роутер всех `CB_SETTINGS_*` / `CB_ANALYTICS_*`), [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) (экран дайджеста) |
 | Чужие (пошаренные) календари | [`handlers/calendar_foreign.py`](satellite/telegram_bot/handlers/calendar_foreign.py) |
+| Список CalDAV-календарей в UI | [`handlers/calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py) — `fetch_calendars` (→ `CalendarListResult`) и `build_calendar_sources_screen` |
 | Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users.py`](satellite/users.py) |
+| URL Web App connect | [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `webapp_connect_url(ctx)` |
 | Расписание дайджеста | [`scheduler.py`](satellite/scheduler.py) + [`subscriptions.py`](satellite/subscriptions.py) |
 | Доступ, заявки, календарь пользователя | [`users.py`](satellite/users.py), шифрование — [`security/token_vault.py`](satellite/security/token_vault.py) |
 | Web App connect | handlers + HTTP в [`bot.py`](satellite/telegram_bot/bot.py); env — [`config.py`](satellite/config.py) |
@@ -114,6 +115,8 @@ satellite/
 9. **`logs/`, `.env`, `venv/`** — не коммитим.
 10. **Команды и кнопки** — только [`recognize_message`](satellite/telegram_bot/handlers/routing.py); любая распознанная команда сбрасывает FSM (`digest_state`, `calendar_state`) в [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py).
 11. **Подписка на дайджест** — `DigestSettings.telegram_user_id` в [`subscriptions.py`](satellite/subscriptions.py); scheduler резолвит пользователя через `UserStore.get`, не через `username`.
+12. **Навигация настроек** — кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` обрабатывает только [`settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py); `settings.py` и `analytics.py` не импортируют друг друга и не имеют lazy-back-импортов в хаб.
+13. **Сбой `UserStore._save_locked`** — поднимает [`UserStorePersistenceError`](satellite/users.py); caller (handler / Web App) ловит на границе и показывает безопасный текст.
 
 ## Антипаттерны
 
@@ -129,6 +132,9 @@ satellite/
 - Импорт `_fetch_calendars` из `calendar_sources` в другие хендлеры — только [`calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py).
 - Второй путь нормализации событий — только `normalize_caldav_event`.
 - `DIGEST_TIME` / `DIGEST_WEEKDAYS_ONLY` в env — удалены; время в `subscriptions.json`.
+- Прямые строки в хендлерах — все user-facing тексты в [`messages_ru.py`](satellite/messages_ru.py).
+- Свой `_webapp_url` в хендлерах — только [`delivery.webapp_connect_url`](satellite/telegram_bot/handlers/delivery.py).
+- Lazy-back-импорты `settings_hub` из `settings`/`analytics` для «Назад» — навигация только в хабе (см. инвариант 12).
 
 ## Не трогать без необходимости
 

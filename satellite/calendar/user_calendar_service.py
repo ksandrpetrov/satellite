@@ -217,6 +217,7 @@ class UserCalendarService:
                 end_date=target_date,
                 tz=tz,
             ),
+            connected=connected,
         )
         return events, connected.context.login
 
@@ -226,8 +227,10 @@ class UserCalendarService:
         *,
         operation: str,
         fn: Callable[[ConnectedCalendar], T],
+        connected: ConnectedCalendar | None = None,
     ) -> T:
-        connected = self.require_connection(telegram_user_id)
+        if connected is None:
+            connected = self.require_connection(telegram_user_id)
         try:
             result = fn(connected)
         except CalendarProviderError as exc:

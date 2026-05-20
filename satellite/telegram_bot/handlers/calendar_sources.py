@@ -5,16 +5,25 @@ from __future__ import annotations
 import logging
 
 from ...messages_ru import (
+    CALENDAR_NOT_CONNECTED_HTML,
     CALENDAR_SOURCES_LAST_ENABLED_TEXT,
     CALENDAR_SOURCES_LOAD_FAIL_HTML,
     CALENDAR_SOURCES_SINGLE_HTML,
+    CALENDAR_SOURCES_UPDATE_FAIL_TEXT,
     CB_CAL_CLOSE,
     CB_CAL_TOGGLE_PREFIX,
     build_calendar_sources_keyboard,
     calendar_sources_screen_text,
     calendar_sources_toggle_notice,
 )
-from .calendar_view import enabled_url_set, fetch_calendars, normalize_calendar_url, screen_lines
+from .calendar_view import (
+    CalendarSourcesScreenStatus,
+    build_calendar_sources_screen,
+    enabled_url_set,
+    fetch_calendars,
+    normalize_calendar_url,
+    screen_lines,
+)
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import edit_callback_message, safe_answer_callback, send
 
@@ -27,21 +36,20 @@ def handle_open_calendar_sources(ctx: HandlerContext, msg: IncomingMessage) -> N
     record = ctx.users.get(msg.user_id)
     if record is None or not record.has_calendar:
         return
-    calendars = fetch_calendars(ctx, msg.user_id)
-    if calendars is None:
+    screen = build_calendar_sources_screen(ctx, msg.user_id)
+    if screen.status is CalendarSourcesScreenStatus.NOT_CONNECTED:
+        send(ctx, msg.chat_id, CALENDAR_NOT_CONNECTED_HTML)
+        return
+    if screen.status is CalendarSourcesScreenStatus.UNAVAILABLE:
         send(ctx, msg.chat_id, CALENDAR_SOURCES_LOAD_FAIL_HTML)
         return
-    if len(calendars) <= 1:
+    if screen.status is CalendarSourcesScreenStatus.SINGLE:
         send(ctx, msg.chat_id, CALENDAR_SOURCES_SINGLE_HTML)
         return
-    enabled_urls = enabled_url_set(record)
-    text = calendar_sources_screen_text(lines=screen_lines(calendars, enabled_urls))
-    keyboard = build_calendar_sources_keyboard(
-        calendars=[(entry.name, entry.url) for entry in calendars],
-        enabled_urls=enabled_urls,
-    )
-    ctx.telegram.send_message(msg.chat_id, text, reply_markup=keyboard)
-    log.info("Opened calendar sources: user_id=%s count=%d", msg.user_id, len(calendars))
+    if screen.status is not CalendarSourcesScreenStatus.SCREEN:
+        return
+    ctx.telegram.send_message(msg.chat_id, screen.text, reply_markup=screen.keyboard)
+    log.info("Opened calendar sources: user_id=%s", msg.user_id)
 
 
 def route_calendar_sources_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
@@ -79,10 +87,11 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
     except ValueError:
         safe_answer_callback(ctx, cb)
         return
-    calendars = fetch_calendars(ctx, cb.user_id)
-    if calendars is None:
-        safe_answer_callback(ctx, cb, text="Не удалось обновить список")
+    result = fetch_calendars(ctx, cb.user_id)
+    if not result.ok:
+        safe_answer_callback(ctx, cb, text=CALENDAR_SOURCES_UPDATE_FAIL_TEXT)
         return
+    calendars = list(result.calendars)
     if idx < 0 or idx >= len(calendars):
         safe_answer_callback(ctx, cb)
         return

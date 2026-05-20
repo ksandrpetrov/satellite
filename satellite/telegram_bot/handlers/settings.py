@@ -13,7 +13,6 @@ from ...calendar.time_utils import normalize_hhmm_input
 from ...messages_ru import (
     CB_DIGEST_BACK,
     CB_DIGEST_CLOSE,
-    CB_SETTINGS_BACK,
     CB_DIGEST_DAYS,
     CB_DIGEST_DAYS_ALL,
     CB_DIGEST_DAYS_WEEKDAYS,
@@ -42,30 +41,6 @@ log = logging.getLogger(__name__)
 
 
 # --- text/keyboard scenarios -----------------------------------------------
-
-
-def handle_open_digest_settings(
-    ctx: HandlerContext, msg: IncomingMessage
-) -> None:
-    """Открывает экран настроек по кнопке reply-клавиатуры / команде."""
-    if msg.chat_id is None or msg.user_id is None:
-        return
-    username = effective_username(msg)
-    # Выход из state ожидания времени, если он был.
-    ctx.digest_state.clear(msg.chat_id)
-    settings = ctx.subscriptions.get_or_create(
-        msg.chat_id, username, telegram_user_id=msg.user_id
-    )
-    text = digest_settings_screen_text(
-        digest_enabled=settings.digest_enabled,
-        digest_days=settings.digest_days,
-        digest_time=settings.digest_time,
-    )
-    keyboard = build_digest_settings_keyboard(digest_enabled=settings.digest_enabled)
-    ctx.telegram.send_message(msg.chat_id, text, reply_markup=keyboard)
-    log.info(
-        "Opened digest settings: chat_id=%s username=%s", msg.chat_id, username
-    )
 
 
 def handle_digest_time_input(ctx: HandlerContext, msg: IncomingMessage) -> None:
@@ -263,10 +238,5 @@ def route_settings_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
         return True
     if data == CB_DIGEST_CLOSE:
         handle_callback_close(ctx, cb)
-        return True
-    if data == CB_SETTINGS_BACK:
-        from .settings_hub import show_settings_hub_screen
-
-        show_settings_hub_screen(ctx, cb)
         return True
     return False
