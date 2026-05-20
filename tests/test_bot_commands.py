@@ -25,6 +25,7 @@ EXPECTED_COMMANDS = (
     "tomorrow",
     "aftertomorrow",
     "upcoming",
+    "invitations",
     "create",
     "settings",
     "help",

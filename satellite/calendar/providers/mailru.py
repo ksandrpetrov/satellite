@@ -109,6 +109,61 @@ class MailruCalendarProvider:
                 error_code="CALDAV_UNAVAILABLE",
             ) from exc
 
+    def list_events_for_invitations(
+        self,
+        context: UserCalendarContext,
+        *,
+        start_date: date,
+        end_date: date,
+        tz: tzinfo,
+    ) -> list[Event]:
+        service = self._service_for_invitations(context.credentials)
+        calendar_urls = effective_enabled_calendar_urls_from_parts(
+            enabled_calendar_urls=context.enabled_calendar_urls,
+            primary_calendar_url=context.primary_calendar_url,
+        )
+        if not calendar_urls:
+            raise CalendarProviderError(
+                "Календарь не настроен.", error_code="NO_CALENDAR"
+            )
+        try:
+            return service.fetch_events_in_range(
+                start_date,
+                end_date,
+                tz=tz,
+                calendar_urls=calendar_urls,
+                enrich_partstat=True,
+            )
+        except CalDAVError as exc:
+            raise CalendarProviderError(
+                "Календарь временно недоступен. Попробуйте позже.",
+                error_code="CALDAV_UNAVAILABLE",
+            ) from exc
+
+    def set_attendee_partstat(
+        self,
+        context: UserCalendarContext,
+        event_ref: CalendarEventRef,
+        partstat: str,
+    ) -> None:
+        if not event_ref.url:
+            raise CalendarProviderError(
+                "Не удалось определить событие.",
+                error_code="MISSING_EVENT_URL",
+            )
+        service = self._service(context.credentials)
+        try:
+            service.set_attendee_partstat(event_ref.url, partstat)
+        except CalDAVError as exc:
+            log.warning(
+                "Mail.ru set_attendee_partstat failed: %s",
+                str(exc).splitlines()[-1][:200],
+            )
+            raise CalendarProviderError(
+                "Не удалось обновить ответ на приглашение.",
+                error_code="PARTSTAT_UPDATE_FAILED",
+            ) from exc
+
     def create_event(
         self,
         context: UserCalendarContext,
@@ -224,4 +279,19 @@ class MailruCalendarProvider:
             app_password=credentials.secret,
             cache_ttl_sec=self._cache_ttl_sec,
             partstat_refresh_limit=0,
+        )
+
+    def _service_for_invitations(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        caldav_url: str | None = None,
+    ) -> CalDAVService:
+        return CalDAVService(
+            caldav_url=(caldav_url or DEFAULT_CALDAV_URL).strip(),
+            login=credentials.login.strip(),
+            app_password=credentials.secret,
+            cache_ttl_sec=self._cache_ttl_sec,
+            partstat_refresh_limit=32,
+            partstat_refresh_budget_sec=8.0,
         )

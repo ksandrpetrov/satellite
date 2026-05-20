@@ -17,6 +17,7 @@ from ...messages_ru import (
     button_text_is_settings,
     button_text_is_disconnect_calendar,
     button_text_is_foreign_calendars,
+    button_text_is_invitations,
     button_text_is_subscribe,
     button_text_is_unsubscribe,
     button_text_is_upcoming,
@@ -50,6 +51,11 @@ class SettingsCommand:
 
 @dataclass(frozen=True)
 class UpcomingCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class InvitationsCommand:
     pass
 
 
@@ -100,6 +106,7 @@ RecognizedCommand = Union[
     CheckCommand,
     CalendarSourcesCommand,
     ForeignCalendarsCommand,
+    InvitationsCommand,
     PendingCommand,
 ]
 
@@ -122,6 +129,8 @@ def recognize_message(text: str | None) -> RecognizedCommand | None:
         return SettingsCommand()
     if is_upcoming_request(text):
         return UpcomingCommand()
+    if is_invitations_request(text):
+        return InvitationsCommand()
     if is_create_event_request(text):
         return CreateCommand()
     if is_connect_calendar_request(text):
@@ -160,6 +169,9 @@ _CMD_UNSUBSCRIBE = re.compile(r"/(?:unsub|unsubscribe|stopdigest)(?:@[a-z0-9_]+)
 # его не открывает, а сразу включает подписку.
 _CMD_DIGEST_SETTINGS = re.compile(r"/settings(?:@[a-z0-9_]+)?\Z")
 _CMD_UPCOMING = re.compile(r"/(?:upcoming|events)(?:@[a-z0-9_]+)?\Z")
+_CMD_INVITATIONS = re.compile(
+    r"/(?:invitations|invites|respond)(?:@[a-z0-9_]+)?\Z"
+)
 _CMD_CREATE = re.compile(r"/(?:create|addevent)(?:@[a-z0-9_]+)?\Z")
 _CMD_CONNECT = re.compile(r"/connect(?:@[a-z0-9_]+)?\Z")
 _CMD_CALENDARS = re.compile(r"/(?:calendars|calendar_sources)(?:@[a-z0-9_]+)?\Z")
@@ -243,6 +255,15 @@ def is_upcoming_request(text: str | None) -> bool:
     if button_text_is_upcoming(raw):
         return True
     return bool(_CMD_UPCOMING.fullmatch(_command_part(raw)))
+
+
+def is_invitations_request(text: str | None) -> bool:
+    if not text:
+        return False
+    raw = text.strip()
+    if button_text_is_invitations(raw):
+        return True
+    return bool(_CMD_INVITATIONS.fullmatch(_command_part(raw)))
 
 
 def is_create_event_request(text: str | None) -> bool:

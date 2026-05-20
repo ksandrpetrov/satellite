@@ -33,6 +33,7 @@ from satellite.telegram_bot.handlers.routing import (
     StartOrHelpCommand,
     SubscriptionCommand,
     UpcomingCommand,
+    InvitationsCommand,
 )
 from satellite.telegram_bot.calendar_state import (
     CalendarFlowState,
@@ -144,6 +145,7 @@ def test_parse_command_mode_long_aliases_from_command_menu():
         (BUTTON_SUBSCRIBE, SubscriptionCommand),
         ("/settings", SettingsCommand),
         ("/upcoming", UpcomingCommand),
+        ("/invitations", InvitationsCommand),
         ("/create", CreateCommand),
         ("/connect", ConnectCommand),
         ("/pending", PendingCommand),

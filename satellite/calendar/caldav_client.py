@@ -249,6 +249,7 @@ class CalDAVService:
         tz: tzinfo,
         calendar_url: str | None = None,
         calendar_urls: Sequence[str] | None = None,
+        enrich_partstat: bool = False,
     ) -> list[Event]:
         """События в диапазоне дат включительно для одного или нескольких календарей."""
         if end_date < start_date:
@@ -287,8 +288,88 @@ class CalDAVService:
                 for ev in parsed:
                     ev["url"] = str(getattr(raw_event, "url", "") or "")
                 out.extend(parsed)
+        if enrich_partstat:
+            self._enrich_events_partstat(out)
         out.sort(key=lambda event: event.get("dtstart") or "")
         return out
+
+    def _enrich_events_partstat(self, events: list[Event]) -> None:
+        """Дополняет ATTENDEE/PARTSTAT через GET там, где REPORT их не отдал."""
+        if self._partstat_refresh_limit <= 0 or not self._login:
+            return
+        refresh_started = time.monotonic()
+        refresh_count = 0
+        for ev in events:
+            if refresh_count >= self._partstat_refresh_limit:
+                break
+            if not self._partstat_refresh_budget_left(refresh_started):
+                break
+            event_url = str(ev.get("url") or "")
+            if not event_url or self._has_user_partstat([ev]):
+                continue
+            refreshed = self._refresh_attendees_via_get(event_url)
+            refresh_count += 1
+            if refreshed is None:
+                continue
+            attendees, status = refreshed
+            if attendees:
+                ev["attendees"] = list(attendees)
+            if status is not None and not ev.get("status"):
+                ev["status"] = status
+
+    def set_attendee_partstat(self, event_url: str, partstat: str) -> None:
+        """Обновляет PARTSTAT текущего пользователя в ATTENDEE события."""
+        normalized = (partstat or "").strip().upper()
+        allowed = {"ACCEPTED", "DECLINED", "TENTATIVE", "NEEDS-ACTION", "DELEGATED"}
+        if normalized not in allowed:
+            raise CalDAVError(f"Unsupported PARTSTAT: {partstat!r}")
+        login_norm = (self._login or "").strip().casefold()
+        if not login_norm:
+            raise CalDAVError("Login is required to update PARTSTAT")
+        try:
+            event_obj = self._get_event_object(event_url)
+            calendar = IcsCalendar.from_ical(event_obj.data)
+            updated = False
+            for component in calendar.walk("vevent"):
+                raw_attendees = component.get("ATTENDEE")
+                if raw_attendees is None:
+                    continue
+                items = (
+                    raw_attendees if isinstance(raw_attendees, list) else [raw_attendees]
+                )
+                for attendee in items:
+                    if login_norm not in str(attendee).casefold():
+                        continue
+                    attendee.params["PARTSTAT"] = normalized
+                    updated = True
+                if updated:
+                    for prop in ("dtstamp", "DTSTAMP"):
+                        if prop in component:
+                            del component[prop]
+                    component.add("dtstamp", datetime.now(tz=timezone.utc))
+                    seq = component.get("SEQUENCE")
+                    if seq is not None:
+                        try:
+                            component["SEQUENCE"] = int(seq) + 1
+                        except (TypeError, ValueError):
+                            component.add("sequence", 1)
+                    else:
+                        component.add("sequence", 1)
+            if not updated:
+                raise CalDAVError("Attendee not found in event")
+            event_obj.save(calendar.to_ical())
+            with self._partstat_cache_lock:
+                self._partstat_cache.pop(event_url, None)
+        except DAVError as exc:
+            log.warning(
+                "CalDAV set_attendee_partstat failed url=%s status=%s: %s",
+                _redact_url(event_url),
+                _dav_status(exc),
+                _dav_reason(exc),
+            )
+            raise CalDAVError(f"Failed to update invitation response: {exc}") from exc
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            raise CalDAVError(f"Network error during PARTSTAT update: {exc}") from exc
 
     def create_event(
         self,

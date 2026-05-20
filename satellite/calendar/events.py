@@ -104,6 +104,12 @@ def is_declined_event_for_user(event: Event, login: str) -> bool:
     return False
 
 
+def is_pending_invitation_for_user(event: Event, login: str) -> bool:
+    """True, если пользователю нужно ответить на приглашение (NEEDS-ACTION / DELEGATED)."""
+    status = user_partstat(event, login)
+    return status in {"NEEDS-ACTION", "DELEGATED"}
+
+
 def user_partstat(event: Event, login: str) -> str | None:
     """Возвращает PARTSTAT пользователя в событии (верхним регистром) или None.
 
@@ -405,6 +411,75 @@ def format_single_day_events_lines(
     lines = [f"<b>{header}</b>"]
     for idx, ev in enumerate(visible[:max_events]):
         title = html.escape(str(ev.get("summary") or ev.get("title") or "—"))
+        when = format_time_range(ev, tz)
+        marker = event_index_marker(idx)
+        lines.append(f"{marker} {when} — {title}")
+    return lines
+
+
+def event_ends_after(
+    event: Event, tz: tzinfo, *, moment: datetime
+) -> bool:
+    """True, если событие ещё не закончилось относительно ``moment`` (локально)."""
+    end = parse_iso(event.get("dtend"))
+    start = parse_iso(event.get("dtstart"))
+    if isinstance(end, datetime):
+        return _to_local(end, tz) > moment
+    if isinstance(start, date) and not isinstance(start, datetime):
+        if isinstance(end, date) and not isinstance(end, datetime):
+            last_day = end - timedelta(days=1)
+        else:
+            last_day = start
+        return last_day >= moment.date()
+    if isinstance(start, datetime):
+        return _to_local(start, tz) >= moment
+    return False
+
+
+def collect_pending_invitations(
+    events: Sequence[Event],
+    login: str,
+    tz: tzinfo,
+    *,
+    now: datetime,
+    max_events: int = 20,
+) -> list[Event]:
+    """События, по которым пользователю нужно принять решение, отсортированные по началу."""
+    login_norm = (login or "").strip()
+    if not login_norm:
+        return []
+    pending = [
+        ev
+        for ev in events
+        if (ev.get("url") or "").strip()
+        and not is_cancelled_event(ev)
+        and is_pending_invitation_for_user(ev, login_norm)
+        and event_ends_after(ev, tz, moment=now)
+    ]
+    pending.sort(key=lambda ev: sort_key(ev, tz))
+    return pending[: max(0, max_events)]
+
+
+def format_invitation_list_lines(
+    events: Sequence[Event],
+    tz: tzinfo,
+    reference_date: date,
+) -> list[str]:
+    """HTML-строки списка приглашений (заголовок дня + пункты)."""
+    if not events:
+        return []
+    lines: list[str] = []
+    last_day: date | None = None
+    for idx, ev in enumerate(events):
+        day = event_local_start_date(ev, tz)
+        if day is not None and day != last_day:
+            if lines:
+                lines.append("")
+            lines.append(
+                f"<b>{format_upcoming_day_header(day, reference_date)}</b>"
+            )
+            last_day = day
+        title = html.escape(str(ev.get("summary") or "—"))
         when = format_time_range(ev, tz)
         marker = event_index_marker(idx)
         lines.append(f"{marker} {when} — {title}")

@@ -200,6 +200,39 @@ class UserCalendarService:
             fn=lambda cc: cc.provider.delete_event(cc.context, event_ref),
         )
 
+    def list_events_for_invitations(
+        self,
+        telegram_user_id: int,
+        *,
+        start_date: date,
+        end_date: date,
+        tz: tzinfo,
+    ) -> list:
+        return self._run(
+            telegram_user_id,
+            operation="list",
+            fn=lambda cc: cc.provider.list_events_for_invitations(
+                cc.context,
+                start_date=start_date,
+                end_date=end_date,
+                tz=tz,
+            ),
+        )
+
+    def set_attendee_partstat(
+        self,
+        telegram_user_id: int,
+        event_ref: CalendarEventRef,
+        partstat: str,
+    ) -> None:
+        self._run(
+            telegram_user_id,
+            operation="update",
+            fn=lambda cc: cc.provider.set_attendee_partstat(
+                cc.context, event_ref, partstat
+            ),
+        )
+
     def fetch_events_for_day(
         self,
         telegram_user_id: int,

@@ -22,6 +22,7 @@ BUTTON_TODAY = "📅 Сегодня"
 BUTTON_TOMORROW = "➡️ Завтра"
 BUTTON_DAY_AFTER = "⏭ Послезавтра"
 BUTTON_UPCOMING = "🗓 Ближайшие события"
+BUTTON_INVITATIONS = "📨 Приглашения"
 BUTTON_CREATE_EVENT = "➕ Создать событие"
 BUTTON_SUBSCRIBE = "🔔 Подписаться на дайджест"
 BUTTON_UNSUBSCRIBE = "🔕 Отключить дайджест"
@@ -76,6 +77,7 @@ _NORMALIZED_BUTTON_UNSUBSCRIBE = {
 _NORMALIZED_BUTTON_SETTINGS = normalize_button_text(BUTTON_SETTINGS)
 _NORMALIZED_BUTTON_DIGEST_SETTINGS = normalize_button_text(BUTTON_DIGEST_SETTINGS)
 _NORMALIZED_BUTTON_UPCOMING = normalize_button_text(BUTTON_UPCOMING)
+_NORMALIZED_BUTTON_INVITATIONS = normalize_button_text(BUTTON_INVITATIONS)
 _NORMALIZED_BUTTON_CREATE_EVENT = normalize_button_text(BUTTON_CREATE_EVENT)
 _NORMALIZED_BUTTON_CONNECT = normalize_button_text(BUTTON_CONNECT_CALENDAR)
 _NORMALIZED_BUTTON_RECONNECT = normalize_button_text(BUTTON_RECONNECT_CALENDAR)
@@ -122,6 +124,12 @@ def button_text_is_upcoming(text: str | None) -> bool:
     if not text:
         return False
     return normalize_button_text(text) == _NORMALIZED_BUTTON_UPCOMING
+
+
+def button_text_is_invitations(text: str | None) -> bool:
+    if not text:
+        return False
+    return normalize_button_text(text) == _NORMALIZED_BUTTON_INVITATIONS
 
 
 def button_text_is_create_event(text: str | None) -> bool:
@@ -173,6 +181,7 @@ BOT_WELCOME_HTML = (
     "Нижние кнопки — это твой штурвал:\n"
     "📅 <b>Сегодня</b> / ➡️ <b>Завтра</b> — план на день\n"
     "🗓 <b>Ближайшие</b> — события на неделю вперёд\n"
+    "📨 <b>Приглашения</b> — встречи, где нужно принять решение\n"
     "👥 <b>Чужие календари</b> — что у коллег\n"
     "➕ <b>Создать</b> — новая встреча в твой календарь\n"
     "⚙️ <b>Настройки</b> — дайджест, аналитика, подключение\n\n"
@@ -185,12 +194,14 @@ BOT_HELP_HTML = (
     "<b>Кнопки внизу:</b>\n"
     "📅 Сегодня, ➡️ Завтра — план на день\n"
     "🗓 Ближайшие — события на 7 дней\n"
+    "📨 Приглашения — принять, отклонить или «может быть»\n"
     "👥 Чужие календари — пошаренные от коллег\n"
     "➕ Создать событие — добавить встречу\n"
     "⚙️ Настройки — дайджест, аналитика, подключение\n\n"
     "<b>Команды:</b>\n"
     "/today, /tomorrow, /aftertomorrow — план дня\n"
     "/upcoming — ближайшие события\n"
+    "/invitations — ответить на приглашения\n"
     "/foreign — чужие календари\n"
     "/create — создать встречу\n"
     "/settings — настройки\n"
@@ -536,7 +547,8 @@ def build_approved_main_keyboard() -> dict:
     return {
         "keyboard": [
             [{"text": BUTTON_TODAY}, {"text": BUTTON_TOMORROW}],
-            [{"text": BUTTON_UPCOMING}, {"text": BUTTON_FOREIGN_CALENDARS}],
+            [{"text": BUTTON_UPCOMING}, {"text": BUTTON_INVITATIONS}],
+            [{"text": BUTTON_FOREIGN_CALENDARS}],
             [{"text": BUTTON_CREATE_EVENT}],
             [{"text": BUTTON_SETTINGS}],
         ],
@@ -553,6 +565,7 @@ CB_SETTINGS_ANALYTICS = "settings_analytics"
 # Подэкран «Календарь» — группирует управление подключением и календарями в плане
 CB_SETTINGS_CALENDAR_MENU = "settings_calendar_menu"
 CB_SETTINGS_CALENDARS = "settings_calendars"
+CB_SETTINGS_INVITATIONS = "settings_invitations"
 CB_SETTINGS_CHECK = "settings_check"
 CB_SETTINGS_RECONNECT = "settings_reconnect"
 # Двухшаговое отключение календаря: сначала подтверждение, потом сам disconnect
@@ -646,8 +659,31 @@ def build_settings_hub_keyboard(*, webapp_url: str, has_calendar: bool) -> dict:
 
 SETTINGS_CALENDAR_MENU_TEXT = (
     "📅 <b>Календарь</b>\n\n"
-    "Управление подключением и выбор календарей, по которым Чайка строит план."
+    "Управление подключением, приглашения и выбор календарей для плана."
 )
+
+# --- приглашения (PARTSTAT) --------------------------------------------------
+
+CB_INV_CLOSE = "inv:close"
+CB_INV_BACK = "inv:back"
+CB_INV_REFRESH = "inv:refresh"
+CB_INV_RESPOND_PREFIX = "inv:r:"
+
+INVITATIONS_FETCH_STATUS = "📨 Чайка собирает приглашения…"
+INVITATIONS_EMPTY_HTML = (
+    "📨 <b>Приглашения</b>\n\n"
+    "Всё разобрано — встреч, где нужно принять решение, сейчас нет."
+)
+INVITATIONS_INTRO_HTML = (
+    "📨 <b>Приглашения</b>\n\n"
+    "Встречи, где тебя ждут как участника. Нажми кнопку под событием — "
+    "ответ улетит в календарь."
+)
+INVITATIONS_RESPOND_ACCEPTED = "Принято"
+INVITATIONS_RESPOND_DECLINED = "Отклонено"
+INVITATIONS_RESPOND_TENTATIVE = "Может быть"
+INVITATIONS_RESPOND_FAIL_TEXT = "Не удалось обновить ответ. Попробуйте позже."
+INVITATIONS_CLOSED_TEXT = "📨 Чайка свернула список приглашений."
 SETTINGS_DISCONNECT_CONFIRM_TEXT = (
     "🪶 Точно отключить календарь?\n\n"
     "Чайка забудет логин и пароль, но настройки дайджеста и аналитики сохранятся. "
@@ -658,8 +694,53 @@ BUTTON_DISCONNECT_CALENDAR_CONFIRM = "⚠️ Да, отключить"
 BUTTON_DISCONNECT_CALENDAR_CANCEL = "⬅️ Отмена"
 
 
+def build_invitations_keyboard(
+    events: list[tuple[str, str]],
+) -> dict:
+    """Inline-клавиатура: по строке кнопок на каждое событие (token, label index)."""
+    rows: list[list[dict[str, str]]] = []
+    for token, label in events:
+        rows.append(
+            [
+                {
+                    "text": f"✅ {label}",
+                    "callback_data": f"{CB_INV_RESPOND_PREFIX}{token}:a",
+                },
+                {
+                    "text": f"❌ {label}",
+                    "callback_data": f"{CB_INV_RESPOND_PREFIX}{token}:d",
+                },
+                {
+                    "text": f"🤔 {label}",
+                    "callback_data": f"{CB_INV_RESPOND_PREFIX}{token}:t",
+                },
+            ]
+        )
+    rows.append([{"text": "🔄 Обновить", "callback_data": CB_INV_REFRESH}])
+    rows.append(
+        [
+            {"text": "⬅️ В календарь", "callback_data": CB_INV_BACK},
+            {"text": "⬅️ Закрыть", "callback_data": CB_INV_CLOSE},
+        ]
+    )
+    return {"inline_keyboard": rows}
+
+
+def invitations_list_html(*, body_lines: list[str], truncated: bool) -> str:
+    parts = [INVITATIONS_INTRO_HTML]
+    if body_lines:
+        parts.extend(["", *body_lines])
+    if truncated:
+        parts.append("")
+        parts.append(
+            "<i>Показаны первые встречи — обновите список после ответов.</i>"
+        )
+    return "\n".join(parts)
+
+
 def build_settings_calendar_menu_keyboard(*, webapp_url: str) -> dict:
     rows: list[list[dict[str, str | dict[str, str]]]] = [
+        [{"text": BUTTON_INVITATIONS, "callback_data": CB_SETTINGS_INVITATIONS}],
         [{"text": BUTTON_CALENDAR_SOURCES, "callback_data": CB_SETTINGS_CALENDARS}],
         [{"text": BUTTON_CHECK_CALENDAR, "callback_data": CB_SETTINGS_CHECK}],
     ]

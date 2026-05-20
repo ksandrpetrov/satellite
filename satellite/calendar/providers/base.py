@@ -124,3 +124,19 @@ class CalendarProvider(Protocol):
         context: UserCalendarContext,
         event_ref: CalendarEventRef,
     ) -> None: ...
+
+    def list_events_for_invitations(
+        self,
+        context: UserCalendarContext,
+        *,
+        start_date: date,
+        end_date: date,
+        tz: tzinfo,
+    ) -> list[Event]: ...
+
+    def set_attendee_partstat(
+        self,
+        context: UserCalendarContext,
+        event_ref: CalendarEventRef,
+        partstat: str,
+    ) -> None: ...
