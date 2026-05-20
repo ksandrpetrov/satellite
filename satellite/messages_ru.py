@@ -161,7 +161,7 @@ def button_text_is_foreign_calendars(text: str | None) -> bool:
     return normalize_button_text(text) == _NORMALIZED_BUTTON_FOREIGN_CALENDARS
 
 
-BOT_INPUT_PLACEHOLDER = "Выбери день, чтобы посмотреть встречи"
+BOT_INPUT_PLACEHOLDER = "Куда летим? Жми кнопку или напиши команду"
 
 # Markup, который вычищает старую нижнюю Reply-клавиатуру у пользователей, у
 # которых она ещё висит после миграции на меню команд Telegram. Передаётся
@@ -169,68 +169,81 @@ BOT_INPUT_PLACEHOLDER = "Выбери день, чтобы посмотреть 
 REPLY_KEYBOARD_REMOVE: dict = {"remove_keyboard": True}
 
 BOT_WELCOME_HTML = (
-    "🪶 Привет. Чайка на связи.\n\n"
-    "После одобрения администратором подключите свой календарь через кнопку "
-    "«Подключить календарь» — каждый работает только со своим аккаунтом.\n\n"
-    "Команды в меню Telegram:\n"
-    "📅 /today — встречи на сегодня\n"
-    "🗓 /upcoming — ближайшие события\n"
-    "👥 «Чужие календари» — встречи в пошаренных календарях\n"
-    "➕ /create — создать событие\n"
-    "⚙️ /settings — дайджест, календари, подключение\n\n"
-    "🍕 Чтобы чайка видела обед, добавь в календарь встречу с эмоджи 🍕 и словом «обед»."
+    "🪶 С возвращением. Чайка на связи.\n\n"
+    "Нижние кнопки — это твой штурвал:\n"
+    "📅 <b>Сегодня</b> / ➡️ <b>Завтра</b> — план на день\n"
+    "🗓 <b>Ближайшие</b> — события на неделю вперёд\n"
+    "👥 <b>Чужие календари</b> — что у коллег\n"
+    "➕ <b>Создать</b> — новая встреча в твой календарь\n"
+    "⚙️ <b>Настройки</b> — дайджест, аналитика, подключение\n\n"
+    "🍕 Подсказка: добавь в встречу эмоджи 🍕 и слово «обед» — чайка засчитает её обедом и подскажет окно."
 )
 
 BOT_HELP_HTML = (
-    "🪶 Как пользоваться Чайкой\n\n"
-    "Сначала администратор подтверждает доступ, затем вы подключаете свой "
-    "календарь Mail.ru через Web App.\n\n"
-    "Команды:\n"
-    "📅 /today, /tomorrow, /aftertomorrow — план на день\n"
-    "🗓 /upcoming — ближайшие события\n"
-    "👥 «Чужие календари» или /foreign — пошаренные календари коллег\n"
-    "➕ /create — создать событие\n"
-    "⚙️ /settings — дайджест, календари, подключение\n"
-    "🔌 /connect — подключить календарь (также в /settings)\n\n"
-    "Короткие: <code>td</code>, <code>tm</code>, <code>dat</code>."
+    "🪶 <b>Как летать с Чайкой</b>\n\n"
+    "Чайка собирает встречи из твоего календаря и приносит сводку дня.\n\n"
+    "<b>Кнопки внизу:</b>\n"
+    "📅 Сегодня, ➡️ Завтра — план на день\n"
+    "🗓 Ближайшие — события на 7 дней\n"
+    "👥 Чужие календари — пошаренные от коллег\n"
+    "➕ Создать событие — добавить встречу\n"
+    "⚙️ Настройки — дайджест, аналитика, подключение\n\n"
+    "<b>Команды:</b>\n"
+    "/today, /tomorrow, /aftertomorrow — план дня\n"
+    "/upcoming — ближайшие события\n"
+    "/foreign — чужие календари\n"
+    "/create — создать встречу\n"
+    "/settings — настройки\n"
+    "/digest, /stopdigest — включить или выключить утренний дайджест\n\n"
+    "<i>Короткие алиасы: <code>td</code>, <code>tm</code>, <code>dat</code>.</i>"
 )
 
 BOT_KEYBOARD_HINT = (
-    "🪶 Не понял команду.\n"
-    "Открой меню или используй /today, /upcoming, /create, /settings, /help"
+    "🪶 Чайка не узнала команду.\n"
+    "Жми кнопку внизу или открой меню — там все основные действия."
 )
 
 # --- Access control ---
 ACCESS_REQUEST_SENT_HTML = (
-    "📝 Заявка на доступ отправлена администратору.\n"
-    "После подтверждения вы сможете подключить календарь."
+    "📝 Заявка улетела администратору.\n"
+    "Как только одобрит — Чайка сразу даст знать, и можно будет подключить календарь."
 )
 ACCESS_PENDING_HTML = (
-    "⏳ Ваша заявка на доступ ещё на рассмотрении.\n"
-    "Как только администратор одобрит её — пришлю уведомление."
+    "⏳ Заявка ещё в полёте — администратор её увидит.\n"
+    "Как только одобрит, Чайка постучится первой."
 )
 ACCESS_REJECTED_HTML = (
-    "🚫 Доступ к боту отклонён.\n"
-    "Если это ошибка — свяжитесь с администратором."
+    "🚫 Доступ закрыт.\n"
+    "Если это недоразумение — напиши администратору, Чайка подождёт."
 )
-ACCESS_BLOCKED_HTML = "🚫 Ваш доступ к боту заблокирован."
+ACCESS_BLOCKED_HTML = "🚫 Доступ заблокирован. Чайка пока на берегу."
 ACCESS_APPROVED_HTML = (
-    "✅ Доступ открыт.\n"
-    "Теперь подключите календарь — кнопка «Подключить календарь» ниже."
+    "✅ Доступ открыт, можно лететь.\n"
+    "Жми «🔌 Подключить календарь» ниже — Чайка свяжется с твоим Mail.ru или Яндексом и будет приносить сводку."
 )
 CALENDAR_NOT_CONNECTED_HTML = (
     "🔌 Календарь ещё не подключён.\n"
-    "Нажмите «Подключить календарь», чтобы добавить свой сервисный токен."
+    "Жми «Подключить календарь» внизу — Чайка откроет защищённое окно, "
+    "там нужно ввести логин и пароль приложения для CalDAV."
 )
-CALENDAR_CONNECTED_HTML = "✅ Календарь подключён."
-CALENDAR_DISCONNECTED_HTML = "Календарь отключён."
-CALENDAR_CHECK_OK_HTML = "✅ Подключение к календарю работает."
+CALENDAR_RECONNECT_INTRO_HTML = (
+    "🔄 Откроем окно подключения заново — Чайка подменит сохранённые ключи "
+    "на свежие, без потери настроек."
+)
+CALENDAR_CONNECTED_HTML = "✅ Календарь на месте. Чайка готова к облёту."
+CALENDAR_DISCONNECTED_HTML = (
+    "🪶 Чайка отвязала календарь.\n"
+    "Настройки дайджеста и аналитики сохранены — подключи заново, и всё вернётся."
+)
+CALENDAR_CHECK_OK_HTML = "✅ Чайка достучалась до календаря — всё на связи."
 CALENDAR_CHECK_FAIL_HTML = (
-    "⚠️ Не удалось проверить подключение. Попробуйте переподключить календарь."
+    "⚠️ Чайка не достучалась до календаря.\n"
+    "Попробуй переподключить: «⚙️ Настройки» → «📅 Календарь» → «🔄 Переподключить»."
 )
 
 ERR_CALENDAR_TOKEN_INVALID = (
-    "⚠️ Токен не подошёл. Проверьте, что он создан для календаря и не отозван."
+    "⚠️ Чайка не смогла войти с этими ключами.\n"
+    "Проверь логин и пароль приложения для календаря — возможно, он отозван или скопирован с пробелом."
 )
 
 # --- Admin ---
@@ -244,7 +257,7 @@ def admin_access_request_html(
     name = display_name or "—"
     uname = f"@{username}" if username else "—"
     return (
-        "👤 Новый пользователь хочет получить доступ:\n"
+        "👤 Новый пользователь стучится к Чайке:\n"
         f"Имя: {name}\n"
         f"Username: {uname}\n"
         f"Telegram ID: {telegram_user_id}"
@@ -278,28 +291,47 @@ def admin_pending_list_html(lines: list[str]) -> str:
 ADMIN_ACTION_FORBIDDEN_HTML = "⛔️ Эта команда доступна только администратору."
 
 # --- Calendar list / create ---
-UPCOMING_FETCH_STATUS = "🗓 Чайка собирает ближайшие события…"
-UPCOMING_EMPTY_HTML = "🗓 На ближайшие дни встреч нет."
-CREATE_EVENT_ASK_TITLE = "➕ Как назвать событие?"
-CREATE_EVENT_ASK_DATE = "📅 На какую дату? Формат: ДД.ММ.ГГГГ или «сегодня» / «завтра»"
-CREATE_EVENT_ASK_TIME = "🕘 Во сколько начать? Например: 09:30, 9 30 или 9:30"
-CREATE_EVENT_ASK_DURATION = "⏱ Сколько минут длится? Например: 30 или 60"
+UPCOMING_FETCH_STATUS = "🗓 Чайка обходит ближайшую неделю…"
+UPCOMING_EMPTY_HTML = (
+    "🗓 На ближайшие дни встреч нет.\n"
+    "Небо чистое — самое время для глубокой работы."
+)
+CREATE_EVENT_ASK_TITLE = "➕ Как назвать встречу? Напиши одной строкой."
+CREATE_EVENT_ASK_DATE = (
+    "📅 На какой день? Жми кнопку ниже или напиши:\n"
+    "<i>20.05.2026</i> · <i>«сегодня»</i> · <i>«завтра»</i>"
+)
+CREATE_EVENT_ASK_TIME = (
+    "🕘 Во сколько начинаем? Можно так: <i>09:30</i>, <i>9:30</i> или <i>9 30</i>."
+)
+CREATE_EVENT_ASK_DURATION = (
+    "⏱ Сколько минут? Жми пресет ниже или напиши число — например, <i>45</i>."
+)
 CREATE_EVENT_CONFIRM_HTML = (
-    "Создать событие?\n"
+    "🪶 Чайка готова занести в календарь:\n"
     "<b>{title}</b>\n"
-    "{date} {start}–{end}"
+    "{date} · {start}–{end}\n\n"
+    "Всё верно?"
 )
-CREATE_EVENT_INVALID_DATE = "⚠️ Не понял дату. Пример: 20.05.2026 или «завтра»"
-CREATE_EVENT_INVALID_TIME = "⚠️ Не понял время. Например: 09:30, 9 30 или 9:30"
-CREATE_EVENT_INVALID_DURATION = "⚠️ Укажите длительность в минутах, например 60"
-CREATE_EVENT_CREATING_HTML = "⏳ Создаю событие в календаре…"
-CREATE_EVENT_SUCCESS_HTML = "✅ Событие создано в вашем календаре."
+CREATE_EVENT_INVALID_DATE = (
+    "⚠️ Чайка не разобрала дату.\n"
+    "Попробуй ещё раз: <i>20.05.2026</i>, <i>«сегодня»</i> или <i>«завтра»</i>."
+)
+CREATE_EVENT_INVALID_TIME = (
+    "⚠️ Чайка не разобрала время.\n"
+    "Формат: <i>09:30</i>, <i>9:30</i> или <i>9 30</i>."
+)
+CREATE_EVENT_INVALID_DURATION = (
+    "⚠️ Длительность — числом минут. Например, <i>30</i> или <i>60</i>."
+)
+CREATE_EVENT_CREATING_HTML = "⏳ Чайка заносит событие в календарь…"
+CREATE_EVENT_SUCCESS_HTML = "✅ Чайка занесла встречу в календарь. Готово."
 CREATE_EVENT_FAILED_HTML = (
-    "⚠️ Не удалось создать событие в календаре.\n"
-    "Проверьте, что у пароля приложения есть право записи в календарь, "
-    "и попробуйте ещё раз. Если не поможет — переподключите календарь."
+    "⚠️ Не получилось создать встречу.\n"
+    "Чайка просит проверить: у пароля приложения должно быть право на запись в календарь. "
+    "Если не помогло — попробуй переподключить календарь в настройках."
 )
-CREATE_EVENT_CANCELLED_HTML = "Создание события отменено."
+CREATE_EVENT_CANCELLED_HTML = "🪶 Чайка сложила черновик. Встреча не создана."
 
 CB_CREATE_CONFIRM = "create:confirm"
 CB_CREATE_CANCEL = "create:cancel"
@@ -350,26 +382,29 @@ CB_CAL_TOGGLE_PREFIX = "cal:toggle:"
 CB_CAL_CLOSE = "cal:close"
 
 CALENDAR_SOURCES_SINGLE_HTML = (
-    "📚 В аккаунте один календарь — отдельно выбирать нечего."
+    "📚 В аккаунте всего один календарь — выбирать тут пока нечего."
 )
-CALENDAR_SOURCES_LAST_ENABLED_TEXT = "Нужен хотя бы один календарь для плана."
+CALENDAR_SOURCES_LAST_ENABLED_TEXT = "Нужен хотя бы один календарь — иначе плану неоткуда брать встречи."
 CALENDAR_SOURCES_LOAD_FAIL_HTML = (
-    "⚠️ Не удалось загрузить список календарей. Попробуйте позже."
+    "⚠️ Чайка не смогла принести список календарей.\n"
+    "Попробуй ещё раз через минуту."
 )
-CALENDAR_SOURCES_CLOSED_TEXT = "Настройка календарей закрыта."
+CALENDAR_SOURCES_CLOSED_TEXT = "📚 Закрыли список календарей. Возвращайся, когда понадобится."
 
 
 def calendar_sources_screen_text(*, lines: list[str]) -> str:
     body = "\n".join(lines) if lines else "—"
     return (
-        "📚 Какие календари учитывать в плане, дайджесте и «Ближайших»?\n\n"
+        "📚 <b>Календари в плане</b>\n\n"
+        "Чайка учитывает встречи только из отмеченных календарей. "
+        "Это касается плана дня, утреннего дайджеста и «Ближайших».\n\n"
         f"{body}\n\n"
-        "Нажмите на строку, чтобы включить или выключить."
+        "<i>Тапни строку, чтобы включить или выключить.</i>"
     )
 
 
 def calendar_sources_toggle_notice(*, enabled: bool, name: str) -> str:
-    state = "включён" if enabled else "выключен"
+    state = "в плане" if enabled else "выключен"
     return f"«{name}» {state}"
 
 
@@ -388,7 +423,7 @@ def build_calendar_sources_keyboard(
         if len(label) > 60:
             label = label[:57] + "…"
         rows.append([{"text": label, "callback_data": f"{CB_CAL_TOGGLE_PREFIX}{idx}"}])
-    rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_CAL_CLOSE}])
+    rows.append([{"text": "⬅️ В Календарь", "callback_data": CB_CAL_CLOSE}])
     return {"inline_keyboard": rows}
 
 
@@ -401,26 +436,27 @@ CB_FOREIGN_CLOSE = "foreign:close"
 
 FOREIGN_CALENDARS_INTRO_HTML = (
     "👥 <b>Чужие календари</b>\n\n"
-    "Здесь календари, которые вам открыли в Mail.ru или Яндексе. "
-    "Выберите календарь, затем день."
+    "Календари коллег, которые открыты на твою почту в Mail.ru или Яндексе. "
+    "Чайка может посмотреть в них одним глазом — выбери календарь, потом день."
 )
 FOREIGN_CALENDARS_EMPTY_HTML = (
-    "👥 Пока нет чужих календарей.\n\n"
-    "Попросите коллегу открыть доступ к календарю на вашу почту "
-    "в настройках календаря Mail.ru или Яндекса — после этого он появится здесь."
+    "👥 Пока ни одного чужого календаря.\n\n"
+    "Попроси коллегу открыть доступ к своему календарю на твою почту "
+    "(в настройках Mail.ru или Яндекс Календаря) — после этого он появится в этом списке."
 )
 FOREIGN_CALENDARS_LOAD_FAIL_HTML = (
-    "⚠️ Не удалось загрузить список календарей. Попробуйте позже."
+    "⚠️ Чайка не смогла принести список чужих календарей.\n"
+    "Попробуй ещё раз через минуту."
 )
-FOREIGN_CALENDARS_CLOSED_TEXT = "Просмотр чужих календарей закрыт."
-FOREIGN_CALENDARS_FETCH_STATUS = "⏳ Загружаю события…"
-FOREIGN_CALENDARS_DAY_EMPTY_HTML = "Встреч в этот день нет."
+FOREIGN_CALENDARS_CLOSED_TEXT = "👥 Закрыли чужие календари. Возвращайся, когда понадобится."
+FOREIGN_CALENDARS_FETCH_STATUS = "⏳ Чайка облетает чужой календарь…"
+FOREIGN_CALENDARS_DAY_EMPTY_HTML = "🪶 В этот день встреч у коллеги нет."
 
 
 def foreign_calendars_pick_day_text(*, calendar_name: str) -> str:
     return (
         f"👥 <b>{calendar_name}</b>\n\n"
-        "Выберите день:"
+        "Какой день посмотреть?"
     )
 
 
@@ -458,7 +494,13 @@ def build_foreign_day_keyboard(*, calendar_idx: int) -> dict:
                     "callback_data": f"{CB_FOREIGN_DAY_PREFIX}{calendar_idx}:1",
                 },
             ],
-            [{"text": "⬅️ Назад", "callback_data": CB_FOREIGN_BACK}],
+            [
+                {
+                    "text": BUTTON_DAY_AFTER,
+                    "callback_data": f"{CB_FOREIGN_DAY_PREFIX}{calendar_idx}:2",
+                },
+            ],
+            [{"text": "⬅️ К списку", "callback_data": CB_FOREIGN_BACK}],
         ]
     }
 
@@ -473,11 +515,18 @@ def build_webapp_connect_keyboard(webapp_url: str, *, reconnect: bool = False) -
 
 
 def build_approved_main_keyboard() -> dict:
-    """Компактная главная клавиатура: просмотр и создание событий + вход в настройки."""
+    """Главная клавиатура.
+
+    Сгруппирована по смыслу: верхний ряд — план дня (сегодня/завтра),
+    второй ряд — расширенные виды (неделя вперёд и чужие календари),
+    дальше — создание встречи и вход в настройки. Это уменьшает число
+    «сирот» в нижнем меню и делает поведение симметричным: рядом с
+    «Сегодня» лежит «Завтра», а не Ближайшие и Чужие, как раньше.
+    """
     return {
         "keyboard": [
-            [{"text": BUTTON_TODAY}, {"text": BUTTON_UPCOMING}],
-            [{"text": BUTTON_FOREIGN_CALENDARS}],
+            [{"text": BUTTON_TODAY}, {"text": BUTTON_TOMORROW}],
+            [{"text": BUTTON_UPCOMING}, {"text": BUTTON_FOREIGN_CALENDARS}],
             [{"text": BUTTON_CREATE_EVENT}],
             [{"text": BUTTON_SETTINGS}],
         ],
@@ -491,27 +540,38 @@ def build_approved_main_keyboard() -> dict:
 
 CB_SETTINGS_DIGEST = "settings_digest"
 CB_SETTINGS_ANALYTICS = "settings_analytics"
+# Подэкран «Календарь» — группирует управление подключением и календарями в плане
+CB_SETTINGS_CALENDAR_MENU = "settings_calendar_menu"
 CB_SETTINGS_CALENDARS = "settings_calendars"
 CB_SETTINGS_CHECK = "settings_check"
+CB_SETTINGS_RECONNECT = "settings_reconnect"
+# Двухшаговое отключение календаря: сначала подтверждение, потом сам disconnect
 CB_SETTINGS_DISCONNECT = "settings_disconnect"
+CB_SETTINGS_DISCONNECT_CONFIRM = "settings_disconnect_confirm"
 CB_SETTINGS_BACK = "settings_back"
 CB_SETTINGS_CLOSE = "settings_close"
 
-BUTTON_ANALYTICS = "📊 Аналитика"
+BUTTON_ANALYTICS = "📊 Аналитика недели"
+BUTTON_CALENDAR_MENU = "📅 Календарь"
 
 SETTINGS_HUB_TEXT = (
-    "⚙️ Настройки\n\n"
-    "Дайджест, календари в плане и подключение — всё здесь. Выбери раздел:"
+    "⚙️ <b>Настройки Чайки</b>\n\n"
+    "Здесь живут три раздела: дайджест, аналитика и календарь. Выбери, что настроить."
+)
+SETTINGS_HUB_NO_CALENDAR_HINT = (
+    "🔌 Календарь ещё не подключён — без него Чайке нечего показывать.\n"
+    "Жми «Подключить календарь» ниже — откроется защищённое окно."
 )
 
 ANALYTICS_FETCH_STATUS = "📊 Чайка сводит неделю по календарю…"
 ANALYTICS_OPTIONS_TEXT = (
     "📊 <b>Аналитика недели</b>\n\n"
     "Рабочий день для расчёта занятости: <b>{workday}</b>.\n"
-    "Нажми «Построить отчёт» — пришлю картинку с графиком и сводкой."
+    "Жми «Построить отчёт» — Чайка пришлёт картинку с графиком и сводкой по последним семи дням."
 )
 ANALYTICS_WORKDAY_APPLIED_TEXT = (
-    "📊 Готово. Рабочий день для аналитики обновлён — можно строить отчёт."
+    "📊 Рабочий день для аналитики обновлён.\n"
+    "Жми «Построить отчёт» — Чайка пересчитает по новым границам."
 )
 
 
@@ -534,13 +594,19 @@ def build_analytics_options_keyboard(*, workday_preset: str) -> dict:
         ]
     }
 
-SETTINGS_HUB_CLOSED_TEXT = "⚙️ Настройки закрыты. Кнопка «Настройки» на клавиатуре всегда рядом."
+SETTINGS_HUB_CLOSED_TEXT = (
+    "🪶 Чайка свернула настройки. Кнопка «Настройки» всегда рядом — на главной клавиатуре."
+)
 
 
 def build_settings_hub_keyboard(*, webapp_url: str, has_calendar: bool) -> dict:
-    connect_label = (
-        BUTTON_RECONNECT_CALENDAR if has_calendar else BUTTON_CONNECT_CALENDAR
-    )
+    """Главный экран настроек.
+
+    Структура: три раздела (Дайджест, Аналитика, Календарь). Управление
+    подключением и календарями в плане спрятано во вложенный экран
+    «Календарь» — это уменьшает число кнопок на главном экране и убирает
+    деструктивный «Отключить» из зоны случайного нажатия.
+    """
     rows: list[list[dict[str, str | dict[str, str]]]] = [
         [{"text": "🔔 Дайджест", "callback_data": CB_SETTINGS_DIGEST}],
     ]
@@ -549,21 +615,63 @@ def build_settings_hub_keyboard(*, webapp_url: str, has_calendar: bool) -> dict:
             [{"text": BUTTON_ANALYTICS, "callback_data": CB_SETTINGS_ANALYTICS}]
         )
         rows.append(
-            [{"text": BUTTON_CALENDAR_SOURCES, "callback_data": CB_SETTINGS_CALENDARS}]
+            [{"text": BUTTON_CALENDAR_MENU, "callback_data": CB_SETTINGS_CALENDAR_MENU}]
         )
-        rows.append(
-            [
-                {"text": BUTTON_CHECK_CALENDAR, "callback_data": CB_SETTINGS_CHECK},
-                {
-                    "text": BUTTON_DISCONNECT_CALENDAR,
-                    "callback_data": CB_SETTINGS_DISCONNECT,
-                },
-            ]
-        )
-    if webapp_url:
-        rows.append([{"text": connect_label, "web_app": {"url": webapp_url}}])
+    elif webapp_url:
+        rows.append([{"text": BUTTON_CONNECT_CALENDAR, "web_app": {"url": webapp_url}}])
     rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_SETTINGS_CLOSE}])
     return {"inline_keyboard": rows}
+
+
+# --- подэкран «Календарь» ---------------------------------------------------
+
+SETTINGS_CALENDAR_MENU_TEXT = (
+    "📅 <b>Календарь</b>\n\n"
+    "Управление подключением и выбор календарей, по которым Чайка строит план."
+)
+SETTINGS_DISCONNECT_CONFIRM_TEXT = (
+    "🪶 Точно отключить календарь?\n\n"
+    "Чайка забудет логин и пароль, но настройки дайджеста и аналитики сохранятся. "
+    "Заново подключить можно одной кнопкой."
+)
+SETTINGS_DISCONNECT_CANCEL_TEXT = "🪶 Отбой — календарь на месте."
+BUTTON_DISCONNECT_CALENDAR_CONFIRM = "⚠️ Да, отключить"
+BUTTON_DISCONNECT_CALENDAR_CANCEL = "⬅️ Отмена"
+
+
+def build_settings_calendar_menu_keyboard(*, webapp_url: str) -> dict:
+    rows: list[list[dict[str, str | dict[str, str]]]] = [
+        [{"text": BUTTON_CALENDAR_SOURCES, "callback_data": CB_SETTINGS_CALENDARS}],
+        [{"text": BUTTON_CHECK_CALENDAR, "callback_data": CB_SETTINGS_CHECK}],
+    ]
+    if webapp_url:
+        rows.append(
+            [{"text": BUTTON_RECONNECT_CALENDAR, "web_app": {"url": webapp_url}}]
+        )
+    rows.append(
+        [{"text": BUTTON_DISCONNECT_CALENDAR, "callback_data": CB_SETTINGS_DISCONNECT}]
+    )
+    rows.append([{"text": "⬅️ В настройки", "callback_data": CB_SETTINGS_BACK}])
+    return {"inline_keyboard": rows}
+
+
+def build_settings_disconnect_confirm_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {
+                    "text": BUTTON_DISCONNECT_CALENDAR_CONFIRM,
+                    "callback_data": CB_SETTINGS_DISCONNECT_CONFIRM,
+                }
+            ],
+            [
+                {
+                    "text": BUTTON_DISCONNECT_CALENDAR_CANCEL,
+                    "callback_data": CB_SETTINGS_CALENDAR_MENU,
+                }
+            ],
+        ]
+    }
 
 
 def subscribe_confirmation_text(time_str: str, weekdays_only: bool) -> str:
@@ -577,18 +685,22 @@ def subscribe_confirmation_text(time_str: str, weekdays_only: bool) -> str:
     schedule = "по будням" if weekdays_only else "каждый день"
     return (
         "🔔 Чайка записала маршрут.\n"
-        f"Дайджест будет прилетать в {time_str} МСК {schedule}."
+        f"Утренний дайджест будет прилетать в <b>{time_str} МСК</b> {schedule}.\n\n"
+        "Поменять время или дни — /settings → «Дайджест»."
     )
 
 
 SUBSCRIBE_ALREADY_TEXT = (
-    "🔔 Ты уже подписан(а). Чтобы выключить — /stopdigest или /settings."
+    "🔔 Дайджест уже включён.\n"
+    "Чтобы выключить — /stopdigest, изменить время — /settings."
 )
 UNSUBSCRIBE_CONFIRMATION_TEXT = (
     "🔕 Чайка сложила крылья.\n"
-    "Дайджест больше не будет прилетать. Включить обратно можно через /digest или в /settings."
+    "Утренний дайджест больше не будет прилетать. Включить обратно — /digest или /settings."
 )
-UNSUBSCRIBE_NOT_SUBSCRIBED_TEXT = "🔕 Ты и не был(а) подписан(а)."
+UNSUBSCRIBE_NOT_SUBSCRIBED_TEXT = (
+    "🔕 Дайджест и так был выключен — Чайка просто кивнула."
+)
 
 
 # --- настройки дайджеста ---------------------------------------------------
@@ -616,55 +728,55 @@ def digest_settings_screen_text(
     status_text = "включён" if digest_enabled else "отключён"
     days_label = DIGEST_DAYS_LABEL.get(digest_days, digest_days)
     return (
-        "⚙️ Настройки дайджеста\n"
-        f"{status_emoji} Статус: {status_text}\n"
-        f"📆 Дни: {days_label}\n"
-        f"🕘 Время: {digest_time} МСК\n"
-        "Выбери, что изменить:"
+        "🔔 <b>Настройки дайджеста</b>\n\n"
+        f"{status_emoji} Статус: <b>{status_text}</b>\n"
+        f"📆 Дни: <b>{days_label}</b>\n"
+        f"🕘 Время: <b>{digest_time} МСК</b>\n\n"
+        "Что меняем?"
     )
 
 
 def digest_days_screen_text(digest_days: str) -> str:
     days_label = DIGEST_DAYS_LABEL.get(digest_days, digest_days)
     return (
-        "📆 Дни отправки дайджеста\n"
-        f"Сейчас: {days_label}\n"
-        "Когда присылать утренний облёт?"
+        "📆 <b>Дни отправки</b>\n\n"
+        f"Сейчас: <b>{days_label}</b>.\n"
+        "Когда Чайке делать утренний облёт?"
     )
 
 
 def digest_time_screen_text(digest_time: str) -> str:
     return (
-        "🕘 Время отправки дайджеста\n"
-        f"Сейчас: {digest_time} МСК\n"
-        "Напиши новое время: 08:30, 8:30, 08 30 или 8 30.\n"
-        "Например: 09:30, 9 30, 18:25."
+        "🕘 <b>Время отправки</b>\n\n"
+        f"Сейчас: <b>{digest_time} МСК</b>.\n"
+        "Напиши новое время одной строкой:\n"
+        "<i>09:30</i> · <i>9 30</i> · <i>8:00</i> · <i>18:25</i>"
     )
 
 
 DIGEST_DAYS_WEEKDAYS_APPLIED_TEXT = (
-    "📆 Готово.\n"
-    "Дайджест будет прилетать по будням: с понедельника по пятницу."
+    "📆 Готово. Утренний дайджест — по будням, с понедельника по пятницу."
 )
 DIGEST_DAYS_ALL_APPLIED_TEXT = (
-    "📆 Готово.\n"
-    "Дайджест будет прилетать каждый день. Даже в выходные крылья будут на дежурстве."
+    "📆 Готово. Дайджест будет прилетать каждый день — даже в выходные Чайка на дежурстве."
 )
 
 
 def digest_time_applied_text(digest_time: str) -> str:
     return (
         "🕘 Готово.\n"
-        f"Дайджест будет прилетать в {digest_time} МСК."
+        f"Утренний дайджест будет прилетать в <b>{digest_time} МСК</b>."
     )
 
 
 DIGEST_TIME_INVALID_TEXT = (
-    "⚠️ Не понял время.\n"
-    "Напиши, например: 09:30, 9 30, 9:30 или 18:25."
+    "⚠️ Чайка не разобрала время.\n"
+    "Напиши так: <i>09:30</i>, <i>9 30</i>, <i>9:30</i> или <i>18:25</i>."
 )
 
-DIGEST_SETTINGS_CLOSED_TEXT = "⚙️ Настройки закрыты. Возвращайся, когда понадобятся."
+DIGEST_SETTINGS_CLOSED_TEXT = (
+    "🪶 Чайка свернула настройки дайджеста. Возвращайся, когда понадобятся."
+)
 
 
 def build_digest_settings_keyboard(*, digest_enabled: bool) -> dict:
@@ -701,38 +813,39 @@ def build_digest_time_keyboard() -> dict:
 
 PLAN_FETCH_STATUS_TEXT = {
     "today": (
-        "📅 Чайка делает облёт календаря.\n\n"
-        "Ищет твои встречи на сегодня и скоро принесёт сводку."
+        "📅 Чайка делает облёт сегодняшнего дня.\n\n"
+        "Сейчас принесу сводку."
     ),
     "tomorrow": (
-        "➡️ Чайка делает облёт завтрашнего дня.\n\n"
-        "Ищет твои встречи и скоро принесёт сводку."
+        "➡️ Чайка летит на завтрашний день.\n\n"
+        "Сейчас принесу сводку."
     ),
     "day_after_tomorrow": (
-        "⏭ Чайка делает дальний облёт.\n\n"
-        "Ищет твои встречи на послезавтра и скоро принесёт сводку."
+        "⏭ Чайка ушла в дальний облёт — послезавтра.\n\n"
+        "Скоро вернусь со сводкой."
     ),
 }
 
 ERR_CALDAV_UNAVAILABLE_TEXT = (
-    "⚠️ Календарь сейчас недоступен. Попробуйте ещё раз через минуту."
+    "⚠️ Календарь не отвечает.\n"
+    "Чайка попробует снова через минуту — попытайся ещё раз."
 )
 
 ERR_DIGEST_BUILD_FAILED_TEXT = (
-    "⚠️ Не удалось принести сводку.\n\n"
-    "Крылья целы, но календарь сейчас не отвечает. Попробуй ещё раз позже."
+    "⚠️ Чайка вернулась без сводки.\n\n"
+    "Крылья целы, но календарь сейчас не отвечает. Попробуй ещё раз чуть позже."
 )
 
 # Универсальный текст для непредвиденных ошибок в диспетчере: пользователь
 # должен получить какой-то ответ, чтобы не казалось, что бот «съел» команду.
 # Никаких техдеталей — стек только в логе.
 ERR_GENERIC_HANDLER_TEXT = (
-    "⚠️ Что-то пошло не так. Чайка уже разбирается, попробуй ещё раз через минуту."
+    "⚠️ Что-то пошло не так. Чайка уже разбирается — попробуй ещё раз через минуту."
 )
 
 
 def digest_toggle_notice_text(*, enabled: bool) -> str:
-    return "Дайджест включён" if enabled else "Дайджест отключён"
+    return "🔔 Дайджест включён" if enabled else "🔕 Дайджест отключён"
 
 
 # --- Шаблоны строк дайджеста, использующиеся в seagull.render ---------------

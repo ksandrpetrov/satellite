@@ -11,6 +11,7 @@ from ...messages_ru import (
     CALENDAR_CONNECTED_HTML,
     CALENDAR_DISCONNECTED_HTML,
     CALENDAR_NOT_CONNECTED_HTML,
+    CALENDAR_RECONNECT_INTRO_HTML,
     build_webapp_connect_keyboard,
 )
 from .access import ensure_calendar_access
@@ -27,11 +28,14 @@ def handle_connect_calendar_button(ctx: HandlerContext, msg: IncomingMessage) ->
     if not webapp_url:
         send(ctx, msg.chat_id, CALENDAR_NOT_CONNECTED_HTML)
         return
-    reconnect = bool(msg.user_id and ctx.users.get(msg.user_id) and ctx.users.get(msg.user_id).has_calendar)
+    reconnect = bool(
+        msg.user_id and ctx.users.get(msg.user_id) and ctx.users.get(msg.user_id).has_calendar
+    )
+    intro = CALENDAR_RECONNECT_INTRO_HTML if reconnect else CALENDAR_NOT_CONNECTED_HTML
     send(
         ctx,
         msg.chat_id,
-        CALENDAR_NOT_CONNECTED_HTML if not reconnect else "Откройте Web App для переподключения.",
+        intro,
         reply_markup=build_webapp_connect_keyboard(webapp_url, reconnect=reconnect),
     )
 

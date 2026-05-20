@@ -13,9 +13,13 @@ from satellite.calendar.events import format_single_day_events_lines
 from satellite.calendar.providers.base import CalendarListEntry
 from satellite.calendar.selection import foreign_calendar_entries
 from satellite.messages_ru import (
+    BUTTON_DAY_AFTER,
     BUTTON_FOREIGN_CALENDARS,
+    BUTTON_TODAY,
+    BUTTON_TOMORROW,
     CB_FOREIGN_DAY_PREFIX,
     CB_FOREIGN_PICK_PREFIX,
+    build_foreign_day_keyboard,
     button_text_is_foreign_calendars,
 )
 from satellite.telegram_bot.handlers.routing import is_foreign_calendars_request
@@ -41,6 +45,27 @@ def test_button_and_command_routing():
     assert is_foreign_calendars_request(BUTTON_FOREIGN_CALENDARS)
     assert is_foreign_calendars_request("/foreign")
     assert not is_foreign_calendars_request("/today")
+
+
+def test_foreign_day_keyboard_offers_today_tomorrow_and_day_after():
+    """Под чужим календарём — три дня вперёд, как и в плане Чайки."""
+    kb = build_foreign_day_keyboard(calendar_idx=3)
+    labels = [btn["text"] for row in kb["inline_keyboard"] for btn in row]
+    assert BUTTON_TODAY in labels
+    assert BUTTON_TOMORROW in labels
+    assert BUTTON_DAY_AFTER in labels
+    # Возврат к списку календарей — отдельная строка
+    assert any("списку" in lbl.lower() for lbl in labels)
+    # day_offset кодируется в callback_data в формате "{prefix}{idx}:{offset}"
+    offsets = set()
+    for row in kb["inline_keyboard"]:
+        for btn in row:
+            data = btn.get("callback_data", "")
+            if data.startswith(CB_FOREIGN_DAY_PREFIX):
+                payload = data[len(CB_FOREIGN_DAY_PREFIX):]
+                _idx, _, offset = payload.partition(":")
+                offsets.add(offset)
+    assert offsets == {"0", "1", "2"}
 
 
 def test_format_single_day_events_lines():

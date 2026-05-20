@@ -746,7 +746,9 @@ def test_digest_settings_screen_text_enabled():
         digest_enabled=True, digest_days="weekdays", digest_time="09:00"
     )
     assert "🔔" in text and "включён" in text
-    assert "Дни: будни" in text
+    # Значение дней оборачивается в <b>…</b> для HTML-разметки в Telegram.
+    assert "будни" in text
+    assert "Дни:" in text
     assert "09:00 МСК" in text
 
 
@@ -755,7 +757,8 @@ def test_digest_settings_screen_text_disabled():
         digest_enabled=False, digest_days="all_days", digest_time="08:30"
     )
     assert "🔕" in text and "отключён" in text
-    assert "Дни: все дни" in text
+    assert "все дни" in text
+    assert "Дни:" in text
     assert "08:30 МСК" in text
 
 

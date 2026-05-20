@@ -29,16 +29,23 @@ def test_button_text_to_mode_unknown():
     assert button_text_to_mode(None) is None
 
 
-def test_approved_main_keyboard_is_compact():
+def test_approved_main_keyboard_layout():
+    """Раскладка главной клавиатуры: план дня в первом ряду, виды во втором,
+    действия и настройки — отдельными строками. См. AGENTS.md / messages_ru.py.
+    """
     kb = build_approved_main_keyboard()
     labels = [btn["text"] for row in kb["keyboard"] for btn in row]
     assert labels == [
         BUTTON_TODAY,
+        BUTTON_TOMORROW,
         BUTTON_UPCOMING,
         BUTTON_FOREIGN_CALENDARS,
         BUTTON_CREATE_EVENT,
         BUTTON_SETTINGS,
     ]
+    # Сегодня и Завтра — рядом в одном ряду
+    first_row = [btn["text"] for btn in kb["keyboard"][0]]
+    assert first_row == [BUTTON_TODAY, BUTTON_TOMORROW]
 
 
 def test_format_duration_ru():

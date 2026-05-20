@@ -151,7 +151,7 @@ def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
     except ValueError:
         safe_answer_callback(ctx, cb)
         return
-    if idx < 0 or idx >= len(foreign) or day_offset not in (0, 1):
+    if idx < 0 or idx >= len(foreign) or day_offset not in (0, 1, 2):
         safe_answer_callback(ctx, cb)
         return
     entry = foreign[idx]
