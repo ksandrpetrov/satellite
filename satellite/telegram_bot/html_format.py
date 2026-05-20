@@ -1,7 +1,13 @@
 """HTML-разметка для Telegram Bot API (parse_mode=HTML).
 
-Централизует ``<blockquote>``, ``<blockquote expandable>``, ``<tg-emoji>`` и
-``link_preview_options``, чтобы хендлеры не собирали теги вручную.
+Централизует ``<blockquote>``, ``<tg-emoji>`` и ``link_preview_options``,
+чтобы хендлеры не собирали теги вручную.
+
+Раньше длинные блоки оборачивались в ``<blockquote expandable="true">`` —
+Telegram показывал их свёрнутыми с кнопкой «Показать ещё». По требованию
+владельца все «сворачивалки» по умолчанию открыты: ``expandable_blockquote``
+теперь возвращает обычный ``<blockquote>`` (виден целиком), а пользователь
+при необходимости свернёт цитату штатным жестом клиента.
 """
 
 from __future__ import annotations
@@ -39,15 +45,22 @@ def blockquote(text: str) -> str:
 
 
 def expandable_blockquote(text: str, *, threshold: int = 3) -> str:
-    """Expandable blockquote (Bot API 7.4), если ``text`` достаточно длинный.
+    """Длинный блок в обычной (развёрнутой) цитате Telegram.
 
-    ``threshold`` — минимальное число непустых строк (после split по ``\\n``),
-    при котором имеет смысл сворачивать блок.
+    Раньше при ``len(lines) >= threshold`` возвращался ``<blockquote
+    expandable="true">`` — Telegram показывал его свёрнутым. Сейчас все
+    «сворачивалки» по умолчанию открыты, поэтому возвращается обычный
+    ``<blockquote>``: содержимое видно сразу, а свернуть пользователь может
+    штатным жестом клиента.
+
+    Имя функции и параметр ``threshold`` оставлены ради совместимости
+    с вызывающим кодом (``messages_ru``, ``seagull/render.py``): при
+    ``len(lines) < threshold`` блок остаётся обычным текстом без обёртки.
     """
     lines = [ln for ln in text.split("\n") if ln.strip()]
     if len(lines) < threshold:
         return text
-    return f'<blockquote expandable="true">{text}</blockquote>'
+    return f"<blockquote>{text}</blockquote>"
 
 
 def tg_emoji(unicode_char: str) -> str:
@@ -67,7 +80,12 @@ def strip_tg_emoji_tags(html_text: str) -> str:
 
 
 def strip_expandable_blockquote(html_text: str) -> str:
-    """Убирает атрибут ``expandable`` — fallback для старых серверов."""
+    """Убирает атрибут ``expandable`` — fallback для старых серверов.
+
+    Сейчас ``expandable_blockquote`` атрибут не выставляет, но функция
+    оставлена: пригодится, если в кэшированных черновиках или внешнем
+    HTML-вводе всё-таки промелькнёт ``<blockquote expandable …>``.
+    """
     return html_text.replace('<blockquote expandable="true">', "<blockquote>").replace(
         "<blockquote expandable>", "<blockquote>"
     )

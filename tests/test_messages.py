@@ -39,7 +39,7 @@ def test_button_text_to_mode_unknown():
 
 def test_approved_main_keyboard_layout():
     """Раскладка главной клавиатуры: план дня в первом ряду, виды во втором,
-    действия и настройки — отдельными строками. См. AGENTS.md / messages_ru.py.
+    действия в третьем, создание и настройки — в одном ряду. См. messages_ru.py.
     """
     kb = build_approved_main_keyboard()
     labels = [btn["text"] for row in kb["keyboard"] for btn in row]
@@ -56,16 +56,21 @@ def test_approved_main_keyboard_layout():
     # Сегодня и Завтра — рядом в одном ряду
     first_row = [btn["text"] for btn in kb["keyboard"][0]]
     assert first_row == [BUTTON_TODAY, BUTTON_TOMORROW]
-    # «Изменить статус» делит ряд с «Чужие календари» — компактный второй блок
+    # «Изменить статус» делит ряд с «Чужие календари»
     manage_row = [btn["text"] for btn in kb["keyboard"][2]]
     assert manage_row == [BUTTON_MANAGE_EVENTS, BUTTON_FOREIGN_CALENDARS]
+    # «Создать событие» и «Настройки» — в одном ряду
+    bottom_row = [btn["text"] for btn in kb["keyboard"][3]]
+    assert bottom_row == [BUTTON_CREATE_EVENT, BUTTON_SETTINGS]
 
 
 def _ev(**fields):
     return {"summary": "—", **fields}
 
 
-def test_upcoming_events_html_expandable_per_day_not_whole_list():
+def test_upcoming_events_html_blockquote_per_day_not_whole_list():
+    """Дневной блок встреч оборачивается в обычный blockquote (развёрнутый)."""
+
     ref = date(2026, 5, 20)
     events = [
         _ev(
@@ -85,18 +90,19 @@ def test_upcoming_events_html_expandable_per_day_not_whole_list():
         ),
     ]
     html = upcoming_events_html(events, TZ, ref, days=7)
-    assert html.count('expandable="true"') == 1
+    assert 'expandable="true"' not in html
+    assert html.count("<blockquote>") == 1
     assert "<b>Сегодня" in html
     assert "<b>Завтра" in html
     assert "A" in html
     assert "B1" in html
     assert "B2" in html
-    # Заголовок «Завтра» снаружи единственного expandable-блока этого дня
+    # Заголовок «Завтра» снаружи единственного blockquote-блока этого дня
     tomorrow_header = html.index("<b>Завтра")
-    expandable_pos = html.index('expandable="true"')
-    assert tomorrow_header < expandable_pos
-    block_end = html.index("</blockquote>", expandable_pos)
-    assert "Завтра" not in html[expandable_pos:block_end]
+    block_start = html.index("<blockquote>")
+    assert tomorrow_header < block_start
+    block_end = html.index("</blockquote>", block_start)
+    assert "Завтра" not in html[block_start:block_end]
 
 
 def test_upcoming_events_html_single_event_day_plain():
@@ -110,6 +116,7 @@ def test_upcoming_events_html_single_event_day_plain():
     ]
     html = upcoming_events_html(events, TZ, ref, days=7)
     assert 'expandable="true"' not in html
+    assert "<blockquote>" not in html
     assert "Solo" in html
 
 

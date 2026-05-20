@@ -17,10 +17,17 @@ def test_blockquote_wraps_text() -> None:
 
 
 def test_expandable_blockquote_when_enough_lines() -> None:
+    """Сворачивалки теперь открыты по умолчанию.
+
+    Длинный блок остаётся в обычной цитате (виден целиком), чтобы пользователь
+    не разворачивал его вручную; свернуть его можно штатным жестом клиента.
+    """
+
     body = "a\nb\nc\nd"
     out = expandable_blockquote(body, threshold=3)
-    assert 'expandable="true"' in out
-    assert body in out
+    assert out == f"<blockquote>{body}</blockquote>"
+    assert 'expandable="true"' not in out
+    assert "<blockquote expandable" not in out
 
 
 def test_expandable_blockquote_skips_short_text() -> None:
