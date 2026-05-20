@@ -1,0 +1,27 @@
+# Локальный dev/standalone compose: один контейнер бота с проброшенным
+# webapp-портом. Подходит для запуска на ноуте за ngrok/cloudflared или на
+# VPS с уже настроенным reverse proxy.
+#
+# Production-стек с Traefik/Certbot/Ansible живёт в deploy/docker-compose.yml.
+name: satellite-dev
+
+services:
+  satellite:
+    build: .
+    image: satellite:dev
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      WEBAPP_HOST: "0.0.0.0"
+      WEBAPP_PORT: "8080"
+    ports:
+      - "${WEBAPP_PORT:-8080}:8080"
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

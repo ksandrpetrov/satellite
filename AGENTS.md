@@ -125,12 +125,37 @@ find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 python -m py_
 python telegram_test_command.py                   # make run
 ```
 
-Серверная установка: `sudo bash scripts/install-server.sh`
-(см. [docs/operations.md](docs/operations.md#запуск-на-сервере)).
+Сервер: **systemd** — `sudo bash scripts/install-server.sh`;
+**Docker (prod)** — `make deploy` (см. [docs/operations.md](docs/operations.md#запуск-на-сервере),
+[deploy/README.md](deploy/README.md));
+**Docker (local)** — `make env && make docker-up` (см. корневой `docker-compose.yml`).
 
 CI: [`.github/workflows/test.yml`](.github/workflows/test.yml). Образ в GHCR:
 [`.github/workflows/release-docker.yml`](.github/workflows/release-docker.yml) (на GitHub Release).
 Деплой Docker: `make deploy` → [`deploy/README.md`](deploy/README.md).
+
+## Web App
+
+[`satellite/web/server.py`](satellite/web/server.py) — встроенный
+`ThreadingHTTPServer`, поднимаемый из [`bot.py`](satellite/telegram_bot/bot.py).
+Все запросы под `/api/calendar/*` авторизуются по Telegram `initData`
+(HMAC) и фильтруются по `UserStore.status == approved`.
+
+Endpoint-ы:
+
+| Метод/путь | Назначение |
+|------------|------------|
+| `GET /healthz` | Docker HEALTHCHECK; без auth |
+| `GET /connect` | SPA-страница [`connect.html`](satellite/web/static/connect.html) |
+| `GET /api/calendar/status` | Проверка подключения |
+| `POST /api/calendar/connect` | Сохранить credentials (Fernet через `TokenVault`) |
+| `DELETE /api/calendar/disconnect` | Сбросить подключение |
+| `GET /api/calendar/events?from=&to=` | Список событий |
+| `POST /api/calendar/events` | Создать событие |
+| `DELETE /api/calendar/events/{uid}?url=` | Удалить событие |
+
+HTTPS не делает сам сервер — это задача reverse proxy (Traefik в
+production, ngrok/Cloudflare Tunnel в dev).
 
 ## Runtime-артефакты
 

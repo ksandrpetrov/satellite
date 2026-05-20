@@ -2,48 +2,264 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Подключение календаря</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Чайка — календарь</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: var(--tg-theme-bg-color,#fff); color: var(--tg-theme-text-color,#000); }
-    h1 { font-size: 1.25rem; margin: 0 0 12px; }
-    label { display: block; margin: 12px 0 4px; font-size: 0.9rem; }
-    input, select { width: 100%; box-sizing: border-box; padding: 10px; font-size: 1rem; }
-    button { width: 100%; margin-top: 12px; padding: 12px; font-size: 1rem; cursor: pointer; }
-    .hint { font-size: 0.85rem; opacity: 0.8; margin-top: 8px; }
-    .status { margin-top: 16px; padding: 10px; border-radius: 8px; background: rgba(0,0,0,0.05); }
-    .error { color: #b00020; }
-    .ok { color: #0a7; }
+    :root {
+      --bg: var(--tg-theme-bg-color, #ffffff);
+      --text: var(--tg-theme-text-color, #1c1c1e);
+      --hint: var(--tg-theme-hint-color, #8e8e93);
+      --link: var(--tg-theme-link-color, #2481cc);
+      --button-bg: var(--tg-theme-button-color, #2481cc);
+      --button-text: var(--tg-theme-button-text-color, #ffffff);
+      --secondary-bg: var(--tg-theme-secondary-bg-color, #f2f2f7);
+      --section-bg: var(--tg-theme-section-bg-color, #ffffff);
+      --separator: rgba(120, 120, 128, 0.2);
+      --danger: #ff453a;
+      --success: #34c759;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    body { padding: 16px 16px 32px; }
+    h1 { font-size: 1.25rem; margin: 0 0 4px; }
+    h2 { font-size: 1rem; margin: 0 0 8px; color: var(--hint); font-weight: 500; }
+    p, label, .hint { font-size: 0.9rem; }
+    .hint { color: var(--hint); margin: 4px 0 0; }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--secondary-bg);
+      border-radius: 10px;
+      padding: 4px;
+      margin: 12px 0;
+    }
+    .tabs button {
+      flex: 1;
+      background: transparent;
+      border: 0;
+      color: var(--text);
+      padding: 8px 4px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .tabs button.active {
+      background: var(--section-bg);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+      font-weight: 600;
+    }
+    section { display: none; }
+    section.active { display: block; }
+    .card {
+      background: var(--section-bg);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+      border: 1px solid var(--separator);
+    }
+    label { display: block; margin: 10px 0 4px; }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 1rem;
+      border: 1px solid var(--separator);
+      border-radius: 10px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+    }
+    textarea { min-height: 64px; resize: vertical; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    button.primary, button.secondary, button.danger {
+      width: 100%;
+      padding: 12px;
+      font-size: 1rem;
+      font-weight: 500;
+      border-radius: 10px;
+      border: 0;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+    button.primary { background: var(--button-bg); color: var(--button-text); }
+    button.secondary { background: var(--secondary-bg); color: var(--text); }
+    button.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--secondary-bg);
+      font-size: 0.9rem;
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.ok { color: var(--success); }
+    .status.err { color: var(--danger); }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: var(--secondary-bg);
+      color: var(--hint);
+    }
+    .badge.ok { background: rgba(52, 199, 89, 0.15); color: var(--success); }
+    .badge.err { background: rgba(255, 69, 58, 0.15); color: var(--danger); }
+    .event {
+      border-bottom: 1px solid var(--separator);
+      padding: 10px 0;
+    }
+    .event:last-child { border-bottom: 0; }
+    .event .title { font-weight: 600; }
+    .event .meta { color: var(--hint); font-size: 0.85rem; margin-top: 2px; }
+    .event .actions { margin-top: 6px; display: flex; gap: 8px; }
+    .event .actions button {
+      background: transparent;
+      border: 1px solid var(--separator);
+      color: var(--text);
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .event .actions button.danger { color: var(--danger); border-color: var(--danger); }
+    .empty { color: var(--hint); text-align: center; padding: 16px 0; }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--separator);
+      border-top-color: var(--button-bg);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <h1>Подключение календаря</h1>
-  <label for="provider">Провайдер</label>
-  <select id="provider">
-    <option value="mailru">Mail.ru / Mailroom</option>
-    <option value="yandex" disabled>Яндекс (скоро)</option>
-  </select>
-  <label for="login">Email Mail.ru</label>
-  <input id="login" type="email" autocomplete="username" placeholder="you@mail.ru">
-  <label for="token">Сервисный токен (пароль приложения)</label>
-  <input id="token" type="password" autocomplete="off" placeholder="Пароль для внешних приложений">
-  <p class="hint">Создайте пароль приложения в настройках Mail.ru → «Пароли для внешних приложений» → Календарь.</p>
-  <button id="connectBtn">Проверить и подключить</button>
-  <button id="checkBtn" type="button">Проверить подключение</button>
-  <button id="disconnectBtn" type="button">Отключить календарь</button>
-  <div id="status" class="status"></div>
+  <h1>Календарь</h1>
+  <h2 id="userHint">Подключите Mail.ru, чтобы Чайка собирала ваш день.</h2>
+
+  <div class="tabs" role="tablist">
+    <button data-tab="connection" class="active">Подключение</button>
+    <button data-tab="events">События</button>
+    <button data-tab="create">Создать</button>
+  </div>
+
+  <section id="tab-connection" class="active">
+    <div class="card">
+      <div>
+        Статус: <span id="statusBadge" class="badge">проверяем…</span>
+      </div>
+      <label for="provider">Провайдер</label>
+      <select id="provider">
+        <option value="mailru">Mail.ru / Mailroom</option>
+        <option value="yandex" disabled>Яндекс (скоро)</option>
+      </select>
+      <label for="login">Email Mail.ru</label>
+      <input id="login" type="email" autocomplete="username" placeholder="you@mail.ru">
+      <label for="token">Пароль приложения</label>
+      <input id="token" type="password" autocomplete="off" placeholder="Создаётся в настройках Mail.ru">
+      <p class="hint">Настройки Mail.ru → «Пароли для внешних приложений» → выберите «Календарь».</p>
+      <button id="connectBtn" class="primary">Подключить</button>
+      <button id="checkBtn" class="secondary" type="button">Проверить подключение</button>
+      <button id="disconnectBtn" class="danger" type="button">Отключить календарь</button>
+    </div>
+    <div id="connectStatus" class="status"></div>
+  </section>
+
+  <section id="tab-events">
+    <div class="card">
+      <div class="row">
+        <div>
+          <label for="rangeFrom">С</label>
+          <input id="rangeFrom" type="date">
+        </div>
+        <div>
+          <label for="rangeTo">По</label>
+          <input id="rangeTo" type="date">
+        </div>
+      </div>
+      <button id="refreshBtn" class="secondary" type="button">Обновить</button>
+    </div>
+    <div id="eventsList" class="card">
+      <div class="empty">Нажмите «Обновить», чтобы загрузить события.</div>
+    </div>
+    <div id="eventsStatus" class="status"></div>
+  </section>
+
+  <section id="tab-create">
+    <div class="card">
+      <label for="evTitle">Название</label>
+      <input id="evTitle" type="text" placeholder="Дейли команды">
+      <div class="row">
+        <div>
+          <label for="evDate">Дата</label>
+          <input id="evDate" type="date">
+        </div>
+        <div>
+          <label for="evStart">Начало</label>
+          <input id="evStart" type="time">
+        </div>
+        <div>
+          <label for="evEnd">Конец</label>
+          <input id="evEnd" type="time">
+        </div>
+      </div>
+      <label for="evLocation">Место (опционально)</label>
+      <input id="evLocation" type="text" placeholder="Zoom / адрес">
+      <label for="evDescription">Описание (опционально)</label>
+      <textarea id="evDescription"></textarea>
+      <button id="createBtn" class="primary">Создать событие</button>
+    </div>
+    <div id="createStatus" class="status"></div>
+  </section>
+
   <script>
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
-    const statusEl = document.getElementById('status');
-    function showStatus(text, ok) {
-      statusEl.textContent = text;
-      statusEl.className = 'status ' + (ok ? 'ok' : 'error');
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
+
+    const tabs = document.querySelectorAll('.tabs button');
+    const sections = {
+      connection: document.getElementById('tab-connection'),
+      events: document.getElementById('tab-events'),
+      create: document.getElementById('tab-create'),
+    };
+    tabs.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        tabs.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        Object.entries(sections).forEach(([key, el]) => {
+          el.classList.toggle('active', key === btn.dataset.tab);
+        });
+        if (btn.dataset.tab === 'events') loadEvents();
+      });
+    });
+
+    function showStatus(elId, text, kind) {
+      const el = document.getElementById(elId);
+      el.textContent = text;
+      el.className = 'status show ' + (kind || '');
     }
+    function clearStatus(elId) {
+      const el = document.getElementById(elId);
+      el.textContent = '';
+      el.className = 'status';
+    }
+
     async function api(method, path, body) {
-      const initData = tg.initData || '';
+      const initData = (tg && tg.initData) || '';
       const opts = {
         method,
         headers: {
@@ -51,13 +267,55 @@
           'X-Telegram-Init-Data': initData,
         },
       };
-      if (body) opts.body = JSON.stringify({ ...body, initData });
+      if (body !== undefined) opts.body = JSON.stringify({ ...body, initData });
       const resp = await fetch(path, opts);
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data.message || data.error || 'request_failed');
+      let data = {};
+      try { data = await resp.json(); } catch (_) { data = {}; }
+      if (!resp.ok) {
+        const err = new Error(data.message || data.error || 'request_failed');
+        err.code = data.error;
+        err.status = resp.status;
+        throw err;
+      }
       return data;
     }
+
+    function badge(text, kind) {
+      const el = document.getElementById('statusBadge');
+      el.textContent = text;
+      el.className = 'badge ' + (kind || '');
+    }
+
+    async function refreshStatus() {
+      badge('проверяем…');
+      try {
+        const data = await api('GET', '/api/calendar/status');
+        if (data.connected) {
+          badge('подключено: ' + (data.provider || 'mailru'), 'ok');
+          document.getElementById('userHint').textContent =
+            'Календарь подключён. Можно создавать события прямо отсюда.';
+        } else if (data.provider) {
+          badge('требует переподключения', 'err');
+        } else {
+          badge('не подключено');
+        }
+      } catch (e) {
+        if (e.status === 403) {
+          badge('доступ не одобрен', 'err');
+          document.getElementById('userHint').textContent =
+            'Доступ ещё не одобрен админом. Ожидайте сообщения от бота.';
+        } else if (e.status === 401) {
+          badge('сессия истекла', 'err');
+        } else {
+          badge('ошибка проверки', 'err');
+        }
+      }
+    }
+
     document.getElementById('connectBtn').addEventListener('click', async () => {
+      clearStatus('connectStatus');
+      const btn = document.getElementById('connectBtn');
+      btn.disabled = true;
       try {
         await api('POST', '/api/calendar/connect', {
           provider: document.getElementById('provider').value,
@@ -65,28 +323,177 @@
           app_password: document.getElementById('token').value,
         });
         document.getElementById('token').value = '';
-        showStatus('Календарь подключён.', true);
-        tg.close();
+        showStatus('connectStatus', 'Календарь подключён.', 'ok');
+        await refreshStatus();
+        setTimeout(() => { if (tg) tg.close(); }, 1200);
       } catch (e) {
-        showStatus(e.message === 'AUTH_FAILED' ? 'Токен не подошёл. Проверьте email и пароль приложения.' : (e.message || 'Ошибка подключения'), false);
+        showStatus(
+          'connectStatus',
+          e.code === 'AUTH_FAILED'
+            ? 'Токен не подошёл. Проверьте email и пароль приложения.'
+            : (e.message || 'Не удалось подключить календарь.'),
+          'err'
+        );
+      } finally {
+        btn.disabled = false;
       }
     });
+
     document.getElementById('checkBtn').addEventListener('click', async () => {
+      clearStatus('connectStatus');
       try {
         const data = await api('GET', '/api/calendar/status');
-        showStatus(data.connected ? 'Подключение активно.' : 'Календарь не подключён.', data.connected);
+        showStatus(
+          'connectStatus',
+          data.connected ? 'Подключение активно.' : 'Календарь не подключён.',
+          data.connected ? 'ok' : 'err'
+        );
+        await refreshStatus();
       } catch (e) {
-        showStatus('Не удалось проверить подключение.', false);
+        showStatus('connectStatus', 'Не удалось проверить подключение.', 'err');
       }
     });
+
     document.getElementById('disconnectBtn').addEventListener('click', async () => {
+      clearStatus('connectStatus');
       try {
         await api('DELETE', '/api/calendar/disconnect');
-        showStatus('Календарь отключён.', true);
+        showStatus('connectStatus', 'Календарь отключён.', 'ok');
+        await refreshStatus();
       } catch (e) {
-        showStatus('Не удалось отключить календарь.', false);
+        showStatus('connectStatus', 'Не удалось отключить календарь.', 'err');
       }
     });
+
+    // --- events tab -------------------------------------------------------
+
+    function isoDate(d) { return d.toISOString().slice(0, 10); }
+    function fmtDateTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return iso;
+      return d.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+    }
+
+    function setDefaultRange() {
+      const today = new Date();
+      const to = new Date(today);
+      to.setDate(today.getDate() + 14);
+      document.getElementById('rangeFrom').value = isoDate(today);
+      document.getElementById('rangeTo').value = isoDate(to);
+      document.getElementById('evDate').value = isoDate(today);
+      document.getElementById('evStart').value = '10:00';
+      document.getElementById('evEnd').value = '11:00';
+    }
+
+    async function loadEvents() {
+      const list = document.getElementById('eventsList');
+      const from = document.getElementById('rangeFrom').value;
+      const to = document.getElementById('rangeTo').value;
+      list.innerHTML = '<div class="empty"><span class="spinner"></span> Загрузка…</div>';
+      clearStatus('eventsStatus');
+      try {
+        const data = await api('GET', `/api/calendar/events?from=${from}&to=${to}`);
+        renderEvents(data.events || []);
+      } catch (e) {
+        if (e.code === 'not_connected') {
+          list.innerHTML = '<div class="empty">Сначала подключите календарь.</div>';
+        } else if (e.status === 403) {
+          list.innerHTML = '<div class="empty">Доступ не одобрен.</div>';
+        } else {
+          list.innerHTML = '<div class="empty">Не удалось загрузить события.</div>';
+          showStatus('eventsStatus', e.message || 'Ошибка', 'err');
+        }
+      }
+    }
+
+    function renderEvents(events) {
+      const list = document.getElementById('eventsList');
+      if (!events.length) {
+        list.innerHTML = '<div class="empty">В диапазоне нет событий.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      events.forEach((ev) => {
+        const div = document.createElement('div');
+        div.className = 'event';
+        const meta = [fmtDateTime(ev.start), ev.location].filter(Boolean).join(' · ');
+        div.innerHTML =
+          `<div class="title"></div>
+           <div class="meta"></div>
+           <div class="actions">
+             <button class="danger" data-uid="${encodeURIComponent(ev.uid || '')}"
+                     data-url="${encodeURIComponent(ev.url || '')}">Удалить</button>
+           </div>`;
+        div.querySelector('.title').textContent = ev.title || 'Без названия';
+        div.querySelector('.meta').textContent = meta || '—';
+        const btn = div.querySelector('button.danger');
+        btn.addEventListener('click', () => deleteEvent(btn));
+        list.appendChild(div);
+      });
+    }
+
+    async function deleteEvent(btn) {
+      const uid = decodeURIComponent(btn.dataset.uid || '');
+      const url = decodeURIComponent(btn.dataset.url || '');
+      if (!uid) return;
+      const confirmed = tg && tg.showConfirm
+        ? await new Promise((res) => tg.showConfirm('Удалить событие?', res))
+        : window.confirm('Удалить событие?');
+      if (!confirmed) return;
+      btn.disabled = true;
+      try {
+        const qs = url ? `?url=${encodeURIComponent(url)}` : '';
+        await api('DELETE', `/api/calendar/events/${encodeURIComponent(uid)}${qs}`);
+        showStatus('eventsStatus', 'Событие удалено.', 'ok');
+        loadEvents();
+      } catch (e) {
+        showStatus('eventsStatus', e.message || 'Не удалось удалить событие.', 'err');
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', loadEvents);
+
+    // --- create tab -------------------------------------------------------
+
+    document.getElementById('createBtn').addEventListener('click', async () => {
+      clearStatus('createStatus');
+      const title = document.getElementById('evTitle').value.trim();
+      const dateVal = document.getElementById('evDate').value;
+      const startVal = document.getElementById('evStart').value;
+      const endVal = document.getElementById('evEnd').value;
+      if (!title || !dateVal || !startVal || !endVal) {
+        showStatus('createStatus', 'Заполните название, дату, начало и конец.', 'err');
+        return;
+      }
+      const btn = document.getElementById('createBtn');
+      btn.disabled = true;
+      try {
+        await api('POST', '/api/calendar/events', {
+          title,
+          start: `${dateVal}T${startVal}:00`,
+          end: `${dateVal}T${endVal}:00`,
+          location: document.getElementById('evLocation').value.trim(),
+          description: document.getElementById('evDescription').value.trim(),
+        });
+        showStatus('createStatus', 'Событие создано.', 'ok');
+        document.getElementById('evTitle').value = '';
+        document.getElementById('evLocation').value = '';
+        document.getElementById('evDescription').value = '';
+      } catch (e) {
+        if (e.code === 'not_connected') {
+          showStatus('createStatus', 'Сначала подключите календарь.', 'err');
+        } else {
+          showStatus('createStatus', e.message || 'Не удалось создать событие.', 'err');
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    setDefaultRange();
+    refreshStatus();
   </script>
 </body>
 </html>

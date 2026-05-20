@@ -4,8 +4,9 @@ VENV ?= venv
 VENV_PY := $(VENV)/bin/python
 VENV_PIP := $(VENV)/bin/pip
 ENTRY := telegram_test_command.py
+DOCKER_IMAGE ?= satellite:dev
 
-.PHONY: help install install-dev install-server deploy venv env run test compile lint clean update
+.PHONY: help install install-dev install-server deploy venv env fernet-key run test compile lint clean update docker-build docker-up docker-down docker-logs
 
 help:
 	@echo "Targets:"
@@ -16,6 +17,12 @@ help:
 	@echo "  make run            запустить бота через venv (long-polling)"
 	@echo "  make test           pytest"
 	@echo "  make compile        py_compile всех модулей (как в CI)"
+	@echo "  make env            создать .env из шаблона и сгенерировать TOKEN_ENCRYPTION_KEY"
+	@echo "  make fernet-key     напечатать новый Fernet-ключ"
+	@echo "  make docker-build   собрать локальный Docker-образ ($(DOCKER_IMAGE))"
+	@echo "  make docker-up      docker compose up -d (локальный stack)"
+	@echo "  make docker-down    docker compose down"
+	@echo "  make docker-logs    docker compose logs -f satellite"
 	@echo "  make update         git pull + pip install -r requirements.txt"
 	@echo "  make clean          удалить venv и кэши"
 
@@ -42,6 +49,10 @@ env: venv
 		  sed -i "s|^TOKEN_ENCRYPTION_KEY=.*|TOKEN_ENCRYPTION_KEY=$$KEY|" .env ) && \
 		echo ".env создан, TOKEN_ENCRYPTION_KEY сгенерирован" )
 
+fernet-key:
+	@$(VENV_PY) -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())' 2>/dev/null || \
+	 $(PYTHON) -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+
 run:
 	$(VENV_PY) $(ENTRY)
 
@@ -50,6 +61,20 @@ test:
 
 compile:
 	find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 $(VENV_PY) -m py_compile
+
+docker-build:
+	docker build -t $(DOCKER_IMAGE) .
+
+docker-up:
+	@[ -f .env ] || ( echo "ERROR: .env not found. Run 'make env' first." && exit 1 )
+	docker compose up -d --build
+	@echo "Bot started. Web App health: http://127.0.0.1:$$(grep '^WEBAPP_PORT=' .env | cut -d= -f2 || echo 8080)/healthz"
+
+docker-down:
+	docker compose down
+
+docker-logs:
+	docker compose logs -f satellite
 
 update:
 	git pull --ff-only

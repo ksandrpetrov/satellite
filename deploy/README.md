@@ -56,7 +56,38 @@ cd deploy/ansible && ansible-playbook site.yml
 1. В `group_vars/all.yml` выставьте `image_tag` на версию релиза (без `v`).
 2. Снова: `make deploy`.
 
+## Переменные Ansible (`group_vars/all.yml`)
+
+| Переменная | Назначение |
+|------------|------------|
+| `domain` | Публичный хост; `WEBAPP_BASE_URL` = `https://<domain>/connect` |
+| `certbot_email` | Email для Let's Encrypt |
+| `certbot_staging` | `true` — staging-сертификаты (отладка) |
+| `image_tag` | Тег образа GHCR (`latest` или semver) |
+| `telegram_bot_token`, `admin_telegram_ids` | Секреты бота |
+| `token_encryption_key` | Пусто при первом деплое — ключ сгенерируется; при повторном сохранится с сервера |
+| `deploy_dir` | Каталог на сервере (default `/opt/satellite`) |
+
+Полный список env приложения после деплоя — в сгенерированном `.env` на сервере;
+шаблон: [`ansible/templates/env.j2`](ansible/templates/env.j2).
+
 ## Локальный compose (без Ansible)
 
-Для отладки стека на сервере вручную — см. [`docker-compose.yml`](docker-compose.yml)
-и `.env` по образцу [`.env.example`](../.env.example) (`WEBAPP_HOST=0.0.0.0`).
+Для отладки на сервере вручную — см. серверный [`docker-compose.yml`](docker-compose.yml)
+и `.env` по образцу [`.env.example`](.env.example) (`WEBAPP_HOST=0.0.0.0`).
+
+Локальный запуск на ноутбуке (один контейнер бота, без Traefik) — в
+корневом репо: `docker-compose.yml`. Шаги:
+
+```bash
+make env          # создаст .env и сгенерирует TOKEN_ENCRYPTION_KEY
+make docker-up    # docker compose up -d --build
+make docker-logs  # docker compose logs -f satellite
+```
+
+Health: `curl http://127.0.0.1:8080/healthz`. Чтобы Telegram WebApp работал
+снаружи, поверх 8080 нужен HTTPS-туннель (`ngrok http 8080` или Cloudflare
+Tunnel) и `WEBAPP_BASE_URL=https://<публичный-домен>/connect` в `.env`.
+
+Диагностика: [docs/troubleshooting.md](../docs/troubleshooting.md),
+эксплуатация: [docs/operations.md](../docs/operations.md#docker-ghcr--traefik--certbot).

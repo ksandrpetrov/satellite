@@ -60,6 +60,27 @@ WEBAPP_PORT=8080
   (отдельный поток). Снаружи доступ только через reverse proxy по
   `WEBAPP_BASE_URL`; прямой проброс порта в интернет не нужен.
 
+**Локально и systemd:** оставьте `WEBAPP_HOST=127.0.0.1` — nginx/Traefik на
+хосте проксирует на `127.0.0.1:8080`.
+
+**Docker (Ansible / compose):** в контейнере нужен `WEBAPP_HOST=0.0.0.0`, иначе
+Traefik не достучится до Web App внутри сети Docker. Playbook и
+[`deploy/.env.example`](../deploy/.env.example) выставляют это автоматически;
+`WEBAPP_BASE_URL` собирается как `https://<domain>/connect`.
+
+## Валидация при старте
+
+Production-бот (`run_bot` → `load_settings` с `require_*`) перед long-polling:
+
+1. Отклоняет заглушки из `.env.example`: `123456:your-bot-token`,
+   `https://your-domain.example/connect`, пустой `TOKEN_ENCRYPTION_KEY`.
+2. Требует хотя бы один **числовой** id в `ADMIN_TELEGRAM_IDS` (не `@username`).
+3. Вызывает Telegram `getMe` — при неверном токене процесс падает с понятным
+   текстом (сеть на сервере должна быть доступна).
+
+Сообщения вида `Invalid .env:` или `TELEGRAM_BOT_TOKEN: Telegram отклонил токен`
+— см. [troubleshooting.md](troubleshooting.md).
+
 ## План и CalDAV (глобальные флаги фильтрации)
 
 ```env

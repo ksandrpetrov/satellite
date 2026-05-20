@@ -177,3 +177,17 @@ resolve_target_date(DIGEST_MODE, today in user timezone)
 logs go to `logs/bot.log`.
 
 The bot logs operational failures but sends users only safe, non-technical messages.
+
+## Deployment (production)
+
+Один процесс long-polling на токен. Варианты установки:
+
+- **systemd** — `scripts/install-server.sh`, код и `venv` в `/opt/satellite`,
+  `logs/` на диске хоста, Web App за внешним nginx/Caddy
+  (`WEBAPP_HOST=127.0.0.1`).
+- **Docker** — образ `ghcr.io/ksandrpetrov/satellite`, Ansible playbook
+  (`make deploy`), Traefik терминирует TLS и проксирует `/connect` в контейнер
+  (`WEBAPP_HOST=0.0.0.0`, volume `satellite-logs` → `/app/logs`).
+
+Состояние (`users.json`, `subscriptions.json`, offset, lock) всегда в `logs/`.
+Подробности: [operations.md](operations.md), [deploy/README.md](../deploy/README.md).

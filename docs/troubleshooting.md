@@ -2,6 +2,21 @@
 
 ## Бот не запускается
 
+### Invalid .env (заглушки из примера)
+
+При старте `run_bot` проверяет обязательные поля. Типичные сообщения:
+
+```text
+Invalid .env:
+- TELEGRAM_BOT_TOKEN: укажите токен от @BotFather ...
+- WEBAPP_BASE_URL: укажите публичный HTTPS URL ...
+```
+
+Замените значения из `.env.example` на реальные. После правки:
+
+- **systemd:** `sudo systemctl restart satellite-bot.service`;
+- **Docker:** `make deploy` или `docker compose up -d` в `/opt/satellite`.
+
 ### Missing / invalid env vars
 
 Проверьте `.env`:
@@ -72,6 +87,25 @@ WEBAPP_BASE_URL=...
 - `WEBAPP_BASE_URL` должен быть **HTTPS** и доступен с телефона пользователя.
 - Reverse proxy должен проксировать на `WEBAPP_HOST:WEBAPP_PORT` (обычно `127.0.0.1:8080`).
 - Прямой доступ к порту 8080 из интернета не требуется и не рекомендуется.
+- Быстрая проверка изнутри контейнера/хоста: `curl -sS http://127.0.0.1:8080/healthz` → `{"status":"ok"}`.
+
+### Docker-стек (Traefik)
+
+- В контейнере бота обязательно `WEBAPP_HOST=0.0.0.0` (не `127.0.0.1`).
+- `WEBAPP_BASE_URL` должен совпадать с публичным URL: `https://<domain>/connect`.
+- Traefik проксирует `/connect` **и** `/api/calendar/*` (см. labels в `docker-compose.yml`).
+- Healthcheck контейнера: `docker compose ps` → колонка `STATUS` должна показать `healthy`.
+- Проверка с сервера: `curl -sS -o /dev/null -w '%{http_code}\n' https://<domain>/connect` (ожидается не 502).
+- Логи: `docker compose -f /opt/satellite/docker-compose.yml logs traefik satellite`.
+- Certbot: при ошибке выпуска сертификата смотрите вывод playbook; для отладки —
+  `certbot_staging: true` в `deploy/ansible/group_vars/all.yml`.
+
+### Локальный запуск через ngrok/Cloudflare Tunnel
+
+- `make env && make docker-up` — поднимает один контейнер бота с пробросом порта 8080.
+- Снаружи: `ngrok http 8080` (или `cloudflared tunnel`), полученный HTTPS-URL вписать
+  как `WEBAPP_BASE_URL=https://<ngrok-domain>/connect` в `.env`, затем `make docker-down && make docker-up`.
+- В BotFather → `Bot Settings → Menu Button` укажите тот же `WEBAPP_BASE_URL`.
 
 ## Telegram token неверный (HTTP 401 Unauthorized)
 
@@ -103,6 +137,10 @@ sudo -u satellite bash -c 'set -a; . /opt/satellite/.env; set +a; \
 
 После обновления кода бот при старте сам вызовет `getMe` и упадёт с понятным
 текстом, если токен невалиден.
+
+В Docker та же проверка: контейнер `satellite` перезапускается, если токен
+неверен или нет исходящего доступа к `api.telegram.org` — смотрите
+`docker compose logs satellite`.
 
 ## Дайджест не приходит
 

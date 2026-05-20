@@ -94,8 +94,10 @@ class TelegramBot:
                 host=settings.webapp.host,
                 port=settings.webapp.port,
                 bot_token=settings.telegram.bot_token,
+                tz_name=settings.plan.tz_name,
             ),
             calendar_service=self._calendar_service,
+            users=self._users,
         )
         self._plan_builder = PlanBuilder(
             calendar_service=self._calendar_service,

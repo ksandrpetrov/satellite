@@ -26,7 +26,11 @@ python -m pytest
 ```
 
 В CI (GitHub Actions) используется Python 3.11: compile-check всех модулей,
-затем `pytest -q`.
+затем `pytest -q` (workflow [`.github/workflows/test.yml`](../.github/workflows/test.yml)).
+
+Отдельно при публикации GitHub Release собирается Docker-образ и пушится в GHCR
+([`.github/workflows/release-docker.yml`](../.github/workflows/release-docker.yml);
+образ на Python 3.12). Деплой образа — [deploy/README.md](../deploy/README.md).
 
 Если проект временно перенесен, а venv содержит старые absolute shebang-пути,
 можно использовать системный Python с пакетами из venv:

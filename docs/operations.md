@@ -18,7 +18,17 @@ python telegram_test_command.py
 
 ## Запуск на сервере
 
-### Развертывание одной командой
+Два поддерживаемых варианта:
+
+| Вариант | Когда удобно | Обновление |
+|---------|--------------|------------|
+| **systemd** (`install-server.sh`) | один процесс Python на VPS, свой nginx/Caddy | повторный `install-server.sh` |
+| **Docker** (`make deploy`) | Traefik + Certbot из коробки, образ из GHCR | сменить `image_tag` в Ansible → `make deploy` |
+
+Общее: один `TELEGRAM_BOT_TOKEN`, один каталог `logs/` с `users.json` и
+`subscriptions.json`. Не смешивайте два варианта на одном сервере с одним токеном.
+
+### Развертывание одной командой (systemd)
 
 На чистом Debian/Ubuntu с systemd (без предварительного клона репозитория).
 Скрипт берётся через `git clone`, а не через `curl` к
@@ -151,18 +161,84 @@ sudo SATELLITE_DIR=/srv/satellite SATELLITE_BRANCH=stable \
 
 ### Docker (GHCR + Traefik + Certbot)
 
-Альтернатива systemd: запуск в Docker-стеке с автоматическим HTTPS через
-Traefik + Certbot. Образ публикуется в **ghcr.io** при создании GitHub Release
-(workflow `release-docker.yml`).
+Альтернатива systemd: стек из четырёх контейнеров на сервере, HTTPS и маршрут
+`/connect` → Web App без ручного nginx.
 
-Деплой через Ansible (после однократной правки `inventory.yml` и
-`group_vars/all.yml` — IP, домен, токены):
+#### Образ
+
+Workflow [`.github/workflows/release-docker.yml`](../.github/workflows/release-docker.yml)
+срабатывает при **GitHub Release → Published** и пушит в GHCR:
+
+```text
+ghcr.io/ksandrpetrov/satellite:<semver>
+ghcr.io/ksandrpetrov/satellite:latest
+```
+
+После первого релиза сделайте пакет **public**:
+`Settings → Packages → satellite → Package settings → Change visibility`.
+
+Образ собирается на **Python 3.12** (`Dockerfile`); CI-тесты — на 3.11.
+
+#### Подготовка
+
+1. [`deploy/ansible/inventory.yml`](../deploy/ansible/inventory.yml) — IP и SSH-пользователь.
+2. [`deploy/ansible/group_vars/all.yml`](../deploy/ansible/group_vars/all.yml):
+   - `domain`, `certbot_email`;
+   - `telegram_bot_token`, `admin_telegram_ids`;
+   - `image_tag` (`latest` или semver без `v`, например `1.2.0`);
+   - `token_encryption_key` — оставьте пустым при первом деплое (playbook сгенерирует Fernet-ключ; при повторном деплое ключ из существующего `.env` на сервере сохраняется).
+3. DNS: A-запись `domain` → IP сервера; порты **80** и **443** открыты.
+4. На машине деплоя: `ansible`, SSH-доступ на сервер.
+
+Для тестового TLS: `certbot_staging: true` в `group_vars` (Let's Encrypt staging).
+
+#### Деплой
 
 ```bash
 make deploy
 ```
 
-Подробности и параметры: [deploy/README.md](../deploy/README.md).
+Эквивалент: `cd deploy/ansible && ansible-playbook site.yml`.
+
+Playbook ставит Docker Engine, кладёт конфиги в `deploy_dir` (по умолчанию
+`/opt/satellite`), выпускает сертификат Certbot, поднимает compose-проект
+`satellite`.
+
+| Сервис | Назначение |
+|--------|------------|
+| `traefik` | HTTPS, маршрут `Host(domain) && PathPrefix(/connect)` → бот:8080 |
+| `nginx-acme` | Webroot для ACME challenge |
+| `certbot` | Выпуск и продление Let's Encrypt |
+| `satellite` | Бот; `logs/` в volume `satellite-logs` |
+
+В `.env` на сервере Ansible прописывает `WEBAPP_HOST=0.0.0.0` и
+`WEBAPP_BASE_URL=https://<domain>/connect` — см. [configuration.md](configuration.md).
+
+#### Обновление после релиза
+
+1. В `group_vars/all.yml` выставьте `image_tag` на версию релиза.
+2. `make deploy` (playbook сделает `docker compose pull` и перезапуск).
+
+#### Наблюдение и данные
+
+```bash
+cd /opt/satellite
+docker compose logs -f satellite
+docker compose ps
+```
+
+Логи приложения внутри volume: `docker compose exec satellite tail -f /app/logs/bot.log`.
+
+Резервная копия перед переносом: volume `satellite-logs` (или каталог после
+`docker volume inspect`) и файл `/opt/satellite/.env` (включая `TOKEN_ENCRYPTION_KEY`).
+
+#### Локальный compose (без Ansible)
+
+Эталонный стек: [`deploy/docker-compose.yml`](../deploy/docker-compose.yml).
+На сервере после Ansible живёт сгенерированная копия в `deploy_dir`. Для ручной
+отладки — `.env` по [`deploy/.env.example`](../deploy/.env.example).
+
+Краткая шпаргалка и CI: [deploy/README.md](../deploy/README.md).
 
 ### Ручная установка
 

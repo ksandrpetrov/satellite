@@ -70,7 +70,10 @@ python -m pytest
 
 ## Запуск на сервере
 
-### Развертывание одной командой
+Два варианта: **systemd** (Python на VPS + свой reverse proxy) или **Docker**
+(Traefik + Certbot + образ из GHCR). Подробнее — [docs/operations.md](docs/operations.md#запуск-на-сервере).
+
+### Развертывание одной командой (systemd)
 
 На чистом Debian/Ubuntu с systemd — клонирует репозиторий в `/opt/satellite`,
 ставит Python-окружение, генерирует `.env` с `TOKEN_ENCRYPTION_KEY`,
@@ -149,11 +152,13 @@ WEBAPP_BASE_URL=https://your-domain.example/connect
 - [Конфигурация](docs/configuration.md)
 - [Telegram UX](docs/telegram-ux.md)
 - [Эксплуатация и деплой](docs/operations.md)
+- [Docker-деплой (Ansible)](deploy/README.md)
 - [Тестирование](docs/testing.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [AGENTS.md](AGENTS.md) — карта модулей и инварианты для правок кода и AI-агентов
 
-Тесты в CI: Python 3.11, `pytest` и compile-check (см. `.github/workflows/test.yml`).
+CI: [test.yml](.github/workflows/test.yml) (Python 3.11, `pytest`, compile-check);
+образ в GHCR: [release-docker.yml](.github/workflows/release-docker.yml) (на GitHub Release).
 
 ## Runtime-файлы
 

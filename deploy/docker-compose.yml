@@ -62,10 +62,16 @@ services:
       - satellite-logs:/app/logs
     networks:
       - public
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     labels:
       - traefik.enable=true
       - traefik.docker.network=satellite_public
-      - traefik.http.routers.satellite-webapp.rule=Host(`satellite.example.com`) && PathPrefix(`/connect`)
+      - traefik.http.routers.satellite-webapp.rule=Host(`satellite.example.com`) && (PathPrefix(`/connect`) || PathPrefix(`/api/calendar`))
       - traefik.http.routers.satellite-webapp.entrypoints=websecure
       - traefik.http.routers.satellite-webapp.tls=true
       - traefik.http.services.satellite-webapp.loadbalancer.server.port=8080
