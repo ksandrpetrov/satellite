@@ -191,9 +191,8 @@ def handle_open_manage_events(ctx: HandlerContext, msg: IncomingMessage) -> None
         or msg.user_id is None
     ):
         return
-    stream = open_streaming_reply(
-        ctx, msg.chat_id, MANAGE_FETCH_STATUS, draft_id=msg.update_id
-    )
+    stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
+    stream.push(MANAGE_FETCH_STATUS)
 
     try:
         text, keyboard = _load_list_screen(ctx, msg.user_id)

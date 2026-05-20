@@ -23,6 +23,7 @@ from ...messages_ru import (
 )
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
+from ..visual import EFFECT_SPARKLES, is_private_chat
 from .delivery import (
     edit_callback_message,
     open_streaming_reply,
@@ -60,8 +61,12 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         return
 
     stream = open_streaming_reply(
-        ctx, cb.chat_id, ANALYTICS_FETCH_STATUS, draft_id=cb.update_id
+        ctx,
+        cb.chat_id,
+        draft_id=cb.update_id,
+        chat_action="upload_photo",
     )
+    stream.push(ANALYTICS_FETCH_STATUS)
 
     def build() -> tuple[bytes, str]:
         today = datetime.now(tz=ctx.tz).date()
@@ -91,7 +96,14 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         return
 
     stream.dismiss()
-    ctx.telegram.send_photo(cb.chat_id, png, caption=caption)
+    effect = EFFECT_SPARKLES if is_private_chat(cb.chat_id) else None
+    ctx.telegram.send_photo(
+        cb.chat_id,
+        png,
+        caption=caption,
+        show_caption_above_media=True,
+        message_effect_id=effect,
+    )
     safe_answer_callback(ctx, cb)
     log.info("Sent weekly analytics user_id=%s chat_id=%s", cb.user_id, cb.chat_id)
 

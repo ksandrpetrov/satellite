@@ -66,6 +66,8 @@ def _ctx(tmp_path: Path, *, build_side_effect):
     ctx.telegram = MagicMock()
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 7777})
     ctx.telegram.edit_message_text = MagicMock(return_value={})
+    ctx.telegram.send_message_draft = MagicMock(return_value=True)
+    ctx.telegram.send_chat_action = MagicMock(return_value=True)
     ctx.telegram.send_photo = MagicMock(return_value={"message_id": 7778})
     ctx.telegram.delete_message = MagicMock(return_value=True)
     ctx.telegram.answer_callback_query = MagicMock(return_value=True)
@@ -105,23 +107,9 @@ def test_unexpected_exception_replaces_loading_message(
             ctx, build_side_effect=err, monkeypatch=monkeypatch
         )
 
-    loading_calls = [
-        c
-        for c in ctx.telegram.send_message.call_args_list
-        if c.args[1] == ANALYTICS_FETCH_STATUS
-    ]
-    assert len(loading_calls) == 1, "Должно быть ровно одно loading-сообщение"
-
-    edits = ctx.telegram.edit_message_text.call_args_list
-    assert any(
-        c.args[2] == ERR_GENERIC_HANDLER_TEXT for c in edits
-    ), "Loading-сообщение обязано подмениться текстом ошибки через editMessageText"
-
-    sent_texts = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
-    assert ERR_GENERIC_HANDLER_TEXT not in sent_texts, (
-        "Generic ошибка не должна слаться отдельным сообщением — это даст "
-        "пользователю две одинаковые ошибки в чате."
-    )
+    ctx.telegram.send_message.assert_called_once()
+    assert ctx.telegram.send_message.call_args[0][1] == ERR_GENERIC_HANDLER_TEXT
+    ctx.telegram.edit_message_text.assert_not_called()
 
     assert any(record.exc_info is not None for record in caplog.records), (
         "Стек ошибки обязан попасть в лог."
@@ -133,10 +121,8 @@ def test_calendar_provider_error_uses_caldav_text(tmp_path: Path, monkeypatch):
     err = CalendarProviderError("boom", error_code="CALDAV_UNAVAILABLE")
     _run_analytics_callback(ctx, build_side_effect=err, monkeypatch=monkeypatch)
 
-    edits = ctx.telegram.edit_message_text.call_args_list
-    assert any(
-        c.args[2] == ERR_CALDAV_UNAVAILABLE_TEXT for c in edits
-    ), "CalendarProviderError должен показывать ERR_CALDAV_UNAVAILABLE_TEXT"
+    ctx.telegram.send_message.assert_called_once()
+    assert ctx.telegram.send_message.call_args[0][1] == ERR_CALDAV_UNAVAILABLE_TEXT
 
 
 def test_not_connected_error_uses_caldav_text(tmp_path: Path, monkeypatch):
@@ -144,7 +130,5 @@ def test_not_connected_error_uses_caldav_text(tmp_path: Path, monkeypatch):
     err = CalendarNotConnectedError()
     _run_analytics_callback(ctx, build_side_effect=err, monkeypatch=monkeypatch)
 
-    edits = ctx.telegram.edit_message_text.call_args_list
-    assert any(
-        c.args[2] == ERR_CALDAV_UNAVAILABLE_TEXT for c in edits
-    ), "CalendarNotConnectedError должен показывать ERR_CALDAV_UNAVAILABLE_TEXT"
+    ctx.telegram.send_message.assert_called_once()
+    assert ctx.telegram.send_message.call_args[0][1] == ERR_CALDAV_UNAVAILABLE_TEXT, "CalendarNotConnectedError должен показывать ERR_CALDAV_UNAVAILABLE_TEXT"

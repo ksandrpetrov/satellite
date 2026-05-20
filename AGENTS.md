@@ -68,7 +68,7 @@ satellite/
     calendar_manage.py # /manage — список встреч на 7 дней + смена PARTSTAT
     calendar_create.py # /create FSM
       plan.py, settings.py, subscription.py
-    api.py, message_editing.py, streaming_delivery.py, commands.py
+    api.py, message_editing.py, streaming_delivery.py, visual.py, commands.py
     digest_state.py, calendar_state.py
     offset_store.py, offset_tracker.py
     concurrency.py, instance_lock.py
@@ -88,6 +88,7 @@ satellite/
 | Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users.py`](satellite/users.py) |
 | URL Web App connect | [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `webapp_connect_url(ctx)` |
 | Потоковый ответ (черновик + финал) | [`streaming_delivery.py`](satellite/telegram_bot/streaming_delivery.py), [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `open_streaming_reply` |
+| Визуал Telegram (typing, effects, реакции) | [`visual.py`](satellite/telegram_bot/visual.py) — `TypingIndicator`, `pick_plan_message_effect`, `react_to_user_message` |
 | Расписание дайджеста | [`scheduler.py`](satellite/scheduler.py) + [`subscriptions.py`](satellite/subscriptions.py) |
 | Доступ, заявки, календарь пользователя | [`users.py`](satellite/users.py), шифрование — [`security/token_vault.py`](satellite/security/token_vault.py) |
 | Web App connect | handlers + HTTP в [`bot.py`](satellite/telegram_bot/bot.py); env — [`config.py`](satellite/config.py) |

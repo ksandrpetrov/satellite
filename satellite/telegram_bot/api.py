@@ -100,6 +100,8 @@ class TelegramClient:
         parse_mode: str | None = "HTML",
         reply_markup: dict | list | str | None = None,
         disable_web_page_preview: bool = True,
+        message_thread_id: int | None = None,
+        message_effect_id: str | None = None,
     ) -> dict[str, Any]:
         data: dict[str, Any] = {
             "chat_id": chat_id,
@@ -109,6 +111,10 @@ class TelegramClient:
             data["parse_mode"] = parse_mode
         if disable_web_page_preview:
             data["disable_web_page_preview"] = "true"
+        if message_thread_id is not None:
+            data["message_thread_id"] = message_thread_id
+        if message_effect_id:
+            data["message_effect_id"] = message_effect_id
         if reply_markup is not None:
             data["reply_markup"] = (
                 json.dumps(reply_markup, ensure_ascii=False)
@@ -129,6 +135,9 @@ class TelegramClient:
         *,
         caption: str | None = None,
         parse_mode: str | None = "HTML",
+        show_caption_above_media: bool = False,
+        message_thread_id: int | None = None,
+        message_effect_id: str | None = None,
     ) -> dict[str, Any]:
         files = {"photo": ("analytics.png", photo, "image/png")}
         data: dict[str, Any] = {"chat_id": chat_id}
@@ -136,6 +145,12 @@ class TelegramClient:
             data["caption"] = caption
         if parse_mode:
             data["parse_mode"] = parse_mode
+        if show_caption_above_media:
+            data["show_caption_above_media"] = "true"
+        if message_thread_id is not None:
+            data["message_thread_id"] = message_thread_id
+        if message_effect_id:
+            data["message_effect_id"] = message_effect_id
         return self._call(
             "sendPhoto",
             data=data,
@@ -245,6 +260,50 @@ class TelegramClient:
             data=data,
             timeout=_DRAFT_MESSAGE_TIMEOUT_SEC,
             max_retries=_DRAFT_MESSAGE_MAX_RETRIES,
+        )
+        return result is True
+
+    def send_chat_action(
+        self,
+        chat_id: int | str,
+        action: str,
+        *,
+        message_thread_id: int | None = None,
+    ) -> bool:
+        """``sendChatAction``: «печатает…» / «отправляет фото…» в шапке чата."""
+        data: dict[str, Any] = {"chat_id": chat_id, "action": action}
+        if message_thread_id is not None:
+            data["message_thread_id"] = message_thread_id
+        result = self._call(
+            "sendChatAction",
+            data=data,
+            timeout=_DRAFT_MESSAGE_TIMEOUT_SEC,
+            max_retries=0,
+        )
+        return result is True
+
+    def set_message_reaction(
+        self,
+        chat_id: int | str,
+        message_id: int,
+        *,
+        reaction: list[dict[str, Any]] | None = None,
+        is_big: bool = False,
+    ) -> bool:
+        """``setMessageReaction``: эмодзи-реакция на сообщение пользователя."""
+        data: dict[str, Any] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+        }
+        if reaction is not None:
+            data["reaction"] = json.dumps(reaction, ensure_ascii=False)
+        if is_big:
+            data["is_big"] = "true"
+        result = self._call(
+            "setMessageReaction",
+            data=data,
+            timeout=_DRAFT_MESSAGE_TIMEOUT_SEC,
+            max_retries=0,
         )
         return result is True
 

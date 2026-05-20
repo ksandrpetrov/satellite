@@ -20,6 +20,7 @@ from typing import Any, Literal
 
 from .api import TelegramClient, TelegramError
 from .message_editing import edit_or_send_message
+from .visual import TypingIndicator, is_private_chat
 
 log = logging.getLogger(__name__)
 
@@ -200,6 +201,7 @@ class StreamingReply:
         self._last_draft_at = 0.0
         self._closed = False
         self._empty_text_supported = True
+        self._typing: TypingIndicator | None = None
 
     @classmethod
     def open(
@@ -212,6 +214,7 @@ class StreamingReply:
         message_thread_id: int | None = None,
         parse_mode: str | None = "HTML",
         disable_web_page_preview: bool = True,
+        chat_action: str | None = "typing",
     ) -> StreamingReply:
         """Старт сессии: пробует черновик, иначе loading-сообщение.
 
@@ -235,10 +238,12 @@ class StreamingReply:
         if session._try_start_draft(clipped):
             session._last_pushed = clipped
             session._last_draft_at = time.monotonic()
+            session._start_typing(chat_action)
             return session
         # legacy-ветка: нужно непустое loading-сообщение, иначе sendMessage упадёт.
         legacy_text = clipped or "⏳"
         session._start_legacy_loading(legacy_text)
+        session._start_typing(chat_action)
         return session
 
     def push(self, text: str) -> None:
@@ -263,6 +268,7 @@ class StreamingReply:
         if self._closed:
             return
         self._closed = True
+        self._stop_typing()
         if self._mode == "draft":
             try:
                 self._telegram.send_message_draft(
@@ -287,6 +293,7 @@ class StreamingReply:
         *,
         reply_markup: dict | list | str | None = None,
         typewriter: bool = True,
+        message_effect_id: str | None = None,
     ) -> dict[str, Any] | None:
         """Финальная доставка: ``sendMessage`` (draft) или edit/send (legacy).
 
@@ -294,18 +301,42 @@ class StreamingReply:
         быстро прокручивает в черновике несколько растущих кадров — эффект
         «бот печатает». На коротких текстах (< 120 символов) пропускается;
         в legacy-режиме не применяется (там и так одна правка).
+
+        ``message_effect_id`` — анимированный эффект (🎉/🔥/✨) в личных чатах;
+        в группах игнорируется.
         """
         if self._closed:
             return None
         self._closed = True
+        self._stop_typing()
         clipped = _clip_telegram_text(text)
         if self._mode == "draft":
             if typewriter:
                 self._run_typewriter(clipped)
-            return self._finish_draft(clipped, reply_markup=reply_markup)
+            return self._finish_draft(
+                clipped,
+                reply_markup=reply_markup,
+                message_effect_id=message_effect_id,
+            )
         return self._finish_legacy(clipped, reply_markup=reply_markup)
 
     # --- internals --------------------------------------------------------
+
+    def _start_typing(self, chat_action: str | None) -> None:
+        if not chat_action:
+            return
+        self._typing = TypingIndicator(
+            self._telegram,
+            self._chat_id,
+            action=chat_action,
+            message_thread_id=self._message_thread_id,
+        )
+        self._typing.start()
+
+    def _stop_typing(self) -> None:
+        if self._typing is not None:
+            self._typing.stop()
+            self._typing = None
 
     def _try_start_draft(self, initial_text: str) -> bool:
         try:
@@ -446,14 +477,31 @@ class StreamingReply:
         text: str,
         *,
         reply_markup: dict | list | str | None,
+        message_effect_id: str | None,
     ) -> dict[str, Any] | None:
-        return self._telegram.send_message(
-            self._chat_id,
-            text,
-            parse_mode=self._parse_mode,
-            reply_markup=reply_markup,
-            disable_web_page_preview=self._disable_web_page_preview,
-        )
+        effect = message_effect_id if is_private_chat(self._chat_id) else None
+        try:
+            return self._telegram.send_message(
+                self._chat_id,
+                text,
+                parse_mode=self._parse_mode,
+                reply_markup=reply_markup,
+                disable_web_page_preview=self._disable_web_page_preview,
+                message_thread_id=self._message_thread_id,
+                message_effect_id=effect,
+            )
+        except TelegramError as exc:
+            if effect and "message_effect" in str(exc).lower():
+                log.info("message_effect_id rejected, sending without effect: %s", exc)
+                return self._telegram.send_message(
+                    self._chat_id,
+                    text,
+                    parse_mode=self._parse_mode,
+                    reply_markup=reply_markup,
+                    disable_web_page_preview=self._disable_web_page_preview,
+                    message_thread_id=self._message_thread_id,
+                )
+            raise
 
     def _finish_legacy(
         self,
@@ -481,6 +529,7 @@ def open_streaming_reply(
     message_thread_id: int | None = None,
     parse_mode: str | None = "HTML",
     disable_web_page_preview: bool = True,
+    chat_action: str | None = "typing",
 ) -> StreamingReply:
     """Удобная фабрика (без ``HandlerContext`` — меньше связности).
 
@@ -495,4 +544,5 @@ def open_streaming_reply(
         message_thread_id=message_thread_id,
         parse_mode=parse_mode,
         disable_web_page_preview=disable_web_page_preview,
+        chat_action=chat_action,
     )

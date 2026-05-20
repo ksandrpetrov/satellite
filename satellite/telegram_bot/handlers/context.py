@@ -50,6 +50,7 @@ class IncomingMessage:
     username: str | None
     display_name: str | None
     text: str | None
+    message_id: int | None = None
     web_app_data: str | None = None
 
 

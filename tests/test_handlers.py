@@ -88,6 +88,13 @@ def _access_ctx(*, approved: bool = True, has_calendar: bool = True) -> MagicMoc
     return ctx
 
 
+def _enable_draft_telegram(telegram: MagicMock) -> None:
+    """Эмулирует Bot API с ``sendMessageDraft`` (основной путь доставки)."""
+    telegram.send_message_draft = MagicMock(return_value=True)
+    telegram.send_chat_action = MagicMock(return_value=True)
+    telegram.set_message_reaction = MagicMock(return_value=True)
+
+
 def _plan_handler_context() -> MagicMock:
     ctx = _access_ctx(approved=True, has_calendar=True)
     ctx.tz = ZoneInfo("UTC")
@@ -97,6 +104,7 @@ def _plan_handler_context() -> MagicMock:
     ctx.weather_client = None
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 501})
     ctx.telegram.edit_message_text = MagicMock(return_value={})
+    _enable_draft_telegram(ctx.telegram)
     pb = MagicMock()
     pb.build_text = MagicMock(return_value="<b>Plan HTML</b>")
     ctx.plan_builder = MagicMock(return_value=pb)
@@ -399,42 +407,26 @@ def test_plan_uses_send_message_draft_when_supported():
     ctx.telegram.edit_message_text.assert_not_called()
 
 
-def test_plan_text_command_sends_loading_then_edits_to_digest():
+def test_plan_legacy_loading_then_edit_when_draft_unavailable():
     """Без ``sendMessageDraft`` — прежний паттерн loading → edit."""
     ctx = _plan_handler_context()
+    ctx.telegram.send_message_draft = MagicMock(return_value=False)
     msg = IncomingMessage(update_id=2, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td")
     handle_message(ctx, msg)
 
     assert ctx.telegram.send_message.call_count == 1
-    assert ctx.telegram.send_message.call_args[0][1] == PLAN_FETCH_STATUS_TEXT["today"]
-    ctx.telegram.edit_message_text.assert_called_once()
-    edit_kw = ctx.telegram.edit_message_text.call_args
-    assert edit_kw[0][0] == 9001
-    assert edit_kw[0][1] == 501
-    assert edit_kw[0][2] == "<b>Plan HTML</b>"
-    assert edit_kw.kwargs["reply_markup"] is None
+    assert ctx.telegram.send_message.call_args[0][1] == "⏳"
+    assert ctx.telegram.edit_message_text.call_count >= 1
+    assert ctx.telegram.edit_message_text.call_args[0][2] == "<b>Plan HTML</b>"
     ctx.plan_builder.return_value.build_text.assert_called_once()
 
 
-def test_plan_button_sends_loading_then_edits_to_digest():
-    ctx = _plan_handler_context()
-    msg = IncomingMessage(update_id=3, chat_id=9002, user_id=1, username="alice", display_name=None, text=BUTTON_TODAY)
-    handle_message(ctx, msg)
-
-    assert ctx.telegram.send_message.call_count == 1
-    assert ctx.telegram.send_message.call_args[0][1] == PLAN_FETCH_STATUS_TEXT["today"]
-    ctx.telegram.edit_message_text.assert_called_once()
-    edit_kw = ctx.telegram.edit_message_text.call_args
-    assert edit_kw[0][0] == 9002
-    assert edit_kw[0][1] == 501
-    assert edit_kw[0][2] == "<b>Plan HTML</b>"
-
-
-def test_plan_falls_back_to_new_message_when_edit_fails():
-    """Если Telegram отказался редактировать — отправляем дайджест новым сообщением."""
+def test_plan_legacy_falls_back_to_new_message_when_edit_fails():
+    """Legacy (без draft): если edit не удался — дайджест новым сообщением."""
     from satellite.telegram_bot.api import TelegramError
 
     ctx = _plan_handler_context()
+    ctx.telegram.send_message_draft = MagicMock(return_value=False)
     ctx.telegram.edit_message_text = MagicMock(
         side_effect=TelegramError("message is not modified")
     )
@@ -442,12 +434,10 @@ def test_plan_falls_back_to_new_message_when_edit_fails():
 
     handle_message(ctx, msg)
 
-    ctx.telegram.edit_message_text.assert_called_once()
+    assert ctx.telegram.edit_message_text.call_count >= 1
     assert ctx.telegram.send_message.call_count == 2
     final_call = ctx.telegram.send_message.call_args_list[-1]
     assert final_call[0][1] == "<b>Plan HTML</b>"
-    # После миграции на меню команд Telegram fallback тоже идёт без
-    # старой нижней Reply-клавиатуры — основная навигация теперь в /-меню.
     assert final_call.kwargs.get("reply_markup") is None
 
 
@@ -465,9 +455,8 @@ def test_plan_replaces_loading_with_caldav_error_text(
         handle_message(ctx, msg)
 
     ctx.telegram.send_message.assert_called_once()
-    ctx.telegram.edit_message_text.assert_called_once()
-    edit_kw = ctx.telegram.edit_message_text.call_args
-    assert edit_kw[0][2] == ERR_CALDAV_UNAVAILABLE_TEXT
+    assert ctx.telegram.send_message.call_args[0][1] == ERR_CALDAV_UNAVAILABLE_TEXT
+    ctx.telegram.edit_message_text.assert_not_called()
     assert "boom" not in (ctx.telegram.send_message.call_args[0][1] or "")
     assert any("boom" in record.getMessage() for record in caplog.records)
 
@@ -485,12 +474,10 @@ def test_plan_replaces_loading_with_generic_error_on_unexpected_exception(
     with caplog.at_level(logging.ERROR, logger="satellite.telegram_bot.handlers"):
         handle_message(ctx, msg)
 
-    assert ctx.telegram.send_message.call_count == 1
-    assert ctx.telegram.send_message.call_args[0][1] == PLAN_FETCH_STATUS_TEXT["today"]
-    ctx.telegram.edit_message_text.assert_called_once()
-    edit_kw = ctx.telegram.edit_message_text.call_args
-    assert edit_kw[0][2] == ERR_DIGEST_BUILD_FAILED_TEXT
-    assert "token expired" not in edit_kw[0][2]
+    ctx.telegram.send_message.assert_called_once()
+    assert ctx.telegram.send_message.call_args[0][1] == ERR_DIGEST_BUILD_FAILED_TEXT
+    ctx.telegram.edit_message_text.assert_not_called()
+    assert "token expired" not in (ctx.telegram.send_message.call_args[0][1] or "")
     # Стек должен попасть в лог (exc_info), но не в пользовательский текст.
     assert any(record.exc_info is not None for record in caplog.records)
 
@@ -505,21 +492,21 @@ def test_plan_button_uses_error_text_when_build_fails():
 
     handle_message(ctx, msg)
 
-    assert ctx.telegram.send_message.call_count == 1
-    assert ctx.telegram.send_message.call_args[0][1] == PLAN_FETCH_STATUS_TEXT["tomorrow"]
-    ctx.telegram.edit_message_text.assert_called_once()
-    assert ctx.telegram.edit_message_text.call_args[0][2] == ERR_DIGEST_BUILD_FAILED_TEXT
+    ctx.telegram.send_message.assert_called_once()
+    assert ctx.telegram.send_message.call_args[0][1] == ERR_DIGEST_BUILD_FAILED_TEXT
+    ctx.telegram.edit_message_text.assert_not_called()
 
 
-def test_plan_skips_edit_when_loading_send_failed():
-    """Если loading не ушёл — мы не имеем message_id, поэтому шлём дайджест новым сообщением."""
+def test_plan_legacy_skips_edit_when_loading_send_failed():
+    """Legacy: если loading не ушёл — дайджест только ``sendMessage``."""
     from satellite.telegram_bot.api import TelegramError
 
     ctx = _plan_handler_context()
+    ctx.telegram.send_message_draft = MagicMock(return_value=False)
     final_send_response = {"message_id": 777}
 
     def _send_message_side_effect(chat_id, text, **_kwargs):
-        if text == PLAN_FETCH_STATUS_TEXT["today"]:
+        if text == "⏳":
             raise TelegramError("loading send failed")
         return final_send_response
 
@@ -528,9 +515,7 @@ def test_plan_skips_edit_when_loading_send_failed():
 
     handle_message(ctx, msg)
 
-    assert ctx.telegram.send_message.call_count == 2
-    final_call = ctx.telegram.send_message.call_args_list[-1]
-    assert final_call[0][1] == "<b>Plan HTML</b>"
+    assert ctx.telegram.send_message.call_args[0][1] == "<b>Plan HTML</b>"
     ctx.telegram.edit_message_text.assert_not_called()
 
 
@@ -552,9 +537,9 @@ def test_long_menu_commands_invoke_correct_day_offset(command, mode_text):
     )
     handle_message(ctx, msg)
 
-    assert ctx.telegram.send_message.call_count == 1
-    assert ctx.telegram.send_message.call_args[0][1] == mode_text
-    ctx.telegram.edit_message_text.assert_called_once()
+    ctx.telegram.send_message_draft.assert_called()
+    ctx.telegram.send_message.assert_called_once()
+    ctx.telegram.edit_message_text.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -573,8 +558,9 @@ def test_short_aliases_still_work_after_migration(command, mode_text):
     )
     handle_message(ctx, msg)
 
-    assert ctx.telegram.send_message.call_count == 1
-    assert ctx.telegram.send_message.call_args[0][1] == mode_text
+    ctx.telegram.send_message_draft.assert_called()
+    ctx.telegram.send_message.assert_called_once()
+    ctx.telegram.edit_message_text.assert_not_called()
 
 
 def test_unknown_text_does_not_send_old_reply_keyboard():

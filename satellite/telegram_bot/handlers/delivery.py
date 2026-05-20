@@ -39,6 +39,7 @@ def open_streaming_reply(
     *,
     draft_id: int | None = None,
     message_thread_id: int | None = None,
+    chat_action: str | None = "typing",
 ) -> StreamingReply:
     """Потоковый ответ: ``sendMessageDraft`` с fallback на loading+edit.
 
@@ -51,6 +52,7 @@ def open_streaming_reply(
         initial_text,
         draft_id=draft_id,
         message_thread_id=message_thread_id,
+        chat_action=chat_action,
     )
 
 

@@ -195,6 +195,8 @@ def _ctx(*, events: list[dict] | None = None) -> MagicMock:
     ctx.telegram = MagicMock()
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 999})
     ctx.telegram.edit_message_text = MagicMock(return_value={})
+    ctx.telegram.send_message_draft = MagicMock(return_value=True)
+    ctx.telegram.send_chat_action = MagicMock(return_value=True)
     ctx.telegram.answer_callback_query = MagicMock(return_value=True)
     ctx.calendar_service = MagicMock()
 
@@ -250,14 +252,12 @@ def test_handle_open_manage_events_shows_list_with_buttons(monkeypatch):
     )
     handle_message(ctx, msg)
 
-    # loading-сообщение отправлено
-    assert ctx.telegram.send_message.call_count == 1
-    # затем заменено на список с inline-клавиатурой
-    ctx.telegram.edit_message_text.assert_called_once()
-    edit_kw = ctx.telegram.edit_message_text.call_args
-    rendered = edit_kw[0][2]
+    ctx.telegram.send_message_draft.assert_called()
+    ctx.telegram.send_message.assert_called_once()
+    ctx.telegram.edit_message_text.assert_not_called()
+    rendered = ctx.telegram.send_message.call_args[0][1]
     assert "Standup" in rendered
-    keyboard = edit_kw.kwargs.get("reply_markup")
+    keyboard = ctx.telegram.send_message.call_args.kwargs.get("reply_markup")
     assert isinstance(keyboard, dict)
     callbacks = [
         btn["callback_data"]
@@ -291,8 +291,7 @@ def test_handle_open_manage_events_empty_when_nothing_to_manage(monkeypatch):
     )
     handle_message(ctx, msg)
 
-    edit_kw = ctx.telegram.edit_message_text.call_args
-    assert edit_kw[0][2] == MANAGE_EMPTY_HTML
+    assert ctx.telegram.send_message.call_args[0][1] == MANAGE_EMPTY_HTML
 
 
 def test_manage_pick_opens_detail_with_action_buttons(monkeypatch):

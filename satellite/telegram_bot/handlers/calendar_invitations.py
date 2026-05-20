@@ -135,9 +135,8 @@ def _find_event_by_token(events: list, token: str):
 def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_connected(ctx, msg) or msg.chat_id is None or msg.user_id is None:
         return
-    stream = open_streaming_reply(
-        ctx, msg.chat_id, INVITATIONS_FETCH_STATUS, draft_id=msg.update_id
-    )
+    stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
+    stream.push(INVITATIONS_FETCH_STATUS)
 
     try:
         text, keyboard = _load_screen(ctx, msg.user_id)
