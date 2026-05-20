@@ -102,7 +102,6 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
             cb.chat_id,
             png,
             caption=caption,
-            show_caption_above_media=True,
             message_effect_id=effect,
         )
     except TelegramError as exc:
