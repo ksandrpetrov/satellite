@@ -14,6 +14,7 @@ from ...messages_ru import (
     button_text_is_create_event,
     button_text_is_settings,
     button_text_is_disconnect_calendar,
+    button_text_is_foreign_calendars,
     button_text_is_subscribe,
     button_text_is_unsubscribe,
     button_text_is_upcoming,
@@ -40,6 +41,9 @@ _CMD_UPCOMING = re.compile(r"/(?:upcoming|events)(?:@[a-z0-9_]+)?\Z")
 _CMD_CREATE = re.compile(r"/(?:create|addevent)(?:@[a-z0-9_]+)?\Z")
 _CMD_CONNECT = re.compile(r"/connect(?:@[a-z0-9_]+)?\Z")
 _CMD_CALENDARS = re.compile(r"/(?:calendars|calendar_sources)(?:@[a-z0-9_]+)?\Z")
+_CMD_FOREIGN_CALENDARS = re.compile(
+    r"/(?:foreign|shared_calendars|foreign_calendars)(?:@[a-z0-9_]+)?\Z"
+)
 
 
 def _command_part(text: str) -> str:
@@ -158,6 +162,15 @@ def is_calendar_sources_request(text: str | None) -> bool:
     return bool(_CMD_CALENDARS.fullmatch(_command_part(raw)))
 
 
+def is_foreign_calendars_request(text: str | None) -> bool:
+    if not text:
+        return False
+    raw = text.strip()
+    if button_text_is_foreign_calendars(raw):
+        return True
+    return bool(_CMD_FOREIGN_CALENDARS.fullmatch(_command_part(raw)))
+
+
 def is_command_like_message(text: str) -> bool:
     """Команды (`/td`, кнопки) трактуем как «выход из state», не как ввод времени."""
     if parse_command_mode(text) is not None:
@@ -179,6 +192,8 @@ def is_command_like_message(text: str) -> bool:
     if is_disconnect_calendar_request(text):
         return True
     if is_calendar_sources_request(text):
+        return True
+    if is_foreign_calendars_request(text):
         return True
     return False
 

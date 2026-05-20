@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, tzinfo
 from typing import Callable, TypeVar
 
@@ -148,14 +148,17 @@ class UserCalendarService:
         start_date: date,
         end_date: date,
         tz: tzinfo,
+        calendar_urls: tuple[str, ...] | None = None,
     ) -> list:
-        return self._run(
-            telegram_user_id,
-            operation="list",
-            fn=lambda cc: cc.provider.list_events(
-                cc.context, start_date=start_date, end_date=end_date, tz=tz
-            ),
-        )
+        def _list(cc: ConnectedCalendar) -> list:
+            context = cc.context
+            if calendar_urls:
+                context = replace(context, enabled_calendar_urls=calendar_urls)
+            return cc.provider.list_events(
+                context, start_date=start_date, end_date=end_date, tz=tz
+            )
+
+        return self._run(telegram_user_id, operation="list", fn=_list)
 
     def create_event(
         self,

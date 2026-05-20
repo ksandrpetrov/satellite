@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .providers.base import CalendarListEntry
+
 if TYPE_CHECKING:
     from ..users import UserRecord
 
@@ -32,3 +34,19 @@ def effective_enabled_calendar_urls(record: UserRecord) -> tuple[str, ...]:
         enabled_calendar_urls=record.enabled_calendar_urls,
         primary_calendar_url=record.primary_calendar_url,
     )
+
+
+def foreign_calendar_entries(
+    calendars: list[CalendarListEntry],
+    *,
+    primary_calendar_url: str | None,
+) -> list[CalendarListEntry]:
+    """Календари, пошаренные в аккаунт (все, кроме основного)."""
+    primary = _normalize_url(primary_calendar_url)
+    if not primary:
+        return list(calendars)
+    return [
+        entry
+        for entry in calendars
+        if _normalize_url(entry.url) != primary
+    ]

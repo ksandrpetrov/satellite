@@ -21,6 +21,7 @@ from ...messages_ru import (
     CREATE_EVENT_ASK_TITLE,
     CREATE_EVENT_CANCELLED_HTML,
     CREATE_EVENT_CONFIRM_HTML,
+    CREATE_EVENT_CREATING_HTML,
     CREATE_EVENT_FAILED_HTML,
     CREATE_EVENT_INVALID_DATE,
     CREATE_EVENT_INVALID_DURATION,
@@ -34,14 +35,16 @@ from ..calendar_state import (
     CalendarFlowState,
     CreateEventDraft,
     STATE_CREATE_CONFIRM,
+    STATE_CREATE_SUBMITTING,
     STATE_CREATE_DATE,
     STATE_CREATE_DURATION,
     STATE_CREATE_TIME,
     STATE_CREATE_TITLE,
 )
+from ..chat_action import run_with_typing_action
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from .delivery import safe_answer_callback, send
+from .delivery import edit_callback_message, safe_answer_callback, send
 
 log = logging.getLogger(__name__)
 
@@ -222,7 +225,10 @@ def _confirm_create(ctx: HandlerContext, cb: IncomingCallback) -> None:
         safe_answer_callback(ctx, cb)
         return
     flow = ctx.calendar_state.get(cb.chat_id)
-    if flow is None or flow.state != STATE_CREATE_CONFIRM:
+    if flow is None or flow.state == STATE_CREATE_SUBMITTING:
+        safe_answer_callback(ctx, cb, text="Уже создаём…")
+        return
+    if flow.state != STATE_CREATE_CONFIRM:
         safe_answer_callback(ctx, cb)
         return
     draft = flow.draft
@@ -233,15 +239,27 @@ def _confirm_create(ctx: HandlerContext, cb: IncomingCallback) -> None:
     )
     end_dt = start_dt + timedelta(minutes=draft.duration_minutes)
     payload = CalendarEventPayload(title=draft.title, start=start_dt, end=end_dt)
-    try:
+
+    flow.state = STATE_CREATE_SUBMITTING
+    ctx.calendar_state.set(cb.chat_id, flow)
+    safe_answer_callback(ctx, cb, text="Создаю…")
+    edit_callback_message(ctx, cb, CREATE_EVENT_CREATING_HTML, reply_markup=None)
+
+    def do_create() -> None:
         ctx.calendar_service.create_event(cb.user_id, payload, tz=ctx.tz)
-        ctx.calendar_state.clear(cb.chat_id)
-        send(ctx, cb.chat_id, CREATE_EVENT_SUCCESS_HTML)
-        safe_answer_callback(ctx, cb, text="Готово")
+
+    try:
+        run_with_typing_action(ctx.telegram, cb.chat_id, do_create)
     except CalendarProviderError as exc:
         log.error("Create event failed user_id=%s code=%s", cb.user_id, exc.error_code)
-        send(ctx, cb.chat_id, _create_failure_text(exc))
+        ctx.calendar_state.clear(cb.chat_id)
+        edit_callback_message(ctx, cb, _create_failure_text(exc), reply_markup=None)
         safe_answer_callback(ctx, cb)
+        return
+
+    ctx.calendar_state.clear(cb.chat_id)
+    edit_callback_message(ctx, cb, CREATE_EVENT_SUCCESS_HTML, reply_markup=None)
+    safe_answer_callback(ctx, cb, text="Готово")
 
 
 def _create_failure_text(exc: CalendarProviderError) -> str:

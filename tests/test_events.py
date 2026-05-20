@@ -316,6 +316,32 @@ def test_format_upcoming_events_lines_groups_by_day():
     assert "Встреча B" in text
 
 
+def test_format_upcoming_events_lines_blank_line_between_days_only():
+    # Заголовок дня и его события идут подряд (без пустой строки между ними),
+    # пустая строка — только разделитель между днями. После последнего дня
+    # хвостовой пустой строки быть не должно.
+    ref = date(2026, 5, 20)
+    events = [
+        _ev(
+            summary="A",
+            dtstart=datetime(2026, 5, 20, 12, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 20, 13, 0, tzinfo=TZ).isoformat(),
+        ),
+        _ev(
+            summary="B",
+            dtstart=datetime(2026, 5, 21, 12, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 21, 13, 0, tzinfo=TZ).isoformat(),
+        ),
+    ]
+    lines = format_upcoming_events_lines(events, TZ, ref, days=7)
+    assert lines[0].startswith("<b>Сегодня")
+    assert lines[1] == "• 12:00–13:00 — A"
+    assert lines[2] == ""
+    assert lines[3].startswith("<b>Завтра")
+    assert lines[4] == "• 12:00–13:00 — B"
+    assert lines[-1] != ""
+
+
 def test_format_upcoming_events_lines_includes_busy_total_in_header():
     ref = date(2026, 5, 20)
     fri = date(2026, 5, 29)
@@ -357,6 +383,7 @@ def test_format_upcoming_events_lines_skips_cancelled_and_respects_limit():
         ),
     ]
     lines = format_upcoming_events_lines(events, TZ, ref, max_events=1)
-    assert len(lines) == 3
-    assert "Живая" in lines[2]
+    assert len(lines) == 2
+    assert lines[0].startswith("<b>Сегодня")
+    assert "Живая" in lines[1]
     assert "Отмена" not in "\n".join(lines)

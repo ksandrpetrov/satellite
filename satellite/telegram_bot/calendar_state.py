@@ -12,6 +12,7 @@ STATE_CREATE_DATE = "create_date"
 STATE_CREATE_TIME = "create_time"
 STATE_CREATE_DURATION = "create_duration"
 STATE_CREATE_CONFIRM = "create_confirm"
+STATE_CREATE_SUBMITTING = "create_submitting"
 
 _DEDUP_CAPACITY = 1024
 

@@ -59,6 +59,7 @@ satellite/
       access.py, admin.py
       calendar_setup.py  # connect / check / disconnect
       calendar_list.py   # /upcoming
+      calendar_foreign.py # чужие (пошаренные) календари
       calendar_create.py # /create FSM
       calendar_manage.py # inline delete (callback)
       plan.py, settings.py, subscription.py

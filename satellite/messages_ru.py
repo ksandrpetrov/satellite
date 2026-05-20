@@ -33,6 +33,7 @@ BUTTON_RECONNECT_CALENDAR = "🔄 Переподключить календар�
 BUTTON_DISCONNECT_CALENDAR = "🗑 Отключить календарь"
 BUTTON_CHECK_CALENDAR = "✅ Проверить подключение"
 BUTTON_CALENDAR_SOURCES = "📚 Календари"
+BUTTON_FOREIGN_CALENDARS = "👥 Чужие календари"
 
 BUTTON_TO_PLAN_MODE: dict[str, str] = {
     BUTTON_TODAY: "today",
@@ -81,6 +82,7 @@ _NORMALIZED_BUTTON_RECONNECT = normalize_button_text(BUTTON_RECONNECT_CALENDAR)
 _NORMALIZED_BUTTON_DISCONNECT = normalize_button_text(BUTTON_DISCONNECT_CALENDAR)
 _NORMALIZED_BUTTON_CHECK = normalize_button_text(BUTTON_CHECK_CALENDAR)
 _NORMALIZED_BUTTON_CALENDAR_SOURCES = normalize_button_text(BUTTON_CALENDAR_SOURCES)
+_NORMALIZED_BUTTON_FOREIGN_CALENDARS = normalize_button_text(BUTTON_FOREIGN_CALENDARS)
 
 
 def button_text_to_mode(text: str | None) -> str | None:
@@ -153,6 +155,12 @@ def button_text_is_calendar_sources(text: str | None) -> bool:
     return normalize_button_text(text) == _NORMALIZED_BUTTON_CALENDAR_SOURCES
 
 
+def button_text_is_foreign_calendars(text: str | None) -> bool:
+    if not text:
+        return False
+    return normalize_button_text(text) == _NORMALIZED_BUTTON_FOREIGN_CALENDARS
+
+
 BOT_INPUT_PLACEHOLDER = "Выбери день, чтобы посмотреть встречи"
 
 # Markup, который вычищает старую нижнюю Reply-клавиатуру у пользователей, у
@@ -167,6 +175,7 @@ BOT_WELCOME_HTML = (
     "Команды в меню Telegram:\n"
     "📅 /today — встречи на сегодня\n"
     "🗓 /upcoming — ближайшие события\n"
+    "👥 «Чужие календари» — встречи в пошаренных календарях\n"
     "➕ /create — создать событие\n"
     "⚙️ /settings — дайджест, календари, подключение\n\n"
     "🍕 Чтобы чайка видела обед, добавь в календарь встречу с эмоджи 🍕 и словом «обед»."
@@ -179,6 +188,7 @@ BOT_HELP_HTML = (
     "Команды:\n"
     "📅 /today, /tomorrow, /aftertomorrow — план на день\n"
     "🗓 /upcoming — ближайшие события\n"
+    "👥 «Чужие календари» или /foreign — пошаренные календари коллег\n"
     "➕ /create — создать событие\n"
     "⚙️ /settings — дайджест, календари, подключение\n"
     "🔌 /connect — подключить календарь (также в /settings)\n\n"
@@ -282,6 +292,7 @@ CREATE_EVENT_CONFIRM_HTML = (
 CREATE_EVENT_INVALID_DATE = "⚠️ Не понял дату. Пример: 20.05.2026 или «завтра»"
 CREATE_EVENT_INVALID_TIME = "⚠️ Не понял время. Формат ЧЧ:ММ"
 CREATE_EVENT_INVALID_DURATION = "⚠️ Укажите длительность в минутах, например 60"
+CREATE_EVENT_CREATING_HTML = "⏳ Создаю событие в календаре…"
 CREATE_EVENT_SUCCESS_HTML = "✅ Событие создано в вашем календаре."
 CREATE_EVENT_FAILED_HTML = (
     "⚠️ Не удалось создать событие в календаре.\n"
@@ -380,6 +391,78 @@ def build_calendar_sources_keyboard(
     rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_CAL_CLOSE}])
     return {"inline_keyboard": rows}
 
+
+# --- чужие (пошаренные) календари ------------------------------------------
+
+CB_FOREIGN_PICK_PREFIX = "foreign:p:"
+CB_FOREIGN_DAY_PREFIX = "foreign:d:"
+CB_FOREIGN_BACK = "foreign:back"
+CB_FOREIGN_CLOSE = "foreign:close"
+
+FOREIGN_CALENDARS_INTRO_HTML = (
+    "👥 <b>Чужие календари</b>\n\n"
+    "Здесь календари, которые вам открыли в Mail.ru или Яндексе. "
+    "Выберите календарь, затем день."
+)
+FOREIGN_CALENDARS_EMPTY_HTML = (
+    "👥 Пока нет чужих календарей.\n\n"
+    "Попросите коллегу открыть доступ к календарю на вашу почту "
+    "в настройках календаря Mail.ru или Яндекса — после этого он появится здесь."
+)
+FOREIGN_CALENDARS_LOAD_FAIL_HTML = (
+    "⚠️ Не удалось загрузить список календарей. Попробуйте позже."
+)
+FOREIGN_CALENDARS_CLOSED_TEXT = "Просмотр чужих календарей закрыт."
+FOREIGN_CALENDARS_FETCH_STATUS = "⏳ Загружаю события…"
+FOREIGN_CALENDARS_DAY_EMPTY_HTML = "Встреч в этот день нет."
+
+
+def foreign_calendars_pick_day_text(*, calendar_name: str) -> str:
+    return (
+        f"👥 <b>{calendar_name}</b>\n\n"
+        "Выберите день:"
+    )
+
+
+def foreign_calendars_day_result_text(
+    *, calendar_name: str, body_lines: list[str]
+) -> str:
+    body = "\n".join(body_lines)
+    return f"👥 <b>{calendar_name}</b>\n\n{body}"
+
+
+def build_foreign_calendars_keyboard(
+    *,
+    calendars: list[tuple[str, str]],
+) -> dict:
+    rows: list[list[dict[str, str]]] = []
+    for idx, (name, _url) in enumerate(calendars):
+        label = name if len(name) <= 60 else name[:57] + "…"
+        rows.append(
+            [{"text": label, "callback_data": f"{CB_FOREIGN_PICK_PREFIX}{idx}"}]
+        )
+    rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_FOREIGN_CLOSE}])
+    return {"inline_keyboard": rows}
+
+
+def build_foreign_day_keyboard(*, calendar_idx: int) -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {
+                    "text": BUTTON_TODAY,
+                    "callback_data": f"{CB_FOREIGN_DAY_PREFIX}{calendar_idx}:0",
+                },
+                {
+                    "text": BUTTON_TOMORROW,
+                    "callback_data": f"{CB_FOREIGN_DAY_PREFIX}{calendar_idx}:1",
+                },
+            ],
+            [{"text": "⬅️ Назад", "callback_data": CB_FOREIGN_BACK}],
+        ]
+    }
+
+
 def build_webapp_connect_keyboard(webapp_url: str, *, reconnect: bool = False) -> dict:
     label = BUTTON_RECONNECT_CALENDAR if reconnect else BUTTON_CONNECT_CALENDAR
     return {
@@ -394,6 +477,7 @@ def build_approved_main_keyboard() -> dict:
     return {
         "keyboard": [
             [{"text": BUTTON_TODAY}, {"text": BUTTON_UPCOMING}],
+            [{"text": BUTTON_FOREIGN_CALENDARS}],
             [{"text": BUTTON_CREATE_EVENT}],
             [{"text": BUTTON_SETTINGS}],
         ],

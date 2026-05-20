@@ -1,6 +1,7 @@
 from satellite.messages_ru import (
     BUTTON_CREATE_EVENT,
     BUTTON_DAY_AFTER,
+    BUTTON_FOREIGN_CALENDARS,
     BUTTON_SETTINGS,
     BUTTON_TODAY,
     BUTTON_TOMORROW,
@@ -34,6 +35,7 @@ def test_approved_main_keyboard_is_compact():
     assert labels == [
         BUTTON_TODAY,
         BUTTON_UPCOMING,
+        BUTTON_FOREIGN_CALENDARS,
         BUTTON_CREATE_EVENT,
         BUTTON_SETTINGS,
     ]

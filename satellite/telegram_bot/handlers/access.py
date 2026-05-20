@@ -17,7 +17,13 @@ from ...messages_ru import (
     build_approved_main_keyboard,
     build_webapp_connect_keyboard,
 )
-from ...users import USER_STATUS_APPROVED, USER_STATUS_BLOCKED, USER_STATUS_PENDING, USER_STATUS_REJECTED
+from ...users import (
+    ACCESS_REQUEST_PENDING,
+    USER_STATUS_APPROVED,
+    USER_STATUS_BLOCKED,
+    USER_STATUS_PENDING,
+    USER_STATUS_REJECTED,
+)
 from ..api import TelegramError
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 
@@ -62,6 +68,11 @@ def handle_start_or_help(ctx: HandlerContext, msg: IncomingMessage, *, is_start:
     if is_start:
         _handle_start_flow(ctx, msg, record.status)
     else:
+        if (
+            record.status == USER_STATUS_PENDING
+            and record.access_request_status != ACCESS_REQUEST_PENDING
+        ):
+            _submit_access_request_if_needed(ctx, msg)
         ctx.telegram.send_message(
             msg.chat_id,
             BOT_HELP_HTML,
@@ -78,11 +89,7 @@ def _handle_start_flow(ctx: HandlerContext, msg: IncomingMessage, status: str) -
         ctx.telegram.send_message(msg.chat_id, ACCESS_REJECTED_HTML)
         return
     if status == USER_STATUS_PENDING:
-        _record, is_new = ctx.users.submit_access_request(msg.user_id)
-        if is_new:
-            from .admin import notify_admins_new_request
-
-            notify_admins_new_request(ctx, msg)
+        if _submit_access_request_if_needed(ctx, msg):
             ctx.telegram.send_message(msg.chat_id, ACCESS_REQUEST_SENT_HTML)
         else:
             ctx.telegram.send_message(msg.chat_id, ACCESS_PENDING_HTML)
@@ -99,6 +106,17 @@ def _handle_start_flow(ctx: HandlerContext, msg: IncomingMessage, status: str) -
         ACCESS_APPROVED_HTML if not has_calendar else BOT_WELCOME_HTML,
         reply_markup=markup,
     )
+
+
+def _submit_access_request_if_needed(ctx: HandlerContext, msg: IncomingMessage) -> bool:
+    """Открывает заявку и уведомляет админов. True — заявка создана впервые."""
+    assert msg.user_id is not None
+    _record, is_new = ctx.users.submit_access_request(msg.user_id)
+    if is_new:
+        from .admin import notify_admins_new_request
+
+        notify_admins_new_request(ctx, msg)
+    return is_new
 
 
 def ensure_calendar_access(ctx: HandlerContext, msg: IncomingMessage) -> bool:

@@ -323,6 +323,7 @@ def format_upcoming_events_lines(
 
     lines: list[str] = []
     remaining = max_events
+    first_day = True
     for offset in range(days):
         if remaining <= 0:
             break
@@ -330,10 +331,12 @@ def format_upcoming_events_lines(
         day_events = by_day.get(day)
         if not day_events:
             continue
+        if not first_day:
+            lines.append("")
+        first_day = False
         busy = _day_busy_minutes(day_events, day, tz)
         header = format_upcoming_day_header(day, reference_date, busy_minutes=busy)
         lines.append(f"<b>{header}</b>")
-        lines.append("")
         for ev in day_events:
             if remaining <= 0:
                 break
@@ -341,8 +344,33 @@ def format_upcoming_events_lines(
             when = format_time_range(ev, tz)
             lines.append(f"• {when} — {title}")
             remaining -= 1
-    while lines and lines[-1] == "":
-        lines.pop()
+    return lines
+
+
+def format_single_day_events_lines(
+    events: Sequence[Event],
+    tz: tzinfo,
+    target_date: date,
+    reference_date: date,
+    *,
+    max_events: int = 50,
+) -> list[str]:
+    """Строки списка встреч на один день (для чужого календаря)."""
+    visible = [
+        ev
+        for ev in events
+        if not is_cancelled_event(ev) and event_local_start_date(ev, tz) == target_date
+    ]
+    visible.sort(key=lambda ev: sort_key(ev, tz))
+    if not visible:
+        return []
+    busy = _day_busy_minutes(visible, target_date, tz)
+    header = format_upcoming_day_header(target_date, reference_date, busy_minutes=busy)
+    lines = [f"<b>{header}</b>"]
+    for ev in visible[:max_events]:
+        title = html.escape(str(ev.get("summary") or ev.get("title") or "—"))
+        when = format_time_range(ev, tz)
+        lines.append(f"• {when} — {title}")
     return lines
 
 

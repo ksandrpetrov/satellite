@@ -25,6 +25,10 @@ from .calendar_setup import (
     handle_connect_calendar_button,
     handle_disconnect_calendar,
 )
+from .calendar_foreign import (
+    handle_open_foreign_calendars,
+    route_foreign_calendars_callback,
+)
 from .calendar_sources import (
     handle_open_calendar_sources,
     route_calendar_sources_callback,
@@ -34,6 +38,7 @@ from .delivery import notify_handler_failure, safe_answer_callback, send
 from .plan import handle_plan
 from .routing import (
     is_calendar_sources_request,
+    is_foreign_calendars_request,
     is_check_calendar_request,
     is_command_like_message,
     is_connect_calendar_request,
@@ -127,6 +132,10 @@ def _route_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
         if ensure_calendar_connected(ctx, msg):
             handle_open_calendar_sources(ctx, msg)
         return
+    if is_foreign_calendars_request(msg.text):
+        if ensure_calendar_connected(ctx, msg):
+            handle_open_foreign_calendars(ctx, msg)
+        return
 
     if is_settings_request(msg.text):
         if ensure_calendar_access(ctx, msg):
@@ -190,6 +199,8 @@ def _route_callback(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if route_settings_callback(ctx, cb):
         return
     if route_calendar_sources_callback(ctx, cb):
+        return
+    if route_foreign_calendars_callback(ctx, cb):
         return
     log.info("Unknown callback_data: %r", cb.data)
     safe_answer_callback(ctx, cb)
