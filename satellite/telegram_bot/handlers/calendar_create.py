@@ -12,6 +12,9 @@ from ...messages_ru import (
     CALENDAR_NOT_CONNECTED_HTML,
     CB_CREATE_CANCEL,
     CB_CREATE_CONFIRM,
+    CB_CREATE_DATE_TODAY,
+    CB_CREATE_DATE_TOMORROW,
+    CB_CREATE_DURATION_PREFIX,
     CREATE_EVENT_ASK_DATE,
     CREATE_EVENT_ASK_DURATION,
     CREATE_EVENT_ASK_TIME,
@@ -24,6 +27,8 @@ from ...messages_ru import (
     CREATE_EVENT_INVALID_TIME,
     CREATE_EVENT_SUCCESS_HTML,
     ERR_CALDAV_UNAVAILABLE_TEXT,
+    build_create_date_keyboard,
+    build_create_duration_keyboard,
 )
 from ..calendar_state import (
     CalendarFlowState,
@@ -36,7 +41,7 @@ from ..calendar_state import (
 )
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from .delivery import edit_callback_message, safe_answer_callback, send
+from .delivery import safe_answer_callback, send
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +70,7 @@ def handle_create_text_input(ctx: HandlerContext, msg: IncomingMessage) -> bool:
         flow.draft.title = title
         flow.state = STATE_CREATE_DATE
         ctx.calendar_state.set(msg.chat_id, flow)
-        send(ctx, msg.chat_id, CREATE_EVENT_ASK_DATE)
+        _ask_date(ctx, msg.chat_id)
         return True
     if flow.state == STATE_CREATE_DATE:
         parsed = _parse_target_date(msg.text, ctx)
@@ -85,7 +90,7 @@ def handle_create_text_input(ctx: HandlerContext, msg: IncomingMessage) -> bool:
         flow.draft.start_time = normalized
         flow.state = STATE_CREATE_DURATION
         ctx.calendar_state.set(msg.chat_id, flow)
-        send(ctx, msg.chat_id, CREATE_EVENT_ASK_DURATION)
+        _ask_duration(ctx, msg.chat_id)
         return True
     if flow.state == STATE_CREATE_DURATION:
         try:
@@ -115,7 +120,78 @@ def route_create_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
             send(ctx, cb.chat_id, CREATE_EVENT_CANCELLED_HTML)
         safe_answer_callback(ctx, cb)
         return True
+    if data in (CB_CREATE_DATE_TODAY, CB_CREATE_DATE_TOMORROW):
+        _apply_date_preset(ctx, cb, data)
+        return True
+    if data.startswith(CB_CREATE_DURATION_PREFIX):
+        _apply_duration_preset(ctx, cb, data)
+        return True
     return False
+
+
+def _ask_date(ctx: HandlerContext, chat_id: int) -> None:
+    ctx.telegram.send_message(
+        chat_id, CREATE_EVENT_ASK_DATE, reply_markup=build_create_date_keyboard()
+    )
+
+
+def _ask_duration(ctx: HandlerContext, chat_id: int) -> None:
+    ctx.telegram.send_message(
+        chat_id,
+        CREATE_EVENT_ASK_DURATION,
+        reply_markup=build_create_duration_keyboard(),
+    )
+
+
+def _apply_date_preset(
+    ctx: HandlerContext, cb: IncomingCallback, data: str
+) -> None:
+    """Жмём «Сегодня»/«Завтра» — заполняем дату и переходим к шагу времени.
+
+    State-проверка нужна, чтобы старая кнопка из давно отправленного сообщения
+    не «оживила» закрытый сценарий и не отправила пользователю «Во сколько?»
+    из ниоткуда.
+    """
+    if cb.chat_id is None:
+        safe_answer_callback(ctx, cb)
+        return
+    flow = ctx.calendar_state.get(cb.chat_id)
+    if flow is None or flow.state != STATE_CREATE_DATE:
+        safe_answer_callback(ctx, cb)
+        return
+    today = datetime.now(tz=ctx.tz).date()
+    flow.draft.event_date = (
+        today if data == CB_CREATE_DATE_TODAY else today + timedelta(days=1)
+    )
+    flow.state = STATE_CREATE_TIME
+    ctx.calendar_state.set(cb.chat_id, flow)
+    send(ctx, cb.chat_id, CREATE_EVENT_ASK_TIME)
+    safe_answer_callback(ctx, cb)
+
+
+def _apply_duration_preset(
+    ctx: HandlerContext, cb: IncomingCallback, data: str
+) -> None:
+    if cb.chat_id is None:
+        safe_answer_callback(ctx, cb)
+        return
+    flow = ctx.calendar_state.get(cb.chat_id)
+    if flow is None or flow.state != STATE_CREATE_DURATION:
+        safe_answer_callback(ctx, cb)
+        return
+    try:
+        minutes = int(data[len(CB_CREATE_DURATION_PREFIX):])
+    except ValueError:
+        safe_answer_callback(ctx, cb)
+        return
+    if minutes <= 0 or minutes > 24 * 60:
+        safe_answer_callback(ctx, cb)
+        return
+    flow.draft.duration_minutes = minutes
+    flow.state = STATE_CREATE_CONFIRM
+    ctx.calendar_state.set(cb.chat_id, flow)
+    _send_confirm(ctx, cb.chat_id, flow.draft)
+    safe_answer_callback(ctx, cb)
 
 
 def _send_confirm(ctx: HandlerContext, chat_id: int, draft: CreateEventDraft) -> None:

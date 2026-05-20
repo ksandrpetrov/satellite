@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import html
 from datetime import date, datetime, time, timedelta, tzinfo
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
+from ..messages_ru import format_duration_long_ru
 from .constants import LUNCH_EMOJI_MARKER, PLAN_ALL_DAY_LABEL
+from .time_utils import merge_intervals, sum_minutes
 
 PizzaMealKind = Literal["breakfast", "lunch", "dinner"]
 
@@ -235,6 +238,112 @@ def sort_key(event: Event, tz: tzinfo) -> tuple[int, datetime]:
 def day_bounds(target_date: date, tz: tzinfo) -> tuple[datetime, datetime]:
     day_start = datetime.combine(target_date, time.min, tzinfo=tz)
     return day_start, day_start + timedelta(days=1)
+
+
+_WEEKDAY_SHORT_RU = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+
+
+def event_local_start_date(event: Event, tz: tzinfo) -> date | None:
+    """Локальная дата начала события (для группировки списка «Ближайшие»)."""
+    start = parse_iso(event.get("dtstart"))
+    if isinstance(start, datetime):
+        return _to_local(start, tz).date()
+    if isinstance(start, date):
+        return start
+    return None
+
+
+def format_upcoming_day_header(
+    target_date: date,
+    reference_date: date,
+    *,
+    busy_minutes: int = 0,
+) -> str:
+    """Заголовок дня в /upcoming: «Сегодня, ср 20.05 (занято 1 час)» / «Пт, 22.05»."""
+    wd = _WEEKDAY_SHORT_RU[target_date.weekday()]
+    date_str = target_date.strftime("%d.%m")
+    delta = (target_date - reference_date).days
+    if delta == 0:
+        head = f"Сегодня, {wd} {date_str}"
+    elif delta == 1:
+        head = f"Завтра, {wd} {date_str}"
+    elif delta == 2:
+        head = f"Послезавтра, {wd} {date_str}"
+    else:
+        head = f"{wd.capitalize()}, {date_str}"
+    if busy_minutes > 0:
+        head += f" (занято {format_duration_long_ru(busy_minutes)})"
+    return head
+
+
+def _day_busy_minutes(events: Sequence[Event], target_date: date, tz: tzinfo) -> int:
+    """Суммарная длительность timed-встреч на дате (с мерджем пересечений).
+
+    All-day события игнорируем — они и так показаны строкой «весь день».
+    Клиппируем границы события на сутки [00:00, 24:00) локально, чтобы
+    многодневная встреча учитывалась пропорционально.
+    """
+    day_start = datetime.combine(target_date, time.min, tzinfo=tz)
+    day_end = day_start + timedelta(days=1)
+    intervals: list[tuple[int, int]] = []
+    for ev in events:
+        if is_all_day_event(ev, tz):
+            continue
+        start_local, end_local = event_datetime_bounds(ev, tz)
+        if start_local is None or end_local is None:
+            continue
+        s = max(start_local, day_start)
+        e = min(end_local, day_end)
+        if e <= s:
+            continue
+        start_m = int((s - day_start).total_seconds() // 60)
+        end_m = int((e - day_start).total_seconds() // 60)
+        intervals.append((start_m, end_m))
+    return sum_minutes(merge_intervals(intervals))
+
+
+def format_upcoming_events_lines(
+    events: Sequence[Event],
+    tz: tzinfo,
+    reference_date: date,
+    *,
+    days: int = 7,
+    max_events: int = 30,
+) -> list[str]:
+    """Строки тела «Ближайшие события»: заголовки дней и пункты встреч (HTML)."""
+    visible = [ev for ev in events if not is_cancelled_event(ev)]
+    visible.sort(key=lambda ev: sort_key(ev, tz))
+    end = reference_date + timedelta(days=days)
+    by_day: dict[date, list[Event]] = {}
+    for ev in visible:
+        day = event_local_start_date(ev, tz)
+        if day is None or day < reference_date or day >= end:
+            continue
+        by_day.setdefault(day, []).append(ev)
+
+    lines: list[str] = []
+    remaining = max_events
+    for offset in range(days):
+        if remaining <= 0:
+            break
+        day = reference_date + timedelta(days=offset)
+        day_events = by_day.get(day)
+        if not day_events:
+            continue
+        busy = _day_busy_minutes(day_events, day, tz)
+        header = format_upcoming_day_header(day, reference_date, busy_minutes=busy)
+        lines.append(f"<b>{header}</b>")
+        lines.append("")
+        for ev in day_events:
+            if remaining <= 0:
+                break
+            title = html.escape(str(ev.get("summary") or ev.get("title") or "—"))
+            when = format_time_range(ev, tz)
+            lines.append(f"• {when} — {title}")
+            remaining -= 1
+    while lines and lines[-1] == "":
+        lines.pop()
+    return lines
 
 
 def filter_events_for_user(

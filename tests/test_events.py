@@ -1,11 +1,14 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from satellite.calendar.events import (
     event_duration_minutes,
+    event_local_start_date,
     event_occurs_on,
     filter_events_for_user,
     format_time_range,
+    format_upcoming_day_header,
+    format_upcoming_events_lines,
     is_all_day_event,
     is_cancelled_event,
     is_declined_event_for_user,
@@ -240,3 +243,120 @@ def test_filter_events_for_user_keeps_lunch_when_flag_off():
     )
     assert len(visible) == 1
     assert hidden_lunch == []
+
+
+def test_format_upcoming_day_header_relative_and_plain():
+    ref = date(2026, 5, 20)  # среда
+    assert format_upcoming_day_header(ref, ref) == "Сегодня, ср 20.05"
+    assert format_upcoming_day_header(date(2026, 5, 21), ref) == "Завтра, чт 21.05"
+    assert format_upcoming_day_header(date(2026, 5, 22), ref) == "Послезавтра, пт 22.05"
+    assert format_upcoming_day_header(date(2026, 5, 25), ref) == "Пн, 25.05"
+
+
+def test_format_upcoming_day_header_with_busy_minutes_declension():
+    ref = date(2026, 5, 20)
+    fri = date(2026, 5, 29)  # пятница > +2 → fallback на «Пт, ...»
+    assert (
+        format_upcoming_day_header(fri, ref, busy_minutes=60)
+        == "Пт, 29.05 (занято 1 час)"
+    )
+    assert (
+        format_upcoming_day_header(fri, ref, busy_minutes=120)
+        == "Пт, 29.05 (занято 2 часа)"
+    )
+    assert (
+        format_upcoming_day_header(fri, ref, busy_minutes=300)
+        == "Пт, 29.05 (занято 5 часов)"
+    )
+    assert (
+        format_upcoming_day_header(fri, ref, busy_minutes=90)
+        == "Пт, 29.05 (занято 1 час 30 минут)"
+    )
+    assert (
+        format_upcoming_day_header(fri, ref, busy_minutes=42)
+        == "Пт, 29.05 (занято 42 минуты)"
+    )
+    assert format_upcoming_day_header(fri, ref, busy_minutes=0) == "Пт, 29.05"
+    assert (
+        format_upcoming_day_header(ref, ref, busy_minutes=60)
+        == "Сегодня, ср 20.05 (занято 1 час)"
+    )
+
+
+def test_event_local_start_date_from_datetime_and_date():
+    ev_dt = _ev(
+        dtstart=datetime(2026, 5, 20, 12, 0, tzinfo=TZ).isoformat(),
+        dtend=datetime(2026, 5, 20, 13, 0, tzinfo=TZ).isoformat(),
+    )
+    assert event_local_start_date(ev_dt, TZ) == date(2026, 5, 20)
+    ev_date = _ev(dtstart="2026-05-21", dtend="2026-05-22")
+    assert event_local_start_date(ev_date, TZ) == date(2026, 5, 21)
+
+
+def test_format_upcoming_events_lines_groups_by_day():
+    ref = date(2026, 5, 20)
+    events = [
+        _ev(
+            summary="Встреча B",
+            dtstart=datetime(2026, 5, 21, 10, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 21, 11, 0, tzinfo=TZ).isoformat(),
+        ),
+        _ev(
+            summary="Встреча A",
+            dtstart=datetime(2026, 5, 20, 9, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 20, 10, 0, tzinfo=TZ).isoformat(),
+        ),
+    ]
+    lines = format_upcoming_events_lines(events, TZ, ref, days=7, max_events=30)
+    text = "\n".join(lines)
+    assert "<b>Сегодня, ср 20.05 (занято 1 час)</b>" in text
+    assert "Встреча A" in text
+    assert text.index("Встреча A") < text.index("<b>Завтра")
+    assert "<b>Завтра, чт 21.05 (занято 1 час)</b>" in text
+    assert "Встреча B" in text
+
+
+def test_format_upcoming_events_lines_includes_busy_total_in_header():
+    ref = date(2026, 5, 20)
+    fri = date(2026, 5, 29)
+    events = [
+        _ev(
+            summary="A",
+            dtstart=datetime.combine(fri, time(9, 0), tzinfo=TZ).isoformat(),
+            dtend=datetime.combine(fri, time(10, 0), tzinfo=TZ).isoformat(),
+        ),
+        _ev(
+            summary="B (overlap)",
+            dtstart=datetime.combine(fri, time(9, 30), tzinfo=TZ).isoformat(),
+            dtend=datetime.combine(fri, time(11, 0), tzinfo=TZ).isoformat(),
+        ),
+        _ev(
+            summary="День без встреч",
+            dtstart=fri.isoformat(),
+            dtend=(fri + timedelta(days=1)).isoformat(),
+        ),
+    ]
+    lines = format_upcoming_events_lines(events, TZ, ref, days=10)
+    text = "\n".join(lines)
+    assert "<b>Пт, 29.05 (занято 2 часа)</b>" in text
+
+
+def test_format_upcoming_events_lines_skips_cancelled_and_respects_limit():
+    ref = date(2026, 5, 20)
+    events = [
+        _ev(
+            summary="Живая",
+            dtstart=datetime(2026, 5, 20, 9, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 20, 10, 0, tzinfo=TZ).isoformat(),
+        ),
+        _ev(
+            summary="Отмена",
+            status="CANCELLED",
+            dtstart=datetime(2026, 5, 20, 11, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 20, 12, 0, tzinfo=TZ).isoformat(),
+        ),
+    ]
+    lines = format_upcoming_events_lines(events, TZ, ref, max_events=1)
+    assert len(lines) == 3
+    assert "Живая" in lines[2]
+    assert "Отмена" not in "\n".join(lines)

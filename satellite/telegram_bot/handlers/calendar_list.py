@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import html
 import logging
 from datetime import datetime, timedelta
 
-from ...calendar.events import format_time_range, is_cancelled_event, sort_key
+from ...calendar.events import format_upcoming_events_lines
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...messages_ru import ERR_CALDAV_UNAVAILABLE_TEXT, UPCOMING_EMPTY_HTML, UPCOMING_FETCH_STATUS
 from ..chat_action import run_with_typing_action
@@ -33,20 +32,10 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
             end_date=end,
             tz=ctx.tz,
         )
-        visible = [
-            ev
-            for ev in events
-            if not is_cancelled_event(ev)
-        ]
-        if not visible:
+        body = format_upcoming_events_lines(events, ctx.tz, today, days=_UPCOMING_DAYS)
+        if not body:
             return UPCOMING_EMPTY_HTML
-        visible.sort(key=lambda ev: sort_key(ev, ctx.tz))
-        lines = ["🗓 <b>Ближайшие события</b>", ""]
-        for ev in visible[:30]:
-            title = html.escape(str(ev.get("summary") or ev.get("title") or "—"))
-            when = format_time_range(ev, ctx.tz)
-            lines.append(f"• {when} — {title}")
-        return "\n".join(lines)
+        return "\n".join(["🗓 <b>Ближайшие события</b>", "", *body])
 
     try:
         text = run_with_typing_action(ctx.telegram, msg.chat_id, build)
