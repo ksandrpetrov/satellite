@@ -12,6 +12,7 @@ from ...messages_ru import (
     ANALYTICS_FETCH_STATUS,
     ANALYTICS_WORKDAY_APPLIED_TEXT,
     ERR_CALDAV_UNAVAILABLE_TEXT,
+    ERR_GENERIC_HANDLER_TEXT,
     analytics_options_screen_text,
     build_analytics_options_keyboard,
 )
@@ -76,6 +77,11 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
     except CalendarProviderError as exc:
         log.error("Analytics failed user_id=%s: %s", cb.user_id, exc.error_code)
         _finish_analytics_error(ctx, cb.chat_id, loading_id, ERR_CALDAV_UNAVAILABLE_TEXT)
+        safe_answer_callback(ctx, cb)
+        return
+    except Exception:  # noqa: BLE001 - не оставляем «сводит неделю…» висеть в чате
+        log.exception("Analytics build failed user_id=%s", cb.user_id)
+        _finish_analytics_error(ctx, cb.chat_id, loading_id, ERR_GENERIC_HANDLER_TEXT)
         safe_answer_callback(ctx, cb)
         return
 
