@@ -219,7 +219,11 @@ def _validated_user(
         validated = validate_init_data(init_data, bot_token=bot_token)
     except InitDataError as exc:
         log.info("Reject WebApp request: %s", exc)
-        _json_response(handler, HTTPStatus.UNAUTHORIZED, {"error": "unauthorized"})
+        _json_response(
+            handler,
+            HTTPStatus.UNAUTHORIZED,
+            {"error": exc.code, "message": str(exc)},
+        )
         raise _AbortRequest()
     record = users.get(validated.user.id)
     if record is None or record.status != USER_STATUS_APPROVED:

@@ -14,6 +14,10 @@ from urllib.parse import parse_qsl
 class InitDataError(ValueError):
     """initData не прошла проверку подписи или устарела."""
 
+    def __init__(self, message: str, *, code: str = "unauthorized") -> None:
+        super().__init__(message)
+        self.code = code
+
 
 @dataclass(frozen=True)
 class InitDataUser:
@@ -37,12 +41,17 @@ def validate_init_data(
     max_age_sec: int = 86400,
 ) -> ValidatedInitData:
     """HMAC-SHA256 validation per Telegram WebApp docs."""
-    if not init_data or not bot_token:
-        raise InitDataError("Missing initData or bot token")
+    if not bot_token:
+        raise InitDataError("Missing bot token", code="server_misconfigured")
+    if not init_data:
+        raise InitDataError("Missing initData", code="no_init_data")
     parsed = dict(parse_qsl(init_data, keep_blank_values=True))
     received_hash = parsed.pop("hash", None)
     if not received_hash:
-        raise InitDataError("Missing hash in initData")
+        raise InitDataError(
+            "Missing hash in initData (open Web App from Telegram, not browser)",
+            code="no_init_data",
+        )
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
     secret_key = hmac.new(
         b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256
@@ -51,7 +60,10 @@ def validate_init_data(
         secret_key, data_check_string.encode("utf-8"), hashlib.sha256
     ).hexdigest()
     if not hmac.compare_digest(expected, received_hash):
-        raise InitDataError("Invalid initData signature")
+        raise InitDataError(
+            "Invalid initData signature (TELEGRAM_BOT_TOKEN mismatch?)",
+            code="bad_signature",
+        )
     auth_date_raw = parsed.get("auth_date")
     try:
         auth_date = int(auth_date_raw or "0")
@@ -60,7 +72,7 @@ def validate_init_data(
     if auth_date <= 0:
         raise InitDataError("Missing auth_date")
     if time.time() - auth_date > max_age_sec:
-        raise InitDataError("initData expired")
+        raise InitDataError("initData expired", code="expired")
     user_raw = parsed.get("user")
     if not user_raw:
         raise InitDataError("Missing user in initData")

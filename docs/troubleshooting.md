@@ -125,6 +125,40 @@ WEBAPP_BASE_URL=...
   как `WEBAPP_BASE_URL=https://<ngrok-domain>/connect` в `.env`, затем `make docker-down && make docker-up`.
 - В BotFather → `Bot Settings → Menu Button` укажите тот же `WEBAPP_BASE_URL`.
 
+### Web App: «Сессия Telegram недействительна» / `unauthorized`
+
+Это **не** ошибка CalDAV. Сервер не принял подпись `initData` от Telegram.
+
+**Частые причины:**
+
+1. **Страница открыта в браузере**, а не внутри Telegram (нет `initData`). Открывайте только кнопкой «Подключить календарь» **в чате с ботом**, не закладкой `https://cassinilab.ru/connect` в Safari.
+2. **На сервере другой `TELEGRAM_BOT_TOKEN`**, чем бот, из которого открыли Web App (тестовый vs боевой бот).
+
+Проверка на VPS:
+
+```bash
+TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' /opt/satellite/.env | cut -d= -f2- | tr -d '"' | tr -d "'")
+curl -sS "https://api.telegram.org/bot${TOKEN}/getMe"
+```
+
+`username` в ответе должен совпадать с ботом «Чайка», из которого вы жмёте кнопку. После смены токена: `sudo systemctl restart satellite-bot.service`.
+
+Логи (подсказка по причине):
+
+```bash
+journalctl -u satellite-bot.service -n 50 | grep 'Reject WebApp'
+```
+
+- `Missing initData` — открыли не из Telegram.
+- `Invalid initData signature` — неверный токен в `.env`.
+- `initData expired` — закройте Web App и откройте снова.
+
+В nginx для API проксируйте заголовок (см. [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example)):
+
+```nginx
+proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
+```
+
 ## Telegram token неверный (HTTP 401 Unauthorized)
 
 Telegram отвечает 401 на `getUpdates` / `setMyCommands`, если `TELEGRAM_BOT_TOKEN`

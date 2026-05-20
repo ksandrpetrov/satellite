@@ -150,6 +150,7 @@
 <body>
   <h1>Календарь</h1>
   <h2 id="userHint">Подключите Mail.ru, чтобы Чайка собирала ваш день.</h2>
+  <div id="telegramGate" class="status" style="display:none"></div>
 
   <div class="tabs" role="tablist">
     <button data-tab="connection" class="active">Подключение</button>
@@ -233,6 +234,53 @@
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
 
+    function resolveInitData() {
+      if (tg && tg.initData) return tg.initData;
+      const hash = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+      const fromHash = hash.get('tgWebAppData');
+      if (fromHash) return fromHash;
+      return new URLSearchParams(location.search).get('tgWebAppData') || '';
+    }
+
+    async function waitForInitData(maxMs) {
+      let data = resolveInitData();
+      if (data || !tg) return data;
+      return new Promise((resolve) => {
+        const started = Date.now();
+        const tick = () => {
+          tg.ready();
+          data = resolveInitData();
+          if (data || Date.now() - started >= maxMs) resolve(data);
+          else setTimeout(tick, 80);
+        };
+        tick();
+      });
+    }
+
+    function telegramErrorMessage(code) {
+      if (code === 'no_init_data') {
+        return 'Откройте Web App только из Telegram-бота (кнопка «Подключить календарь»). В Safari/Chrome без Telegram авторизация не работает.';
+      }
+      if (code === 'bad_signature') {
+        return 'На сервере указан другой TELEGRAM_BOT_TOKEN, чем бот, из которого вы открыли Web App. Проверьте .env и перезапустите бота.';
+      }
+      if (code === 'expired') {
+        return 'Сессия устарела. Закройте Web App и откройте снова из бота.';
+      }
+      return 'Сессия Telegram недействительна. Закройте Web App и откройте снова из бота.';
+    }
+
+    (async function gateTelegramClient() {
+      const initData = await waitForInitData(500);
+      if (initData) return;
+      const gate = document.getElementById('telegramGate');
+      gate.textContent = telegramErrorMessage('no_init_data');
+      gate.className = 'status show err';
+      gate.style.display = 'block';
+      document.getElementById('connectBtn').disabled = true;
+      document.getElementById('checkBtn').disabled = true;
+    })();
+
     const tabs = document.querySelectorAll('.tabs button');
     const sections = {
       connection: document.getElementById('tab-connection'),
@@ -262,7 +310,13 @@
     }
 
     async function api(method, path, body) {
-      const initData = (tg && tg.initData) || '';
+      const initData = await waitForInitData(500);
+      if (!initData) {
+        const err = new Error(telegramErrorMessage('no_init_data'));
+        err.code = 'no_init_data';
+        err.status = 401;
+        throw err;
+      }
       const opts = {
         method,
         headers: {
@@ -308,7 +362,8 @@
           document.getElementById('userHint').textContent =
             'Доступ ещё не одобрен админом. Ожидайте сообщения от бота.';
         } else if (e.status === 401) {
-          badge('сессия истекла', 'err');
+          badge('нет сессии Telegram', 'err');
+          document.getElementById('userHint').textContent = telegramErrorMessage(e.code);
         } else {
           badge('ошибка проверки', 'err');
         }
@@ -335,8 +390,8 @@
         let msg = 'Не удалось подключить календарь.';
         if (e.code === 'AUTH_FAILED') {
           msg = 'Токен не подошёл. Проверьте email, пароль приложения (доступ «Календарь») и при необходимости CalDAV URL.';
-        } else if (e.code === 'unauthorized') {
-          msg = 'Сессия Telegram недействительна. Закройте Web App и откройте снова из бота (не из браузера).';
+        } else if (e.code === 'unauthorized' || e.code === 'no_init_data' || e.code === 'bad_signature' || e.code === 'expired') {
+          msg = telegramErrorMessage(e.code);
         } else if (e.code === 'not_approved') {
           msg = 'Доступ к боту ещё не одобрен админом.';
         } else if (e.message && e.message !== 'request_failed') {

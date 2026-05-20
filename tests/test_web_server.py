@@ -139,7 +139,7 @@ def test_status_without_init_data_returns_401(started_server):
     _server, _users, _calendar, base = started_server
     status, body = _http("GET", base + "/api/calendar/status")
     assert status == 401
-    assert body["error"] == "unauthorized"
+    assert body["error"] == "no_init_data"
 
 
 def test_status_for_pending_user_returns_403(started_server):
