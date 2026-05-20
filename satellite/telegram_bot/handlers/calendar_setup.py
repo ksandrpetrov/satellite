@@ -21,12 +21,9 @@ from ...users import UserStorePersistenceError
 from ..html_format import build_copy_text_button as _copy_btn
 from ..visual import (
     EFFECT_HEART,
-    SCENARIO_CONNECT,
     private_message_effect,
-    react_to_command,
     send_with_effect,
     set_default_menu_button_for_chat,
-    set_webapp_menu_button,
 )
 from .access import ensure_calendar_access
 from .context import HandlerContext, IncomingMessage
@@ -81,10 +78,7 @@ def handle_web_app_connect(ctx: HandlerContext, msg: IncomingMessage) -> None:
             credentials=ProviderCredentials(login=login, secret=app_password),
             caldav_url=caldav_url,
         )
-        react_to_command(ctx, msg, SCENARIO_CONNECT)
-        url = webapp_connect_url(ctx, msg.user_id)
-        if isinstance(url, str) and url.startswith("http"):
-            set_webapp_menu_button(ctx.telegram, msg.chat_id, url)
+        set_default_menu_button_for_chat(ctx.telegram, msg.chat_id)
         send_with_effect(
             ctx.telegram,
             msg.chat_id,

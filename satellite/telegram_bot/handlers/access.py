@@ -29,10 +29,9 @@ from ..api import TelegramError
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from ..visual import (
     EFFECT_HEART,
-    SCENARIO_START_APPROVED,
     private_message_effect,
-    react_to_command,
     send_with_effect,
+    set_default_menu_button_for_chat,
 )
 from .delivery import webapp_connect_url
 
@@ -111,7 +110,7 @@ def _handle_start_flow(ctx: HandlerContext, msg: IncomingMessage, status: str) -
     if not has_calendar:
         ctx.telegram.send_message(msg.chat_id, ACCESS_APPROVED_HTML, reply_markup=markup)
     else:
-        react_to_command(ctx, msg, SCENARIO_START_APPROVED)
+        set_default_menu_button_for_chat(ctx.telegram, msg.chat_id)
         ctx.telegram.send_message(msg.chat_id, BOT_WELCOME_HTML, reply_markup=markup)
 
 

@@ -26,7 +26,7 @@ from ..web.server import WebAppServer, WebAppServerConfig
 from .api import TelegramClient, TelegramError
 from .calendar_state import CalendarStateStore
 from .commands import setup_bot_identity
-from .concurrency import ChatLockManager, InflightTracker
+from .concurrency import ChatLockManager
 from .digest_state import DigestStateStore
 from .handlers import (
     HandlerContext,
@@ -38,7 +38,6 @@ from .handlers import (
     handle_message,
     is_update_callback,
     is_update_message,
-    recognize_message,
 )
 from .offset_store import OffsetStore
 from .offset_tracker import OffsetTracker
@@ -82,7 +81,6 @@ class TelegramBot:
             WeatherForecastClient() if settings.weather.enabled else None
         )
         self._chat_locks = ChatLockManager()
-        self._inflight = InflightTracker()
         self._digest_state = DigestStateStore()
         self._calendar_state = CalendarStateStore()
         self._executor = ThreadPoolExecutor(
@@ -307,20 +305,10 @@ class TelegramBot:
     ) -> None:
         msg = extract_message(update)
 
-        if self._is_duplicate_recognized_command(msg):
-            log.info(
-                "Drop duplicate inflight from chat=%s update_id=%s",
-                msg.chat_id,
-                msg.update_id,
-            )
-            self._offset_tracker.mark_completed(msg.update_id)
-            return
-
         try:
             future = self._executor.submit(self._run_message_handler, ctx, msg)
         except RuntimeError:
             log.info("Executor shut down; deferring update_id=%s", msg.update_id)
-            self._inflight.discard(msg.chat_id)
             return
 
         future.add_done_callback(
@@ -362,15 +350,7 @@ class TelegramBot:
             handle_callback_query(ctx, cb)
 
     def _on_message_done(self, msg: IncomingMessage) -> None:
-        self._inflight.discard(msg.chat_id)
         self._offset_tracker.mark_completed(msg.update_id)
-
-    def _is_duplicate_recognized_command(self, msg: IncomingMessage) -> bool:
-        if msg.chat_id is None or msg.text is None:
-            return False
-        if recognize_message(msg.text) is None:
-            return False
-        return not self._inflight.add_if_absent(msg.chat_id)
 
     def _sleep_interruptible(self, seconds: float) -> None:
         end = time.monotonic() + seconds

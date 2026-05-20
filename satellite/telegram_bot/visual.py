@@ -1,4 +1,4 @@
-"""Визуальные улучшения Telegram Bot API: typing, effects, реакции.
+"""Визуальные улучшения Telegram Bot API: typing, effects, кнопка «Меню».
 
 Используем только официальные методы Bot API (9.x–10.x). Всё best-effort:
 при отказе API (группа, старый клиент, нет прав) сценарий не ломается.
@@ -8,13 +8,10 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ..seagull import templates as seagull_templates
 from .api import TelegramClient, TelegramError
-
-if TYPE_CHECKING:
-    from .handlers.context import HandlerContext, IncomingMessage
 
 log = logging.getLogger(__name__)
 
@@ -27,31 +24,7 @@ EFFECT_THUMBS_UP = "5107584321108051014"  # 👍
 
 _MENU_BUTTON_COMMANDS: dict[str, str] = {"type": "commands"}
 
-# Сценарии для pick_scenario_reaction / react_to_command
-SCENARIO_PLAN = "plan"
-SCENARIO_UPCOMING = "upcoming"
-SCENARIO_INVITATIONS = "invitations"
-SCENARIO_MANAGE = "manage"
-SCENARIO_CREATE = "create"
-SCENARIO_START_APPROVED = "start_approved"
-SCENARIO_CONNECT = "connect"
-SCENARIO_SUBSCRIBE = "subscribe"
-SCENARIO_ADMIN_PENDING = "admin_pending"
-SCENARIO_INVITATION_RESPOND = "invitation_respond"
-SCENARIO_MANAGE_RESPOND = "manage_respond"
-
-REACTION_PARTY = "🎉"
-REACTION_FIRE = "🔥"
-REACTION_HEART = "❤️"
-REACTION_EYES = "👀"
-REACTION_WRITING_HAND = "✍️"
-REACTION_OK_HAND = "✅"
-REACTION_THINKING = "🤔"
-
 _CHAT_ACTION_REFRESH_SEC = 4.0
-
-# Реакции с is_big=True — финальные «праздничные» жесты.
-_BIG_REACTIONS = frozenset({REACTION_PARTY, REACTION_HEART, REACTION_FIRE, REACTION_OK_HAND})
 
 
 def is_private_chat(chat_id: int | None) -> bool:
@@ -85,75 +58,6 @@ def pick_upcoming_message_effect(text: str) -> str | None:
     if "Ближайшие события" in text and "нет" not in text.lower():
         return EFFECT_SPARKLES
     return None
-
-
-def pick_scenario_reaction(
-    scenario: str,
-    *,
-    plan_html: str | None = None,
-) -> str:
-    """Emoji для ``setMessageReaction`` по контексту команды."""
-    if scenario == SCENARIO_PLAN and plan_html:
-        if seagull_templates.MAIN_STORM in plan_html or seagull_templates.MAIN_DENSE in plan_html:
-            return REACTION_FIRE
-        return REACTION_PARTY
-    mapping = {
-        SCENARIO_UPCOMING: REACTION_EYES,
-        SCENARIO_INVITATIONS: REACTION_EYES,
-        SCENARIO_MANAGE: REACTION_EYES,
-        SCENARIO_CREATE: REACTION_WRITING_HAND,
-        SCENARIO_START_APPROVED: REACTION_HEART,
-        SCENARIO_CONNECT: REACTION_OK_HAND,
-        SCENARIO_SUBSCRIBE: REACTION_PARTY,
-        SCENARIO_ADMIN_PENDING: REACTION_EYES,
-        SCENARIO_INVITATION_RESPOND: REACTION_PARTY,
-        SCENARIO_MANAGE_RESPOND: REACTION_PARTY,
-    }
-    return mapping.get(scenario, REACTION_PARTY)
-
-
-def react_to_user_message(
-    telegram: TelegramClient,
-    chat_id: int | None,
-    message_id: int | None,
-    *,
-    emoji: str = "🎉",
-    is_big: bool | None = None,
-) -> None:
-    """Ставит реакцию на сообщение пользователя (команда / кнопка). Best-effort."""
-    if chat_id is None or message_id is None:
-        return
-    if not is_private_chat(chat_id):
-        return
-    big = is_big if is_big is not None else emoji in _BIG_REACTIONS
-    try:
-        telegram.set_message_reaction(
-            chat_id,
-            message_id,
-            reaction=[{"type": "emoji", "emoji": emoji}],
-            is_big=big,
-        )
-    except TelegramError as exc:
-        log.debug("setMessageReaction skipped: %s", exc)
-    except Exception as exc:  # noqa: BLE001
-        log.debug("setMessageReaction unexpected failure: %s", exc)
-
-
-def react_to_command(
-    ctx: HandlerContext,
-    msg: IncomingMessage,
-    scenario: str,
-    *,
-    plan_html: str | None = None,
-) -> None:
-    """Реакция на исходное сообщение пользователя по сценарию."""
-    emoji = pick_scenario_reaction(scenario, plan_html=plan_html)
-    react_to_user_message(
-        ctx.telegram,
-        msg.chat_id,
-        msg.message_id,
-        emoji=emoji,
-    )
 
 
 def send_with_effect(

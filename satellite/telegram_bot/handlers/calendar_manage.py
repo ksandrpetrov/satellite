@@ -54,13 +54,7 @@ from ...messages_ru import (
 )
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from ..visual import (
-    EFFECT_SPARKLES,
-    SCENARIO_MANAGE,
-    private_message_effect,
-    react_to_command,
-    send_with_effect,
-)
+from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .delivery import edit_callback_message, open_streaming_reply, safe_answer_callback
 
 log = logging.getLogger(__name__)
@@ -198,8 +192,6 @@ def handle_open_manage_events(ctx: HandlerContext, msg: IncomingMessage) -> None
         or msg.user_id is None
     ):
         return
-    react_to_command(ctx, msg, SCENARIO_MANAGE)
-
     stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
     stream.push(MANAGE_FETCH_STATUS)
 

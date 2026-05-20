@@ -18,12 +18,7 @@ from ...messages_ru import (
     PLAN_FETCH_STATUS_TEXT,
 )
 from .context import HandlerContext, IncomingMessage, PlanMode
-from ..visual import (
-    SCENARIO_PLAN,
-    is_private_chat,
-    pick_plan_message_effect,
-    react_to_command,
-)
+from ..visual import is_private_chat, pick_plan_message_effect
 from .delivery import open_streaming_reply
 
 log = logging.getLogger(__name__)
@@ -33,8 +28,6 @@ def handle_plan(ctx: HandlerContext, msg: IncomingMessage, mode: PlanMode) -> No
     """Сценарий: потоковый черновик → финальный ``sendMessage`` с дайджестом."""
     if msg.user_id is None or msg.chat_id is None:
         return
-
-    react_to_command(ctx, msg, SCENARIO_PLAN)
 
     stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
     stream.push(PLAN_FETCH_STATUS_TEXT[mode])
@@ -55,7 +48,6 @@ def handle_plan(ctx: HandlerContext, msg: IncomingMessage, mode: PlanMode) -> No
         stream.finish(ERR_DIGEST_BUILD_FAILED_TEXT)
         return
 
-    react_to_command(ctx, msg, SCENARIO_PLAN, plan_html=plan_text)
     effect = pick_plan_message_effect(plan_text) if is_private_chat(msg.chat_id) else None
     stream.finish(plan_text, message_effect_id=effect)
     log.info(

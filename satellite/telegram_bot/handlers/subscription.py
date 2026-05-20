@@ -13,13 +13,7 @@ from ...messages_ru import (
 from ...subscriptions import DIGEST_DAYS_WEEKDAYS
 from .access import effective_username
 from .context import HandlerContext, IncomingMessage, SubscriptionAction
-from ..visual import (
-    EFFECT_PARTY,
-    SCENARIO_SUBSCRIBE,
-    private_message_effect,
-    react_to_command,
-    send_with_effect,
-)
+from ..visual import EFFECT_PARTY, private_message_effect, send_with_effect
 from .delivery import send
 
 log = logging.getLogger(__name__)
@@ -33,7 +27,6 @@ def handle_subscription_action(
     username = effective_username(msg)
     if action == "subscribe":
         text = _do_subscribe(ctx, msg.chat_id, username, msg.user_id)
-        react_to_command(ctx, msg, SCENARIO_SUBSCRIBE)
         if msg.chat_id is not None and SUBSCRIBE_ALREADY_TEXT not in text:
             send_with_effect(
                 ctx.telegram,

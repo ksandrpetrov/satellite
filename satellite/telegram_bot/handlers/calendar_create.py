@@ -43,13 +43,7 @@ from ..calendar_state import (
 )
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from ..visual import (
-    EFFECT_PARTY,
-    SCENARIO_CREATE,
-    private_message_effect,
-    react_to_command,
-    send_with_effect,
-)
+from ..visual import EFFECT_PARTY, private_message_effect, send_with_effect
 from .delivery import edit_callback_message, safe_answer_callback, send
 
 log = logging.getLogger(__name__)
