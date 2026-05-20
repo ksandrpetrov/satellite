@@ -14,6 +14,7 @@ from .providers.base import (
     CalendarConnectionStatus,
     CalendarEventPayload,
     CalendarEventRef,
+    CalendarListEntry,
     CalendarNotConnectedError,
     CalendarProvider,
     CalendarProviderError,
@@ -63,6 +64,7 @@ class UserCalendarService:
             provider_id=record.calendar_provider or "",
             credentials=credentials,
             primary_calendar_url=record.primary_calendar_url,
+            enabled_calendar_urls=record.enabled_calendar_urls,
             login=credentials.login,
         )
         return ConnectedCalendar(record=record, context=context, provider=provider)
@@ -131,6 +133,13 @@ class UserCalendarService:
             error_code=None if status.connected else status.status,
         )
         return status
+
+    def list_calendars(self, telegram_user_id: int) -> list[CalendarListEntry]:
+        return self._run(
+            telegram_user_id,
+            operation="list",
+            fn=lambda cc: cc.provider.list_calendars(cc.context),
+        )
 
     def list_events(
         self,

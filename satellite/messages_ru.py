@@ -31,6 +31,7 @@ BUTTON_CONNECT_CALENDAR = "🔌 Подключить календарь"
 BUTTON_RECONNECT_CALENDAR = "🔄 Переподключить календарь"
 BUTTON_DISCONNECT_CALENDAR = "🗑 Отключить календарь"
 BUTTON_CHECK_CALENDAR = "✅ Проверить подключение"
+BUTTON_CALENDAR_SOURCES = "📚 Календари"
 
 BUTTON_TO_PLAN_MODE: dict[str, str] = {
     BUTTON_TODAY: "today",
@@ -77,6 +78,7 @@ _NORMALIZED_BUTTON_CONNECT = normalize_button_text(BUTTON_CONNECT_CALENDAR)
 _NORMALIZED_BUTTON_RECONNECT = normalize_button_text(BUTTON_RECONNECT_CALENDAR)
 _NORMALIZED_BUTTON_DISCONNECT = normalize_button_text(BUTTON_DISCONNECT_CALENDAR)
 _NORMALIZED_BUTTON_CHECK = normalize_button_text(BUTTON_CHECK_CALENDAR)
+_NORMALIZED_BUTTON_CALENDAR_SOURCES = normalize_button_text(BUTTON_CALENDAR_SOURCES)
 
 
 def button_text_to_mode(text: str | None) -> str | None:
@@ -134,6 +136,12 @@ def button_text_is_check_calendar(text: str | None) -> bool:
     return normalize_button_text(text) == _NORMALIZED_BUTTON_CHECK
 
 
+def button_text_is_calendar_sources(text: str | None) -> bool:
+    if not text:
+        return False
+    return normalize_button_text(text) == _NORMALIZED_BUTTON_CALENDAR_SOURCES
+
+
 BOT_INPUT_PLACEHOLDER = "Выбери день, чтобы посмотреть встречи"
 
 # Markup, который вычищает старую нижнюю Reply-клавиатуру у пользователей, у
@@ -149,7 +157,8 @@ BOT_WELCOME_HTML = (
     "📅 /today — встречи на сегодня\n"
     "🗓 /upcoming — ближайшие события\n"
     "➕ /create — создать событие\n"
-    "⚙️ /settings — настройки дайджеста\n\n"
+    "⚙️ /settings — настройки дайджеста\n"
+    "📚 /calendars — какие календари показывать в плане\n\n"
     "🍕 Чтобы чайка видела обед, добавь в календарь встречу с эмоджи 🍕 и словом «обед»."
 )
 
@@ -162,13 +171,14 @@ BOT_HELP_HTML = (
     "🗓 /upcoming — ближайшие события\n"
     "➕ /create — создать событие\n"
     "⚙️ /settings — дайджест\n"
+    "📚 /calendars — выбор календарей для плана\n"
     "🔌 /connect — подключить календарь\n\n"
     "Короткие: <code>td</code>, <code>tm</code>, <code>dat</code>."
 )
 
 BOT_KEYBOARD_HINT = (
     "🪶 Не понял команду.\n"
-    "Открой меню или используй /today, /upcoming, /create, /settings, /connect, /help"
+    "Открой меню или используй /today, /upcoming, /create, /settings, /calendars, /connect, /help"
 )
 
 # --- Access control ---
@@ -270,6 +280,54 @@ CB_CREATE_CONFIRM = "create:confirm"
 CB_CREATE_CANCEL = "create:cancel"
 CB_MANAGE_DELETE_PREFIX = "manage:del:"
 
+# --- выбор календарей для плана --------------------------------------------
+
+CB_CAL_SOURCES = "cal_sources"
+CB_CAL_TOGGLE_PREFIX = "cal:toggle:"
+CB_CAL_CLOSE = "cal:close"
+
+CALENDAR_SOURCES_SINGLE_HTML = (
+    "📚 В аккаунте один календарь — отдельно выбирать нечего."
+)
+CALENDAR_SOURCES_LAST_ENABLED_TEXT = "Нужен хотя бы один календарь для плана."
+CALENDAR_SOURCES_LOAD_FAIL_HTML = (
+    "⚠️ Не удалось загрузить список календарей. Попробуйте позже."
+)
+CALENDAR_SOURCES_CLOSED_TEXT = "Настройка календарей закрыта."
+
+
+def calendar_sources_screen_text(*, lines: list[str]) -> str:
+    body = "\n".join(lines) if lines else "—"
+    return (
+        "📚 Какие календари учитывать в плане, дайджесте и «Ближайших»?\n\n"
+        f"{body}\n\n"
+        "Нажмите на строку, чтобы включить или выключить."
+    )
+
+
+def calendar_sources_toggle_notice(*, enabled: bool, name: str) -> str:
+    state = "включён" if enabled else "выключен"
+    return f"«{name}» {state}"
+
+
+def build_calendar_sources_keyboard(
+    *,
+    calendars: list[tuple[str, str]],
+    enabled_urls: set[str],
+) -> dict:
+    def _norm(url: str) -> str:
+        return url.strip().rstrip("/")
+
+    rows: list[list[dict[str, str]]] = []
+    for idx, (name, url) in enumerate(calendars):
+        mark = "✅" if _norm(url) in enabled_urls else "⬜️"
+        label = f"{mark} {name}"
+        if len(label) > 60:
+            label = label[:57] + "…"
+        rows.append([{"text": label, "callback_data": f"{CB_CAL_TOGGLE_PREFIX}{idx}"}])
+    rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_CAL_CLOSE}])
+    return {"inline_keyboard": rows}
+
 def build_webapp_connect_keyboard(webapp_url: str, *, reconnect: bool = False) -> dict:
     label = BUTTON_RECONNECT_CALENDAR if reconnect else BUTTON_CONNECT_CALENDAR
     return {
@@ -290,6 +348,7 @@ def build_approved_main_keyboard(*, webapp_url: str, has_calendar: bool) -> dict
     )
     rows.append([{"text": connect_label, "web_app": {"url": webapp_url}}])
     if has_calendar:
+        rows.append([{"text": BUTTON_CALENDAR_SOURCES}])
         rows.append(
             [
                 {"text": BUTTON_CHECK_CALENDAR},

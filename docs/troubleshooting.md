@@ -34,8 +34,9 @@ WEBAPP_BASE_URL=...
 запятую. `@username` не подходит: бот проигнорирует его и упадёт с
 `ADMIN_TELEGRAM_IDS: нет ни одного числового id`. Свой id: [@userinfobot](https://t.me/userinfobot).
 
-**TELEGRAM_BOT_TOKEN** — полный токен от @BotFather (`123456789:AAH...`). Значения
-`123456:your-bot-token` из `.env.example` дают HTTP 401 Unauthorized.
+**TELEGRAM_BOT_TOKEN** — полный токен от @BotFather (`123456789:AAH...`). Заглушки
+`123456:your-bot-token` (и подстрока `your-bot-token`) дают `Invalid .env` при старте;
+`replace-me` из `.env.example` — замените на реальный токен, иначе `getMe` вернёт 401.
 
 **WEBAPP_BASE_URL** — реальный HTTPS, не `https://your-domain.example/connect` и не путь
 к файлу (`satellite/web/static/connect.html`). Для production на VPS:
@@ -233,7 +234,8 @@ WEATHER_LOCATION=...
 Пересоздайте venv или:
 
 ```bash
-PYTHONPATH=venv/lib/python3.9/site-packages python3 -m pytest
+# подставьте версию Python из venv (в CI — 3.11)
+PYTHONPATH=venv/lib/python3.11/site-packages python3 -m pytest
 ```
 
 ## compileall падает на `._*.py`

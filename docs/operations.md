@@ -45,6 +45,17 @@ tokens](https://github.com/settings/tokens) (classic-токен с област�
 > В команде ниже **замените `ghp_xxxxxxxx` на ваш реальный токен** (`ghp_…` или
 > `github_pat_…`). Не вставляйте плейсхолдер дословно.
 
+**Короткий путь** — [`scripts/bootstrap-server.sh`](../scripts/bootstrap-server.sh)
+(apt + clone в `/opt/satellite` + `install-server.sh`):
+
+```bash
+sudo GITHUB_TOKEN=ghp_xxxxxxxx bash scripts/bootstrap-server.sh
+```
+
+Запускайте из клона репозитория на сервере или после ручного `git clone` в
+`/opt/satellite`. Для приватного repo без предварительного клона используйте
+inline-команду ниже.
+
 Bootstrap-команда (клонирует репо во временный каталог, дальше всё делает
 `install-server.sh`; временный каталог удаляется автоматически по `trap`):
 
@@ -412,6 +423,18 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://cassinilab.ru/healthz
 ```
 
 Оба URL должны вернуть **200**, не 404. После этого повторите открытие Web App в Telegram.
+
+Если nginx не проксирует `X-Telegram-Init-Data`, актуальный клиент и сервер всё равно
+передают `initData` в query (`?initData=...`) — см. [troubleshooting.md](troubleshooting.md#web-app-сессия-telegram-недействительна--unauthorized).
+
+На чистом VPS вместо длинной bootstrap-команды из README можно:
+
+```bash
+sudo GITHUB_TOKEN=ghp_xxx bash scripts/bootstrap-server.sh
+```
+
+(скрипт из клона репозитория или после `curl` не сработает для приватного repo —
+сначала clone с PAT, затем `bash /opt/satellite/scripts/bootstrap-server.sh`).
 
 ## Runtime State
 

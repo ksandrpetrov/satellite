@@ -35,11 +35,18 @@ class CalendarNotConnectedError(CalendarProviderError):
 
 
 @dataclass(frozen=True)
+class CalendarListEntry:
+    name: str
+    url: str
+
+
+@dataclass(frozen=True)
 class UserCalendarContext:
     user_id: int
     provider_id: str
     credentials: ProviderCredentials
     primary_calendar_url: str | None
+    enabled_calendar_urls: tuple[str, ...]
     login: str
 
 
@@ -83,6 +90,8 @@ class CalendarProvider(Protocol):
     def get_connection_status(
         self, context: UserCalendarContext
     ) -> CalendarConnectionStatus: ...
+
+    def list_calendars(self, context: UserCalendarContext) -> list[CalendarListEntry]: ...
 
     def list_events(
         self,

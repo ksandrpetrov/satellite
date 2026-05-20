@@ -19,11 +19,15 @@ cp .env.example .env
 ## Обязательные переменные для production-бота
 
 ```env
-TELEGRAM_BOT_TOKEN=123456:your-bot-token
+TELEGRAM_BOT_TOKEN=replace-me
 TOKEN_ENCRYPTION_KEY=replace-with-fernet-key
 ADMIN_TELEGRAM_IDS=111111111
 WEBAPP_BASE_URL=https://cassinilab.ru/connect
 ```
+
+После `scripts/install.sh` или `make env` в `.env` уже будет сгенерированный
+`TOKEN_ENCRYPTION_KEY`; `TELEGRAM_BOT_TOKEN` и `WEBAPP_BASE_URL` всё равно нужно
+заполнить вручную.
 
 - `TELEGRAM_BOT_TOKEN` — токен от [@BotFather](https://t.me/BotFather).
 - `TOKEN_ENCRYPTION_KEY` — симметричный ключ Fernet для шифрования
@@ -72,10 +76,23 @@ Traefik не достучится до Web App внутри сети Docker. Pla
 
 Production-бот (`run_bot` → `load_settings` с `require_*`) перед long-polling:
 
-1. Отклоняет заглушки из `.env.example`: `123456:your-bot-token`,
-   `https://your-domain.example/connect`, пустой `TOKEN_ENCRYPTION_KEY`.
-2. Требует хотя бы один **числовой** id в `ADMIN_TELEGRAM_IDS` (не `@username`).
-3. Вызывает Telegram `getMe` — при неверном токене процесс падает с понятным
+1. Отклоняет пустой `TOKEN_ENCRYPTION_KEY` и заглушки токена/Web App:
+   `123456:your-bot-token` (и любой токен с подстрокой `your-bot-token`),
+   `https://your-domain.example/connect`, `https://satellite.example.com/connect`.
+   `TELEGRAM_BOT_TOKEN=replace-me` из `.env.example` **не** попадает в этот список,
+   но `getMe` упадёт при старте — замените на реальный токен от @BotFather.
+   Строка `replace-with-fernet-key` тоже проходит проверку длины, но шифрование
+   credentials не заработает — используйте ключ из `install.sh` / `make env`.
+2. Проверяет `WEBAPP_BASE_URL` функцией `is_valid_webapp_base_url` в
+   `satellite/config.py`:
+   - только `https://`;
+   - не путь к файлу в репозитории (`connect.html`, `/static/`, `satellite/web/`).
+   - типичная ошибка: `satellite/web/static/connect.html` — бот допишет `/connect`,
+     Telegram отклонит URL (`Only HTTPS links are allowed`).
+   - эталон production: `https://cassinilab.ru/connect` (домен из
+     `deploy/ansible/group_vars/all.yml`).
+3. Требует хотя бы один **числовой** id в `ADMIN_TELEGRAM_IDS` (не `@username`).
+4. Вызывает Telegram `getMe` — при неверном токене процесс падает с понятным
    текстом (сеть на сервере должна быть доступна).
 
 Сообщения вида `Invalid .env:` или `TELEGRAM_BOT_TOKEN: Telegram отклонил токен`

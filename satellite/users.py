@@ -16,7 +16,9 @@ JSON-store ``logs/users.json`` хранит per-user статус доступа
   (только зашифрованный blob, никаких сырых токенов);
 - ``calendar_status`` — последнее известное состояние подключения;
 - ``primary_calendar_url`` — служебный URL календаря (display name НЕ храним —
-  это PII по событиям пользователя).
+  это PII по событиям пользователя);
+- ``enabled_calendar_urls`` — какие календари учитывать в плане/дайджесте
+  (пусто = только ``primary_calendar_url``).
 
 Запись на диск — атомарная (``tmp + fsync + os.replace``) и потокобезопасная.
 """
@@ -94,6 +96,7 @@ class UserRecord:
     encrypted_credentials: str | None = None
     calendar_status: str = CALENDAR_DISCONNECTED
     primary_calendar_url: str | None = None
+    enabled_calendar_urls: tuple[str, ...] = ()
     calendar_connected_at: str | None = None
     calendar_last_checked_at: str | None = None
     created_at: str = ""
@@ -270,6 +273,7 @@ class UserStore:
                 encrypted_credentials=None,
                 calendar_status=CALENDAR_DISCONNECTED,
                 primary_calendar_url=None,
+                enabled_calendar_urls=(),
                 resolved_by_admin_id=admin_telegram_id,
                 access_resolved_at=now_iso,
                 updated_at=now_iso,
@@ -300,9 +304,33 @@ class UserStore:
                 calendar_provider=provider.strip(),
                 encrypted_credentials=encrypted_credentials,
                 primary_calendar_url=(primary_calendar_url or "").strip() or None,
+                enabled_calendar_urls=(),
                 calendar_status=CALENDAR_CONNECTED,
                 calendar_connected_at=existing.calendar_connected_at or now_iso,
                 calendar_last_checked_at=now_iso,
+                updated_at=now_iso,
+            )
+            self._items[telegram_user_id] = updated
+            self._save_locked()
+            return updated
+
+    def set_enabled_calendar_urls(
+        self,
+        telegram_user_id: int,
+        *,
+        calendar_urls: Iterable[str],
+    ) -> UserRecord:
+        normalized = _normalize_calendar_url_list(calendar_urls)
+        if not normalized:
+            raise ValueError("At least one calendar URL is required")
+        now_iso = self._now_iso()
+        with self._lock:
+            existing = self._items.get(telegram_user_id)
+            if existing is None:
+                raise KeyError(telegram_user_id)
+            updated = replace(
+                existing,
+                enabled_calendar_urls=normalized,
                 updated_at=now_iso,
             )
             self._items[telegram_user_id] = updated
@@ -347,6 +375,7 @@ class UserStore:
                 calendar_provider=None,
                 encrypted_credentials=None,
                 primary_calendar_url=None,
+                enabled_calendar_urls=(),
                 calendar_status=CALENDAR_DISCONNECTED,
                 calendar_connected_at=None,
                 calendar_last_checked_at=now_iso,
@@ -480,6 +509,7 @@ def _record_to_json(rec: UserRecord) -> dict[str, object | None]:
         "encrypted_credentials": rec.encrypted_credentials,
         "calendar_status": rec.calendar_status,
         "primary_calendar_url": rec.primary_calendar_url,
+        "enabled_calendar_urls": list(rec.enabled_calendar_urls),
         "calendar_connected_at": rec.calendar_connected_at,
         "calendar_last_checked_at": rec.calendar_last_checked_at,
         "created_at": rec.created_at,
@@ -533,11 +563,38 @@ def _record_from_json(telegram_user_id: int, raw: dict) -> UserRecord:
         encrypted_credentials=(raw.get("encrypted_credentials") or None),
         calendar_status=calendar_status,
         primary_calendar_url=(raw.get("primary_calendar_url") or None),
+        enabled_calendar_urls=_parse_enabled_calendar_urls(raw.get("enabled_calendar_urls")),
         calendar_connected_at=raw.get("calendar_connected_at") or None,
         calendar_last_checked_at=raw.get("calendar_last_checked_at") or None,
         created_at=str(raw.get("created_at") or ""),
         updated_at=str(raw.get("updated_at") or ""),
     )
+
+
+def _normalize_calendar_url(url: str) -> str:
+    return (url or "").strip().rstrip("/")
+
+
+def _normalize_calendar_url_list(urls: Iterable[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in urls:
+        normalized = _normalize_calendar_url(str(raw))
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        out.append(normalized)
+    return tuple(out)
+
+
+def _parse_enabled_calendar_urls(raw: object) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        return _normalize_calendar_url_list([raw])
+    if isinstance(raw, (list, tuple)):
+        return _normalize_calendar_url_list(str(item) for item in raw)
+    return ()
 
 
 def parse_admin_ids(raw: str | None) -> tuple[int, ...]:

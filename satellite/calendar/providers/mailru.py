@@ -7,10 +7,12 @@ from datetime import date, tzinfo
 
 from ..caldav_client import CalDAVError, CalDAVService
 from ...security.token_vault import ProviderCredentials
+from ..selection import effective_enabled_calendar_urls_from_parts
 from .base import (
     CalendarConnectionStatus,
     CalendarEventPayload,
     CalendarEventRef,
+    CalendarListEntry,
     CalendarProviderError,
     Event,
     UserCalendarContext,
@@ -55,6 +57,17 @@ class MailruCalendarProvider:
             log.exception("Unexpected Mail.ru validation error")
             return False, None, "CALENDAR_ERROR"
 
+    def list_calendars(self, context: UserCalendarContext) -> list[CalendarListEntry]:
+        service = self._service(context.credentials)
+        try:
+            handles, _endpoint = service.list_calendars()
+        except CalDAVError as exc:
+            raise CalendarProviderError(
+                "Календарь временно недоступен. Попробуйте позже.",
+                error_code="CALDAV_UNAVAILABLE",
+            ) from exc
+        return [CalendarListEntry(name=handle.name, url=handle.url) for handle in handles]
+
     def get_connection_status(
         self, context: UserCalendarContext
     ) -> CalendarConnectionStatus:
@@ -75,8 +88,11 @@ class MailruCalendarProvider:
         tz: tzinfo,
     ) -> list[Event]:
         service = self._service(context.credentials)
-        calendar_url = context.primary_calendar_url
-        if not calendar_url:
+        calendar_urls = effective_enabled_calendar_urls_from_parts(
+            enabled_calendar_urls=context.enabled_calendar_urls,
+            primary_calendar_url=context.primary_calendar_url,
+        )
+        if not calendar_urls:
             raise CalendarProviderError(
                 "Календарь не настроен.", error_code="NO_CALENDAR"
             )
@@ -85,7 +101,7 @@ class MailruCalendarProvider:
                 start_date,
                 end_date,
                 tz=tz,
-                calendar_url=calendar_url,
+                calendar_urls=calendar_urls,
             )
         except CalDAVError as exc:
             raise CalendarProviderError(

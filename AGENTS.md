@@ -43,7 +43,10 @@ satellite/
     caldav_client.py       # Mail.ru CalDAV (per-user login/password)
     events.py, stats.py, time_utils.py, ical_parser.py, constants.py
 
-  web/                     # Telegram Web App: initData, HTTP server, connect.html
+  web/
+    init_data.py           # HMAC validate_init_data
+    server.py              # ThreadingHTTPServer, /connect, /api/calendar/*
+    static/connect.html    # SPA
 
   seagull/               # digest, rules, render, templates
   weather/               # client, analyzer, templates, models
@@ -74,6 +77,7 @@ satellite/
 | Финальный рендер | [`seagull/render.py`](satellite/seagull/render.py), [`seagull/rules.py`](satellite/seagull/rules.py) |
 | Команду / кнопку | [`handlers/routing.py`](satellite/telegram_bot/handlers/routing.py) + [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py) |
 | Настройки дайджеста | [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) |
+| Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users.py`](satellite/users.py) |
 | Расписание дайджеста | [`scheduler.py`](satellite/scheduler.py) + [`subscriptions.py`](satellite/subscriptions.py) |
 | Доступ, заявки, календарь пользователя | [`users.py`](satellite/users.py), шифрование — [`security/token_vault.py`](satellite/security/token_vault.py) |
 | Web App connect | handlers + HTTP в [`bot.py`](satellite/telegram_bot/bot.py); env — [`config.py`](satellite/config.py) |
@@ -144,12 +148,28 @@ CI: [`.github/workflows/test.yml`](.github/workflows/test.yml). Образ в GH
 [`.github/workflows/release-docker.yml`](.github/workflows/release-docker.yml) (на GitHub Release).
 Деплой Docker: `make deploy` → [`deploy/README.md`](deploy/README.md).
 
+## Скрипты
+
+| Скрипт | Назначение |
+|--------|------------|
+| [`scripts/install.sh`](scripts/install.sh) | venv, зависимости, `.env` + Fernet, `logs/` |
+| [`scripts/install-server.sh`](scripts/install-server.sh) | systemd на VPS (`/opt/satellite`) |
+| [`scripts/bootstrap-server.sh`](scripts/bootstrap-server.sh) | apt + clone + `install-server.sh` на чистом хосте |
+| [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) | CalDAV с сервера без Telegram (см. troubleshooting) |
+
 ## Web App
 
 [`satellite/web/server.py`](satellite/web/server.py) — встроенный
 `ThreadingHTTPServer`, поднимаемый из [`bot.py`](satellite/telegram_bot/bot.py).
+Валидация сессии — [`init_data.py`](satellite/web/init_data.py).
+
 Все запросы под `/api/calendar/*` авторизуются по Telegram `initData`
-(HMAC) и фильтруются по `UserStore.status == approved`.
+(HMAC) и фильтруются по `UserStore.status == approved`. `initData` берётся из
+заголовка `X-Telegram-Init-Data`, JSON-тела или query `?initData=...`
+(см. `_extract_init_data` в `server.py`).
+
+`WEBAPP_BASE_URL` — только публичный HTTPS (проверка `is_valid_webapp_base_url`
+в [`config.py`](satellite/config.py)); не путь к `connect.html` в репозитории.
 
 Endpoint-ы:
 

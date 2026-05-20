@@ -9,6 +9,7 @@ from .base import (
     CalendarConnectionStatus,
     CalendarEventPayload,
     CalendarEventRef,
+    CalendarListEntry,
     ProviderNotImplementedError,
     UserCalendarContext,
 )
@@ -30,6 +31,9 @@ class YandexCalendarProvider:
     def get_connection_status(
         self, context: UserCalendarContext
     ) -> CalendarConnectionStatus:
+        raise ProviderNotImplementedError(self.provider_id)
+
+    def list_calendars(self, context: UserCalendarContext) -> list[CalendarListEntry]:
         raise ProviderNotImplementedError(self.provider_id)
 
     def list_events(

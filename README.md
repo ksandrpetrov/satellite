@@ -98,7 +98,8 @@ GITHUB_TOKEN="${GITHUB_TOKEN}" bash "$tmp/scripts/install-server.sh"'
 Замените `ghp_xxxxxxxx` на реальный PAT — для приватного repo он обязателен,
 пароль GitHub по HTTPS не работает (`Password authentication is not supported`).
 Bootstrap клонирует репо во временный каталог, а сам `install-server.sh` уже
-кладёт код в `/opt/satellite` — это безопасно повторять при ошибках.
+кладёт код в `/opt/satellite` — это безопасно повторять при ошибках. Короче:
+`sudo GITHUB_TOKEN=ghp_xxx bash scripts/bootstrap-server.sh` (из клона репозитория).
 
 Подробности и troubleshooting: [docs/operations.md](docs/operations.md#запуск-на-сервере).
 
@@ -136,11 +137,17 @@ make deploy
 Минимум для interactive-бота:
 
 ```env
-TELEGRAM_BOT_TOKEN=123456:your-bot-token
-TOKEN_ENCRYPTION_KEY=<fernet-key>
+TELEGRAM_BOT_TOKEN=<токен от @BotFather>
+TOKEN_ENCRYPTION_KEY=<fernet-key>   # install.sh / make env сгенерируют
 ADMIN_TELEGRAM_IDS=111111111
 WEBAPP_BASE_URL=https://cassinilab.ru/connect
 ```
+
+При старте `Invalid .env` дают `123456:your-bot-token`, примеры `your-domain.example` /
+`satellite.example.com` и путь к `connect.html` в репозитории. `replace-me` и
+`replace-with-fernet-key` из `.env.example` в этот список не входят — замените на
+реальный токен и ключ из `install.sh`, иначе упадёт `getMe` или шифрование credentials.
+См. [configuration.md](docs/configuration.md#валидация-при-старте).
 
 Полная карта переменных: [docs/configuration.md](docs/configuration.md).
 
@@ -160,7 +167,11 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 - [Docker-деплой (Ansible)](deploy/README.md)
 - [Тестирование](docs/testing.md)
 - [Troubleshooting](docs/troubleshooting.md)
-- [AGENTS.md](AGENTS.md) — карта модулей и инварианты для правок кода и AI-агентов
+- [AGENTS.md](AGENTS.md) — карта модулей, инварианты и скрипты для правок кода и AI-агентов
+
+Скрипты установки и диагностики: `scripts/install.sh`, `install-server.sh`,
+`bootstrap-server.sh`, `diagnose_caldav.py` — см. [AGENTS.md](AGENTS.md#скрипты)
+и [operations.md](docs/operations.md#запуск-на-сервере).
 
 CI: [test.yml](.github/workflows/test.yml) (Python 3.11, `pytest`, compile-check);
 образ в GHCR: [release-docker.yml](.github/workflows/release-docker.yml) (на GitHub Release).
@@ -180,7 +191,8 @@ CI: [test.yml](.github/workflows/test.yml) (Python 3.11, `pytest`, compile-check
 ## Короткая диагностика
 
 - Бот не стартует: проверьте `TELEGRAM_BOT_TOKEN`, `TOKEN_ENCRYPTION_KEY`,
-  `ADMIN_TELEGRAM_IDS`, `WEBAPP_BASE_URL`.
+  `ADMIN_TELEGRAM_IDS`, `WEBAPP_BASE_URL` (только HTTPS, например
+  `https://cassinilab.ru/connect`, не путь к `connect.html` в репозитории).
 - Команды не работают: пользователь должен быть `approved` и подключить календарь
   (`calendar_status=connected` в `logs/users.json`).
 - Нет погоды: `WEATHER_ENABLED=true` и координаты.

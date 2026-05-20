@@ -188,8 +188,19 @@ resolve_target_date(DIGEST_MODE, today in user timezone)
 
 ## Web App HTTP
 
-`satellite/web/server.py` — `ThreadingHTTPServer` в фоновом потоке бота.
-Авторизация: Telegram `initData` (HMAC) + `UserStore.status == approved`.
+- `satellite/web/server.py` — `ThreadingHTTPServer` в фоновом потоке бота.
+- `satellite/web/init_data.py` — HMAC-валидация Telegram `initData`
+  (`InitDataError` с кодами `no_init_data`, `bad_signature`, `expired`).
+
+Авторизация API: `initData` + `UserStore.status == approved`. Сервер принимает
+`initData` в порядке приоритета:
+
+1. заголовок `X-Telegram-Init-Data` (рекомендуется в nginx);
+2. поле `initData` в JSON-теле POST;
+3. query-параметр `?initData=...` (fallback, если прокси режет кастомные headers).
+
+Клиент [`connect.html`](../satellite/web/static/connect.html) дублирует `initData`
+в заголовок, тело и query для всех API-запросов.
 
 | Метод/путь | Назначение |
 |------------|------------|
@@ -201,6 +212,9 @@ resolve_target_date(DIGEST_MODE, today in user timezone)
 | `GET /api/calendar/events?from=&to=` | Список событий |
 | `POST /api/calendar/events` | Создать событие |
 | `DELETE /api/calendar/events/{uid}?url=` | Удалить событие |
+
+`POST /api/calendar/connect` принимает `provider=mailru` (production);
+`yandex` в API возвращает `PROVIDER_NOT_IMPLEMENTED` (backend готов, UI disabled).
 
 HTTPS — задача reverse proxy (Traefik в Docker, nginx/Caddy при systemd).
 Traefik/Docker проксирует `/connect` **и** `/api/calendar/*`.

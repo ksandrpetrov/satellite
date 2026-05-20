@@ -36,7 +36,8 @@ python -m pytest
 можно использовать системный Python с пакетами из venv:
 
 ```bash
-PYTHONPATH=venv/lib/python3.9/site-packages python3 -m pytest
+# подставьте версию Python из venv (в CI — 3.11)
+PYTHONPATH=venv/lib/python3.11/site-packages python3 -m pytest
 ```
 
 ## Быстрые целевые прогоны
@@ -118,15 +119,18 @@ Autouse-фикстура обнуляет `TYPING_DISPLAY_SECONDS`, чтобы �
 
 - `DIGEST_MODE` из `.env` поверх env процесса;
 - погода из `WEATHER_LOCATION` JSON;
+- `is_valid_webapp_base_url` — отклонение путей `connect.html` / `/static/`;
+- `load_settings(require_webapp=True)` — заглушки и невалидный `WEBAPP_BASE_URL`;
 - тесты `parse_user_calendar_map` — legacy, удалятся вместе с миграцией handlers.
 
-**Scheduler, settings, Telegram, weather, Web App** — см. соответствующие `test_*.py`.
+**Scheduler, settings, Telegram, weather** — см. соответствующие `test_*.py`.
 
 **Web App** (`test_web_server.py`, `test_init_data.py`):
 
 - `GET /healthz` без auth;
 - gate `approved` для `/api/calendar/*`;
-- HMAC-валидация `initData`;
+- HMAC-валидация `initData` (коды ошибок `no_init_data`, `bad_signature`, `expired`);
+- `initData` из заголовка, JSON-тела и query;
 - connect/disconnect и CRUD событий (mock `UserCalendarService`).
 
 ## Static Checks

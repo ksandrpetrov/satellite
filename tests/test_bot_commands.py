@@ -27,6 +27,7 @@ EXPECTED_COMMANDS = (
     "upcoming",
     "create",
     "connect",
+    "calendars",
     "settings",
     "help",
 )

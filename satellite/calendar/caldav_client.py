@@ -248,14 +248,20 @@ class CalDAVService:
         *,
         tz: tzinfo,
         calendar_url: str | None = None,
+        calendar_urls: Sequence[str] | None = None,
     ) -> list[Event]:
-        """События в диапазоне дат включительно для одного календаря."""
+        """События в диапазоне дат включительно для одного или нескольких календарей."""
         if end_date < start_date:
             return []
         result = self._ensure_discovery()
-        handles = self._filter_handles(result.calendars, calendar_url)
-        if calendar_url and not handles:
-            raise CalDAVError("Primary calendar not found for user")
+        urls = (
+            list(calendar_urls)
+            if calendar_urls is not None
+            else ([calendar_url] if calendar_url else None)
+        )
+        handles = self._filter_handles_by_urls(result.calendars, urls)
+        if urls and not handles:
+            raise CalDAVError("Selected calendar(s) not found for user")
         range_start, _ = day_bounds(start_date, tz)
         _, range_end = day_bounds(end_date, tz)
         out: list[Event] = []
@@ -468,13 +474,22 @@ class CalDAVService:
             )
         return out
 
+    def _filter_handles_by_urls(
+        self, handles: Sequence[CalendarHandle], calendar_urls: Sequence[str] | None
+    ) -> list[CalendarHandle]:
+        if not calendar_urls:
+            return list(handles)
+        targets = {_normalize_calendar_url(url) for url in calendar_urls if url}
+        if not targets:
+            return list(handles)
+        return [h for h in handles if _normalize_calendar_url(h.url) in targets]
+
     def _filter_handles(
         self, handles: Sequence[CalendarHandle], calendar_url: str | None
     ) -> list[CalendarHandle]:
         if not calendar_url:
             return list(handles)
-        target = calendar_url.rstrip("/")
-        matched = [h for h in handles if h.url.rstrip("/") == target]
+        matched = self._filter_handles_by_urls(handles, [calendar_url])
         return matched or list(handles)
 
     def _require_handle(self, calendar_url: str) -> CalendarHandle:
@@ -579,6 +594,10 @@ class CalDAVService:
         with self._partstat_cache_lock:
             self._partstat_cache[event_url] = result
         return result
+
+
+def _normalize_calendar_url(url: str) -> str:
+    return (url or "").strip().rstrip("/")
 
 
 def _redact_url(url: str) -> str:

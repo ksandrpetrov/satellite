@@ -174,3 +174,15 @@ warning в лог.
 | Web App connect | `approved` (до первого успешного connect) |
 
 Подробнее о полях store: [configuration.md](configuration.md#пользователи-и-доступ-logsusersjson).
+
+## Web App (подключение календаря)
+
+- Открывать **только из чата с ботом** (кнопка «🔌 Подключить календарь» или Menu Button
+  типа **Web App** в BotFather), не закладкой в Safari/Chrome.
+- URL в BotFather и в `.env` (`WEBAPP_BASE_URL`) должны совпадать, например
+  `https://cassinilab.ru/connect`.
+- В форме: email (полный `@vk.team` для Mailroom), app password с правом «Календарь»,
+  CalDAV URL — пусто или principal URL с Mac.
+- Ошибки: «Токен не подошёл» — CalDAV; «Сессия Telegram…» / `unauthorized` — initData
+  (не из бота, другой токен в `.env`, nginx без прокси API). См.
+  [troubleshooting.md](troubleshooting.md).
