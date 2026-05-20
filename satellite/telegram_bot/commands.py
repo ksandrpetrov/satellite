@@ -48,6 +48,7 @@ def setup_bot_commands(
     telegram: TelegramClient,
     *,
     commands: Iterable[tuple[str, str]] = BOT_COMMANDS,
+    menu_webapp_url: str = "",
 ) -> bool:
     """Регистрирует команды бота и включает кнопку «Меню».
 
@@ -69,8 +70,17 @@ def setup_bot_commands(
         log.exception("Unexpected error while calling setMyCommands")
 
     try:
-        telegram.set_chat_menu_button(menu_button={"type": "commands"})
-        log.info("Enabled MenuButtonCommands for the bot")
+        if menu_webapp_url:
+            menu_button = {
+                "type": "web_app",
+                "text": "🔌 Календарь",
+                "web_app": {"url": menu_webapp_url},
+            }
+            log.info("Enabled MenuButtonWebApp for connect: %s", menu_webapp_url)
+        else:
+            menu_button = {"type": "commands"}
+            log.info("Enabled MenuButtonCommands for the bot")
+        telegram.set_chat_menu_button(menu_button=menu_button)
     except TelegramError as exc:
         success = False
         log.error("Failed to set chat menu button: %s", exc)

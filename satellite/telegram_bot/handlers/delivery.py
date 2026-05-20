@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 
+from ...config import WebAppConfig
 from ...messages_ru import ERR_GENERIC_HANDLER_TEXT
 from ..api import TelegramError
 from ..message_editing import edit_or_send_message
@@ -99,25 +100,29 @@ def safe_answer_callback(
         log.warning("Unexpected answerCallbackQuery failure: %s", exc)
 
 
+def webapp_connect_base_url(webapp: WebAppConfig) -> str:
+    """Публичный URL страницы ``/connect`` без персонального токена (menu Web App)."""
+    base = (webapp.base_url or "").rstrip("/")
+    if not base:
+        return ""
+    return base if base.endswith("/connect") else f"{base}/connect"
+
+
 def webapp_connect_url(
     ctx: HandlerContext,
     telegram_user_id: int | None = None,
 ) -> str:
-    """Базовый URL Web App для подключения календаря.
+    """URL Web App для кнопки в чате.
 
-    Дописывает суффикс ``/connect`` если ``WEBAPP_BASE_URL`` указан без него.
-    С ``telegram_user_id`` добавляет ``?t=…`` — запасной вход без initData
-    (reply-клавиатура, menu button как URL).
+    С ``telegram_user_id`` — ``/connect/<token>`` в пути (Telegram часто
+    срезает query у ``web_app``-кнопок). Токен дублируется в HTML при отдаче
+    страницы — см. ``_serve_connect_html``.
     """
-    base = (ctx.webapp.base_url or "").rstrip("/")
-    if not base:
-        return ""
-    url = base if base.endswith("/connect") else f"{base}/connect"
-    if telegram_user_id is None:
+    url = webapp_connect_base_url(ctx.webapp)
+    if not url or telegram_user_id is None:
         return url
     token = ctx.connect_tokens.issue(telegram_user_id)
-    sep = "&" if "?" in url else "?"
-    return f"{url}{sep}t={token}"
+    return f"{url}/{token}"
 
 
 def notify_handler_failure(ctx: HandlerContext, chat_id: int | None) -> None:

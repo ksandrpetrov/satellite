@@ -150,6 +150,11 @@ def test_status_with_connect_token_without_init_data(started_server):
     status, body = _http("GET", base + f"/api/calendar/status?t={token}")
     assert status == 200
     assert body["connected"] is False
+    req = urllib.request.Request(base + f"/connect/{token}", method="GET")
+    with urllib.request.urlopen(req, timeout=2.0) as resp:
+        html = resp.read().decode("utf-8")
+        assert "__SATELLITE_CONNECT_TOKEN__" in html
+        assert token in html
 
 
 def test_status_for_pending_user_returns_403(started_server):

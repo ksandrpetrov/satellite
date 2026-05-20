@@ -64,6 +64,21 @@ def test_setup_bot_commands_registers_all_commands_and_menu_button():
     assert menu_kw["menu_button"] == {"type": "commands"}
 
 
+def test_setup_bot_commands_sets_webapp_menu_when_url_configured():
+    telegram = MagicMock()
+    telegram.set_my_commands = MagicMock(return_value=True)
+    telegram.set_chat_menu_button = MagicMock(return_value=True)
+
+    ok = setup_bot_commands(
+        telegram, menu_webapp_url="https://example.com/connect"
+    )
+
+    assert ok is True
+    menu_kw = telegram.set_chat_menu_button.call_args.kwargs
+    assert menu_kw["menu_button"]["type"] == "web_app"
+    assert menu_kw["menu_button"]["web_app"]["url"] == "https://example.com/connect"
+
+
 def test_setup_bot_commands_does_not_raise_on_telegram_error(caplog):
     """Если Telegram API упал — мы логируем и возвращаем False, но не падаем."""
     telegram = MagicMock()

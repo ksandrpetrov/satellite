@@ -184,8 +184,6 @@
 <body>
   <h1>Календарь</h1>
   <h2 id="userHint">Подключите Mail.ru, чтобы Чайка собирала ваш день.</h2>
-  <div id="telegramGate" class="status" style="display:none"></div>
-
   <div class="tabs" role="tablist">
     <button data-tab="connection" class="active">Подключение</button>
     <button data-tab="events">События</button>
@@ -281,7 +279,26 @@
     if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
 
     const pageParams = new URLSearchParams(location.search);
-    const connectToken = (pageParams.get('t') || '').trim();
+
+    function connectTokenFromPage() {
+      if (typeof window.__SATELLITE_CONNECT_TOKEN__ === 'string') {
+        const embedded = window.__SATELLITE_CONNECT_TOKEN__.trim();
+        if (embedded) return embedded;
+      }
+      const fromQuery = (pageParams.get('t') || '').trim();
+      if (fromQuery) return fromQuery;
+      const pathMatch = location.pathname.match(/\/connect\/([^/]+)\/?$/);
+      if (pathMatch && pathMatch[1]) return pathMatch[1].trim();
+      const hashParams = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+      const fromHash = (hashParams.get('t') || '').trim();
+      if (fromHash) return fromHash;
+      if (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
+        return String(tg.initDataUnsafe.start_param).trim();
+      }
+      return '';
+    }
+
+    let connectToken = connectTokenFromPage();
 
     function decodeInitDataParam(raw) {
       if (!raw) return '';
@@ -336,39 +353,26 @@
     async function waitForAuth(maxMs) {
       const initData = await waitForInitData(maxMs);
       if (initData) return { initData, connectToken: '' };
+      connectToken = connectTokenFromPage();
       if (connectToken) return { initData: '', connectToken };
       return { initData: '', connectToken: '' };
     }
 
     function telegramErrorMessage(code) {
       if (code === 'no_init_data') {
-        if (!tg) {
-          return 'Вы открыли страницу в браузере. В Telegram откройте чат с ботом → кнопка «Подключить календарь» (не закладка и не кнопка меню как обычная ссылка).';
-        }
-        return 'Telegram не передал сессию. Закройте окно и нажмите «Подключить календарь» под сообщением бота (не кнопку внизу у поля ввода). Либо «⚙️ Настройки» → кнопка под сообщением. В BotFather menu button — тип Web App, не обычный URL.';
+        return 'Не удалось подтвердить сессию. Закройте окно и снова нажмите «Подключить календарь» в чате с ботом.';
       }
       if (code === 'bad_signature') {
-        return 'На сервере указан другой TELEGRAM_BOT_TOKEN, чем бот, из которого вы открыли Web App. Проверьте .env и перезапустите бота.';
+        return 'На сервере другой TELEGRAM_BOT_TOKEN. Проверьте .env и перезапустите бота.';
       }
       if (code === 'expired') {
-        return 'Сессия устарела. Закройте Web App и откройте снова из бота.';
+        return 'Сессия устарела. Закройте окно и откройте снова из бота.';
       }
       if (code === 'connect_token_invalid') {
         return 'Ссылка устарела. Закройте окно и снова нажмите «Подключить календарь» в боте.';
       }
-      return 'Сессия Telegram недействительна. Закройте Web App и откройте снова из бота.';
+      return 'Не удалось войти. Закройте окно и откройте снова из бота.';
     }
-
-    (async function gateTelegramClient() {
-      const auth = await waitForAuth(5000);
-      if (auth.initData || auth.connectToken) return;
-      const gate = document.getElementById('telegramGate');
-      gate.textContent = telegramErrorMessage('no_init_data');
-      gate.className = 'status show err';
-      gate.style.display = 'block';
-      document.getElementById('connectBtn').disabled = true;
-      document.getElementById('checkBtn').disabled = true;
-    })();
 
     const tabs = document.querySelectorAll('.tabs button');
     const sections = {

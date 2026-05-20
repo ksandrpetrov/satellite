@@ -198,8 +198,8 @@ def test_connect_command_sends_intro_with_webapp_keyboard():
     assert markup["inline_keyboard"][0][0]["text"] == BUTTON_CONNECT_CALENDAR
     assert "web_app" in markup["inline_keyboard"][0][0]
     webapp_url = markup["inline_keyboard"][0][0]["web_app"]["url"]
-    assert "t=" in webapp_url
-    assert ctx.connect_tokens.resolve(webapp_url.split("t=", 1)[1].split("&", 1)[0]) == 7777
+    token = webapp_url.rstrip("/").rsplit("/", 1)[-1]
+    assert ctx.connect_tokens.resolve(token) == 7777
 
     ctx2 = _access_ctx(approved=True, has_calendar=True)
     handle_message(

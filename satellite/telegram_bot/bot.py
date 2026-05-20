@@ -24,6 +24,7 @@ from ..web.server import WebAppServer, WebAppServerConfig
 from .api import TelegramClient, TelegramError
 from .calendar_state import CalendarStateStore
 from .commands import setup_bot_commands
+from .handlers.delivery import webapp_connect_base_url
 from .concurrency import ChatLockManager, InflightTracker
 from .digest_state import DigestStateStore
 from .handlers import (
@@ -134,7 +135,10 @@ class TelegramBot:
 
     def _register_commands_safely(self) -> None:
         try:
-            setup_bot_commands(self._telegram)
+            setup_bot_commands(
+                self._telegram,
+                menu_webapp_url=webapp_connect_base_url(self._settings.webapp),
+            )
         except Exception:  # noqa: BLE001
             log.exception("Bot commands setup failed; continuing without menu")
 
