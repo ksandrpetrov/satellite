@@ -15,6 +15,7 @@ Production Telegram-бот для календарных дайджестов и
 - Команды `td`, `tm`, `dat`.
 - Команды меню `/today`, `/tomorrow`, `/aftertomorrow`, `/after_tomorrow`.
 - `/upcoming` — ближайшие события на 7 дней.
+- `/invitations` — ответ на приглашения (ACCEPTED / DECLINED / TENTATIVE в CalDAV).
 - `/create` — пошаговое создание события в календаре.
 - `/start`, `/help`, `/settings`, `/connect`.
 - Заявка на доступ и одобрение админом (`ADMIN_TELEGRAM_IDS`, `/pending`).
@@ -29,7 +30,8 @@ Production Telegram-бот для календарных дайджестов и
 - Время отправки дайджеста (ввод: `09:30`, `9:30`, `9 30` и т.п.), по умолчанию
   `09:00 Europe/Moscow`.
 - CalDAV per-user с шифрованием токенов (Fernet); провайдер `mailru` (Yandex — в backend, UI «скоро»).
-- Расчет занятости, свободного времени, пересечений и обеда.
+- Расчет занятости, свободного времени, пересечений и обеда; неподтверждённые
+  приглашения не в метриках, в дайджесте помечаются ⚠️.
 - Open-Meteo погода с кэшем и безопасным fallback.
 - `sendChatAction` во время долгих операций.
 - Паттерн `loading message -> editMessageText`.

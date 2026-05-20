@@ -64,6 +64,7 @@ satellite/
       calendar_list.py   # /upcoming
       calendar_sources.py # календари в плане/дайджесте
       calendar_foreign.py # чужие (пошаренные) календари
+      calendar_invitations.py # /invitations, PARTSTAT ACCEPTED/DECLINED/TENTATIVE
       calendar_create.py # /create FSM
       plan.py, settings.py, subscription.py
     api.py, chat_action.py, message_editing.py, commands.py
@@ -92,6 +93,7 @@ satellite/
 | Парсинг .env | [`config.py`](satellite/config.py), образец [`.env.example`](.env.example) |
 | CalDAV / провайдеры | [`calendar/caldav_client.py`](satellite/calendar/caldav_client.py), [`calendar/providers/`](satellite/calendar/providers/), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) |
 | Список / создание событий в боте | [`handlers/calendar_list.py`](satellite/telegram_bot/handlers/calendar_list.py), [`calendar_create.py`](satellite/telegram_bot/handlers/calendar_create.py); формат строк — [`events.py`](satellite/calendar/events.py) |
+| Приглашения (NEEDS-ACTION, ответ в CalDAV) | [`handlers/calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py), [`events.py`](satellite/calendar/events.py) (`collect_pending_invitations`, `is_pending_invitation_for_user`), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) (`list_events_for_invitations`, `set_attendee_partstat`), [`caldav_client.py`](satellite/calendar/caldav_client.py) (PARTSTAT refresh/update) |
 | Ввод времени (дайджест, /create) | [`time_utils.py`](satellite/calendar/time_utils.py); подсказки — [`messages_ru.py`](satellite/messages_ru.py) |
 | Нумерация встреч (дайджест, /upcoming) | [`event_index_marker`](satellite/calendar/events.py) |
 | Web App REST API | [`web/server.py`](satellite/web/server.py) |

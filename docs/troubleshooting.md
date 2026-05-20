@@ -96,6 +96,10 @@ WEBAPP_BASE_URL=...
 
   Если скрипт падает на сервере, но на Mac работает — смотрите `logs/bot.log` (сеть/VPN/firewall). Если скрипт OK, а Web App нет — проверьте одобрение доступа в `logs/users.json` и что Web App открыт из бота.
 - `HIDE_ALL_DAY_EVENTS` / declined PARTSTAT не скрывают все события;
+- приглашения не появляются в `/invitations`: в ICS должен быть ваш `mailto:` с
+  `PARTSTAT=NEEDS-ACTION` (иногда Mail.ru отдаёт ATTENDEE только в GET — см.
+  PARTSTAT refresh в `caldav_client.py`); ответ «Не удалось обновить» — смотрите
+  `logs/bot.log` (`PARTSTAT_UPDATE_FAILED`);
 - `LOG_LEVEL=DEBUG` для деталей CalDAV в `logs/bot.log`.
 
 ## Web App не открывается

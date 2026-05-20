@@ -78,12 +78,28 @@ def test_recognize_invitations_command():
 
 
 class _StubEventObj:
-    def __init__(self, data: bytes):
-        self.data = data
-        self.saved: bytes | None = None
+    """Имитирует ``caldav.Event`` в нужном объёме.
 
-    def save(self, payload: bytes) -> None:
-        self.saved = payload
+    ``data`` — property (getter/setter), ``save()`` — без аргументов. Это
+    воспроизводит сигнатуру caldav>=2.x; передавать ICS позиционно в
+    ``save()`` нельзя (там ``no_overwrite: bool``), новые данные кладутся
+    через ``event_obj.data = ...``.
+    """
+
+    def __init__(self, data: bytes):
+        self._data = data
+        self.save_called = False
+
+    @property
+    def data(self) -> bytes:
+        return self._data
+
+    @data.setter
+    def data(self, value: bytes) -> None:
+        self._data = value
+
+    def save(self) -> None:
+        self.save_called = True
 
 
 def test_set_attendee_partstat_updates_ics(monkeypatch):
@@ -109,8 +125,9 @@ def test_set_attendee_partstat_updates_ics(monkeypatch):
     monkeypatch.setattr(service, "_get_event_object", lambda _url: stub)
 
     service.set_attendee_partstat("https://fake/e.ics", "ACCEPTED")
-    assert stub.saved is not None
-    updated = IcsCalendar.from_ical(stub.saved)
+
+    assert stub.save_called is True
+    updated = IcsCalendar.from_ical(stub.data)
     for vevent in updated.walk("vevent"):
         attendee = vevent.get("ATTENDEE")
         assert attendee.params["PARTSTAT"] == "ACCEPTED"

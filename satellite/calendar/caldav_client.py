@@ -318,7 +318,15 @@ class CalDAVService:
                 ev["status"] = status
 
     def set_attendee_partstat(self, event_url: str, partstat: str) -> None:
-        """Обновляет PARTSTAT текущего пользователя в ATTENDEE события."""
+        """Обновляет PARTSTAT текущего пользователя в ATTENDEE события.
+
+        Важно: в ``caldav>=2.x`` ``Event.save(...)`` НЕ принимает ICS позиционно
+        (первый аргумент — ``no_overwrite: bool``). Передача байтов туда
+        тихо превращалась в ``no_overwrite=True`` и реальный PUT не уходил.
+        Поэтому новые данные кладём через ``event_obj.data = ...``, а
+        ``save()`` вызываем без аргументов. SEQUENCE инкрементируется самим
+        ``caldav`` (``increase_seqno=True`` по умолчанию).
+        """
         normalized = (partstat or "").strip().upper()
         allowed = {"ACCEPTED", "DECLINED", "TENTATIVE", "NEEDS-ACTION", "DELEGATED"}
         if normalized not in allowed:
@@ -347,17 +355,10 @@ class CalDAVService:
                         if prop in component:
                             del component[prop]
                     component.add("dtstamp", datetime.now(tz=timezone.utc))
-                    seq = component.get("SEQUENCE")
-                    if seq is not None:
-                        try:
-                            component["SEQUENCE"] = int(seq) + 1
-                        except (TypeError, ValueError):
-                            component.add("sequence", 1)
-                    else:
-                        component.add("sequence", 1)
             if not updated:
                 raise CalDAVError("Attendee not found in event")
-            event_obj.save(calendar.to_ical())
+            event_obj.data = calendar.to_ical()
+            event_obj.save()
             with self._partstat_cache_lock:
                 self._partstat_cache.pop(event_url, None)
         except DAVError as exc:
@@ -455,7 +456,8 @@ class CalDAVService:
                     component["description"] = description
                 elif "description" in component:
                     del component["description"]
-            event_obj.save(calendar.to_ical())
+            event_obj.data = calendar.to_ical()
+            event_obj.save()
         except DAVError as exc:
             log.warning(
                 "CalDAV update_event failed url=%s status=%s: %s",

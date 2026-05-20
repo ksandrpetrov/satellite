@@ -58,8 +58,9 @@ Calendar, plan service и digest:
 
 ```bash
 python -m pytest tests/test_calendar_stats.py tests/test_normalize_caldav_event.py \
-  tests/test_plan_service.py tests/test_events.py tests/test_time_utils.py \
-  tests/test_seagull_render.py tests/test_seagull_digest.py tests/test_seagull_rules.py
+  tests/test_plan_service.py tests/test_events.py tests/test_calendar_invitations.py \
+  tests/test_time_utils.py tests/test_seagull_render.py tests/test_seagull_digest.py \
+  tests/test_seagull_rules.py
 ```
 
 Config, storage, CalDAV helpers, Web App:
@@ -122,6 +123,12 @@ Autouse-фикстура обнуляет `TYPING_DISPLAY_SECONDS`, чтобы �
 **Events / upcoming** (`test_events.py`, `test_calendar_foreign.py`):
 
 - `format_upcoming_events_lines` — нумерация `1️⃣`… как в дайджесте.
+
+**Invitations** (`test_calendar_invitations.py`, PARTSTAT в `test_events.py`,
+`test_seagull_digest.py`, `test_caldav_candidates.py`):
+
+- `is_pending_invitation_for_user`, `collect_pending_invitations`;
+- роутинг `/invitations` и CalDAV `set_attendee_partstat` (mock provider).
 
 **Calendar selection** (`test_calendar_selection.py`):
 

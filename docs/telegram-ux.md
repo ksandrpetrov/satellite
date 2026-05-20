@@ -20,6 +20,9 @@ dat
 /after_tomorrow
 /upcoming
 /events           # алиас /upcoming
+/invitations
+/invites          # алиас /invitations
+/respond          # алиас /invitations
 /create
 /addevent         # алиас /create
 /connect
@@ -31,9 +34,11 @@ dat
 ```
 
 В меню Telegram (`setMyCommands`) зарегистрированы: `start`, `today`, `tomorrow`,
-`aftertomorrow`, `upcoming`, `create`, `connect`, `settings`, `help`. Короткие
-алиасы (`td`/`tm`/`dat`), `/digest`/`/stopdigest`, `/calendars` и `/foreign`
-работают, но в меню не показываются.
+`aftertomorrow`, `upcoming`, `invitations`, `create`, `settings`, `help`. Кнопка
+«Меню» рядом с полем ввода — **Web App** «🔌 Календарь» (`MenuButtonWebApp` на
+`WEBAPP_BASE_URL`), не команда `/connect`. Короткие алиасы (`td`/`tm`/`dat`),
+`/digest`/`/stopdigest`, `/calendars`, `/foreign` и `/connect` работают, но в
+списке команд не показываются.
 
 `/digest` включает подписку (как `/subscribe`), **не** открывает экран настроек.
 `/stopdigest` отключает дайджест, запись в `subscriptions.json` сохраняется.
@@ -77,7 +82,7 @@ dat
 
 ```text
 📅 Сегодня          🗓 Ближайшие события
-👥 Чужие календари
+📨 Приглашения      👥 Чужие календари
 ➕ Создать событие
 ⚙️ Настройки
 ```
@@ -108,6 +113,33 @@ Legacy-тексты старой клавиатуры тоже распозна�
 `11.` и т.д. (`event_index_marker` в `calendar/events.py`). Сценарий:
 loading message → `UserCalendarService.list_events` → edit.
 
+## Invitations (PARTSTAT)
+
+`/invitations` (кнопка «📨 Приглашения», алиасы `/invites`, `/respond`) показывает
+встречи, где у пользователя `PARTSTAT` = `NEEDS-ACTION` или `DELEGATED`, на горизонте
+до 60 дней вперёд (не более 12 пунктов). Прошедшие и уже принятые/отклонённые
+скрываются (`collect_pending_invitations` в `calendar/events.py`).
+
+Сценарий:
+
+```text
+sendMessage("📨 Чайка собирает приглашения…")
+UserCalendarService.list_events_for_invitations → filter NEEDS-ACTION
+editMessageText(список + inline-кнопки)
+```
+
+Под каждым событием — **Принять** / **Отклонить** / **Может быть**; ответ пишется
+в CalDAV через `set_attendee_partstat` (Mail.ru — `CalDAVClient.update_attendee_partstat`).
+Callback data: префикс `inv:` (`CB_INV_*` в `messages_ru.py`).
+
+Тот же экран открывается из хаба настроек → **📚 Календари** → **📨 Приглашения**
+(`CB_SETTINGS_INVITATIONS`). «⬅️ В календарь» возвращает в подменю календаря хаба.
+
+**Дайджест и аналитика:** неподтверждённые приглашения не входят в метрики
+занятости; в расписании дня вместо номера встречи — `⚠️` (`is_pending` в
+`seagull/render.py`). Ответить на приглашение можно из `/invitations` или в
+клиенте календаря — после `ACCEPTED` встреча попадёт в план и метрики.
+
 ## Create event
 
 `/create` (или кнопка «➕ Создать событие») запускает пошаговый FSM
@@ -126,8 +158,9 @@ loading message → `UserCalendarService.list_events` → edit.
 `/settings` (кнопка «⚙️ Настройки») открывает inline-хаб (`settings_hub.py`):
 
 - **🔔 Дайджест** — экран настроек дайджеста (`settings.py`);
-- **📚 Календари** — какие CalDAV-календари учитывать в плане и автодайджесте
-  (`calendar_sources.py`; при одном календаре — подсказка, без списка);
+- **📚 Календари** — подменю: приглашения, выбор календарей для плана, connect,
+  проверка и отключение (`calendar_sources.py` для списка URL; при одном календаре
+  в плане — подсказка, без списка);
 - **🔌 Подключить / 🔄 Переподключить** — Web App (`WEBAPP_BASE_URL`);
 - **✅ Проверить** / **🗑 Отключить** — только при `has_calendar`.
 
@@ -235,7 +268,7 @@ warning в лог.
 | `/start`, `/help` | всем |
 | `/pending` | `ADMIN_TELEGRAM_IDS` |
 | `/connect` | `approved` |
-| План, upcoming, create, чужие календари, настройки, подписка | `approved` + `has_calendar` |
+| План, upcoming, invitations, create, чужие календари, настройки, подписка | `approved` + `has_calendar` |
 | Выбор календарей для плана (из хаба) | `approved` + `has_calendar` |
 | Check/disconnect (из хаба) | `approved` + `has_calendar` |
 | Web App connect | `approved` (до первого успешного connect) |

@@ -233,16 +233,28 @@ def _draw_week_chart(
     pad = 36
     chart_left = x0 + pad + 8
     chart_right = x1 - pad
-    chart_top = y0 + 72
     chart_bottom = y1 - pad - 28
 
-    draw.text((x0 + pad, y0 + pad), "Пн–Пт", fill=COLOR_TEXT, font=font_title)
+    title_x = x0 + pad
+    draw.text((title_x, y0 + pad), "Пн–Пт", fill=COLOR_TEXT, font=font_title)
     draw.text(
-        (x0 + pad, y0 + pad + 34),
+        (title_x, y0 + pad + 34),
         "Занято и свободное время в рабочем окне",
         fill=COLOR_MUTED,
         font=font_small,
     )
+
+    leg_y = y0 + pad + 62
+    leg_x = chart_left
+    for color, name in (
+        (COLOR_BUSY, "Занято"),
+        ((200, 230, 255), "Свободно"),
+    ):
+        draw.ellipse((leg_x, leg_y, leg_x + 12, leg_y + 12), fill=color)
+        draw.text((leg_x + 18, leg_y - 2), name, fill=COLOR_MUTED, font=font_small)
+        leg_x += 18 + _text_width(draw, name, font_small) + 28
+
+    chart_top = leg_y + 32
 
     max_val = max(
         (d.busy_minutes + d.free_minutes for d in report.current.days),
@@ -288,13 +300,6 @@ def _draw_week_chart(
                 anchor="mt",
             )
 
-    leg_y = chart_top - 8
-    for color, name, dx in (
-        (COLOR_BUSY, "Занято", 0),
-        ((200, 230, 255), "Свободно", 120),
-    ):
-        draw.ellipse((chart_left + dx, leg_y, chart_left + dx + 12, leg_y + 12), fill=color)
-        draw.text((chart_left + dx + 18, leg_y - 2), name, fill=COLOR_MUTED, font=font_small)
     draw.line(
         [chart_left, chart_bottom, chart_right, chart_bottom],
         fill=COLOR_SEPARATOR,
@@ -319,22 +324,37 @@ def _draw_sparkline_card(
     pad = 36
     left = x0 + pad
     right = x1 - pad
-    top_chart = y0 + 100
     bottom = y1 - pad - 20
 
-    draw.text((left, y0 + pad), "13 недель", fill=COLOR_TEXT, font=font_title)
-    draw.text((left, y0 + pad + 34), "Суммарные часы встреч по неделям", fill=COLOR_MUTED, font=font_small)
+    header_y = y0 + pad
+    draw.text((left, header_y), "13 недель", fill=COLOR_TEXT, font=font_title)
+    draw.text(
+        (left, header_y + 34),
+        "Суммарные часы встреч по неделям",
+        fill=COLOR_MUTED,
+        font=font_small,
+    )
 
     badge_text = f"{trend_arrow}  {trend_label}"
     pill_fill = tuple(min(255, c + (255 - c) * 85 // 100) for c in trend_color)
+    badge_pad_x, badge_pad_y = 18, 10
+    badge_tw = _text_width(draw, badge_text, font_badge)
+    badge_th = font_badge.size + 4
+    badge_w = badge_tw + badge_pad_x * 2
+    badge_h = badge_th + badge_pad_y * 2
+    badge_x = right - badge_w
     _draw_pill(
         draw,
-        (left, y0 + pad + 68),
+        (badge_x, header_y),
         badge_text,
         fill=pill_fill,
         text_color=trend_color,
         font=font_badge,
+        pad_x=badge_pad_x,
+        pad_y=badge_pad_y,
     )
+
+    top_chart = max(header_y + 96, header_y + badge_h + 24)
 
     if len(values) < 2:
         return

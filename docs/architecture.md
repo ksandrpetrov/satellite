@@ -90,6 +90,8 @@ telegram_test_command.py
   - `calendar_foreign.py` — просмотр пошаренных («чужих») календарей.
   - `calendar_list.py` — `/upcoming`, ближайшие 7 дней.
   - `calendar_create.py` — `/create`, пошаговый FSM создания события.
+  - `calendar_invitations.py` — `/invitations`, список NEEDS-ACTION и ответы
+    ACCEPTED / DECLINED / TENTATIVE через CalDAV.
   - `plan.py` — command → plan → reply.
   - `subscription.py` — subscribe/unsubscribe.
 - `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing.
@@ -108,14 +110,17 @@ telegram_test_command.py
 - `satellite/calendar/providers/` — `mailru` (production) и `yandex` (backend);
   `registry.get_provider` выбирает реализацию по `UserRecord.calendar_provider`.
 - `satellite/calendar/user_calendar_service.py` — connect, validate, list/create/delete
-  events; единственная точка доступа handlers/plan/scheduler/Web App к CalDAV.
+  events, `list_events_for_invitations`, `set_attendee_partstat`; единственная точка
+  доступа handlers/plan/scheduler/Web App к CalDAV.
 - `satellite/calendar/selection.py` — `effective_enabled_calendar_urls`,
   `foreign_calendar_entries` (план/дайджест vs «чужие» календари).
 - `satellite/calendar/caldav_client.py` — Mail.ru CalDAV discovery, cache, day
   search, optional PARTSTAT refresh.
 - `satellite/calendar/constants.py` — domain constants (lunch marker, all-day label).
-- `satellite/calendar/events.py` — filters, all-day, declined, meals, PARTSTAT,
-  `event_index_marker`, форматирование `/upcoming` (`format_upcoming_events_lines`).
+- `satellite/calendar/events.py` — filters, all-day, declined, meals, PARTSTAT
+  (`is_pending_invitation_for_user`, `collect_pending_invitations`,
+  `format_invitation_list_lines`), `event_index_marker`, форматирование `/upcoming`
+  (`format_upcoming_events_lines`).
 - `satellite/calendar/stats.py` — `NormalizedEvent`, `DayCalendarStats`,
   `normalize_caldav_event`. Default workday `10:00–19:00`, lunch `13:00–14:00`.
 - `satellite/calendar/time_utils.py` — `normalize_hhmm_input` / `parse_hhmm`
@@ -136,7 +141,8 @@ Important invariants:
 - `satellite/seagull/digest.py` — `prepare_seagull_stats`, `render_digest_from_stats`.
 - `satellite/seagull/rules.py` — text fragments from metrics.
 - `satellite/seagull/render.py` — Telegram HTML, escaping, truncation;
-  маркеры встреч через `event_index_marker` из `calendar/events.py`.
+  маркеры встреч через `event_index_marker` из `calendar/events.py`;
+  неподтверждённые приглашения — `⚠️` вместо номера (`is_pending`).
 - `satellite/seagull/templates.py` — text templates.
 
 ## Weather Layer
