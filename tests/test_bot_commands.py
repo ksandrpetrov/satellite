@@ -2,7 +2,7 @@
 
 Покрываем:
 - ``setup_bot_commands`` вызывает ``setMyCommands`` со всем списком из ТЗ;
-- ``setup_bot_commands`` включает ``MenuButtonCommands`` через ``setChatMenuButton``;
+- ``setup_bot_commands`` не вызывает ``setChatMenuButton`` (кнопка «Меню» — в BotFather);
 - падение Telegram API не пробрасывается наружу (бот должен подняться);
 - ``TelegramClient.set_my_commands`` сериализует команды в JSON-payload.
 """
@@ -46,10 +46,9 @@ def test_bot_commands_list_matches_spec():
         assert desc and isinstance(desc, str)
 
 
-def test_setup_bot_commands_registers_all_commands_and_menu_button():
+def test_setup_bot_commands_registers_all_commands():
     telegram = MagicMock()
     telegram.set_my_commands = MagicMock(return_value=True)
-    telegram.set_chat_menu_button = MagicMock(return_value=True)
 
     ok = setup_bot_commands(telegram)
 
@@ -60,50 +59,19 @@ def test_setup_bot_commands_registers_all_commands_and_menu_button():
     # каждая запись имеет описание
     for item in payload:
         assert "description" in item and item["description"]
-
-    telegram.set_chat_menu_button.assert_called_once()
-    menu_kw = telegram.set_chat_menu_button.call_args.kwargs
-    assert menu_kw["menu_button"] == {"type": "commands"}
-
-
-def test_setup_bot_commands_sets_webapp_menu_when_url_configured():
-    telegram = MagicMock()
-    telegram.set_my_commands = MagicMock(return_value=True)
-    telegram.set_chat_menu_button = MagicMock(return_value=True)
-
-    ok = setup_bot_commands(
-        telegram, menu_webapp_url="https://example.com/connect"
-    )
-
-    assert ok is True
-    menu_kw = telegram.set_chat_menu_button.call_args.kwargs
-    assert menu_kw["menu_button"]["type"] == "web_app"
-    assert menu_kw["menu_button"]["web_app"]["url"] == "https://example.com/connect"
+    telegram.set_chat_menu_button.assert_not_called()
 
 
 def test_setup_bot_commands_does_not_raise_on_telegram_error(caplog):
     """Если Telegram API упал — мы логируем и возвращаем False, но не падаем."""
     telegram = MagicMock()
     telegram.set_my_commands = MagicMock(side_effect=TelegramError("nope"))
-    telegram.set_chat_menu_button = MagicMock(return_value=True)
 
     with caplog.at_level("ERROR", logger="satellite.telegram_bot.commands"):
         ok = setup_bot_commands(telegram)
 
     assert ok is False
-    # menu button всё равно пытаемся выставить — отдельная операция
-    telegram.set_chat_menu_button.assert_called_once()
     assert any("setMyCommands" in r.getMessage() for r in caplog.records)
-
-
-def test_setup_bot_commands_survives_menu_button_failure():
-    telegram = MagicMock()
-    telegram.set_my_commands = MagicMock(return_value=True)
-    telegram.set_chat_menu_button = MagicMock(side_effect=TelegramError("nope"))
-
-    ok = setup_bot_commands(telegram)
-    assert ok is False
-    telegram.set_my_commands.assert_called_once()
 
 
 def test_telegram_client_set_my_commands_serializes_payload(monkeypatch):

@@ -479,29 +479,20 @@ class StreamingReply:
         reply_markup: dict | list | str | None,
         message_effect_id: str | None,
     ) -> dict[str, Any] | None:
+        # message_effect_id Telegram принимает только в личных чатах; для групп
+        # и каналов гасим эффект здесь, чтобы не тратить попытку и не получать
+        # ошибку API. Fallback на «без эффекта» при отказе Telegram (включая
+        # `PREMIUM_ACCOUNT_REQUIRED`) живёт в `TelegramClient.send_message`.
         effect = message_effect_id if is_private_chat(self._chat_id) else None
-        try:
-            return self._telegram.send_message(
-                self._chat_id,
-                text,
-                parse_mode=self._parse_mode,
-                reply_markup=reply_markup,
-                disable_web_page_preview=self._disable_web_page_preview,
-                message_thread_id=self._message_thread_id,
-                message_effect_id=effect,
-            )
-        except TelegramError as exc:
-            if effect and "message_effect" in str(exc).lower():
-                log.info("message_effect_id rejected, sending without effect: %s", exc)
-                return self._telegram.send_message(
-                    self._chat_id,
-                    text,
-                    parse_mode=self._parse_mode,
-                    reply_markup=reply_markup,
-                    disable_web_page_preview=self._disable_web_page_preview,
-                    message_thread_id=self._message_thread_id,
-                )
-            raise
+        return self._telegram.send_message(
+            self._chat_id,
+            text,
+            parse_mode=self._parse_mode,
+            reply_markup=reply_markup,
+            disable_web_page_preview=self._disable_web_page_preview,
+            message_thread_id=self._message_thread_id,
+            message_effect_id=effect,
+        )
 
     def _finish_legacy(
         self,

@@ -29,6 +29,23 @@ class TelegramError(RuntimeError):
     """Не получилось договориться с Telegram даже после всех ретраев."""
 
 
+def is_message_effect_rejected(exc: BaseException) -> bool:
+    """Telegram отказался применять ``message_effect_id``.
+
+    Возможные причины:
+
+    * подписан как `Bad Request: message_effect_id ...` — невалидный/чужой id;
+    * `Bad Request: PREMIUM_ACCOUNT_REQUIRED` — у получателя нет Telegram Premium,
+      а анимированные эффекты доступны только премиум-чатам.
+
+    Бот использует ``message_effect_id`` только в личных чатах и без других
+    премиум-фич, поэтому такой ответ всегда означает «эффект применить нельзя»;
+    повторяем отправку без эффекта.
+    """
+    text = str(exc).lower()
+    return "message_effect" in text or "premium_account_required" in text
+
+
 class TelegramClient:
     """Тонкий клиент над Bot API. Переиспользует TCP-соединение через Session.
 
@@ -121,12 +138,27 @@ class TelegramClient:
                 if isinstance(reply_markup, (dict, list))
                 else reply_markup
             )
-        return self._call(
-            "sendMessage",
-            data=data,
-            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
-            max_retries=_SEND_MESSAGE_MAX_RETRIES,
-        )
+        try:
+            return self._call(
+                "sendMessage",
+                data=data,
+                timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+                max_retries=_SEND_MESSAGE_MAX_RETRIES,
+            )
+        except TelegramError as exc:
+            if message_effect_id and is_message_effect_rejected(exc):
+                log.info(
+                    "sendMessage message_effect_id rejected, retrying without effect: %s",
+                    exc,
+                )
+                data.pop("message_effect_id", None)
+                return self._call(
+                    "sendMessage",
+                    data=data,
+                    timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+                    max_retries=_SEND_MESSAGE_MAX_RETRIES,
+                )
+            raise
 
     def send_photo(
         self,
@@ -160,7 +192,7 @@ class TelegramClient:
                 max_retries=_SEND_MESSAGE_MAX_RETRIES,
             )
         except TelegramError as exc:
-            if message_effect_id and "message_effect" in str(exc).lower():
+            if message_effect_id and is_message_effect_rejected(exc):
                 log.info(
                     "sendPhoto message_effect_id rejected, retrying without effect: %s",
                     exc,

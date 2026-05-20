@@ -34,9 +34,10 @@ dat
 ```
 
 В меню Telegram (`setMyCommands`) зарегистрированы: `start`, `today`, `tomorrow`,
-`aftertomorrow`, `upcoming`, `invitations`, `create`, `settings`, `help`. Кнопка
-«Меню» рядом с полем ввода — **Web App** «🔌 Календарь» (`MenuButtonWebApp` на
-`WEBAPP_BASE_URL`), не команда `/connect`. Короткие алиасы (`td`/`tm`/`dat`),
+`aftertomorrow`, `upcoming`, `invitations`, `create`, `settings`, `help`. Кнопку
+«Меню» рядом с полем ввода (список команд, Web App «🔌 Календарь» и т.д.) задают
+в BotFather — бот при старте её не меняет.
+Короткие алиасы (`td`/`tm`/`dat`),
 `/digest`/`/stopdigest`, `/calendars`, `/foreign` и `/connect` работают, но в
 списке команд не показываются.
 
@@ -262,8 +263,8 @@ warning в лог.
 
 ## Web App (подключение календаря)
 
-- Открывать **только из чата с ботом** (кнопка «🔌 Подключить календарь» или Menu Button
-  типа **Web App** в BotFather), не закладкой в Safari/Chrome.
+- Открывать **только из чата с ботом** (кнопка «🔌 Подключить календарь» в сообщениях
+  бота или Menu Button типа **Web App**, если включён в BotFather), не закладкой в Safari/Chrome.
 - URL в BotFather и в `.env` (`WEBAPP_BASE_URL`) должны совпадать, например
   `https://cassinilab.ru/connect`.
 - В форме: email (полный `@vk.team` для Mailroom), app password с правом «Календарь»,

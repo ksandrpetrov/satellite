@@ -106,6 +106,112 @@ def test_get_updates_does_not_block_send_message() -> None:
     assert poll_done.wait(timeout=2.0), "long-poll did not finish"
 
 
+def _capture_call_snapshots(side_effects: list) -> tuple[MagicMock, list[dict]]:
+    """Mock ``_call`` так, чтобы сохранять снимок ``data`` на момент каждого вызова.
+
+    Клиент переиспользует один и тот же словарь между первичным и retry-вызовом
+    (просто удаляя ``message_effect_id``), поэтому пост-фактум осмотр
+    ``call_args_list[i].kwargs["data"]`` показал бы один и тот же объект уже без
+    эффекта. Снимок копируем синхронно из ``side_effect``.
+    """
+    snapshots: list[dict] = []
+    iterator = iter(side_effects)
+
+    def _capture(*_args, **kwargs) -> object:
+        snapshots.append(dict(kwargs["data"]))
+        outcome = next(iterator)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    return MagicMock(side_effect=_capture), snapshots
+
+
+def test_send_photo_retries_without_effect_on_premium_required() -> None:
+    """Telegram отвечает ``PREMIUM_ACCOUNT_REQUIRED`` — повторяем без эффекта.
+
+    Регрессия из прода: пользователь без Premium → анимированный эффект ✨ в
+    `sendPhoto` валит весь ответ с аналитикой; клиент должен сам выкинуть
+    `message_effect_id` и переотправить.
+    """
+    client = TelegramClient("token")
+    mock_call, snapshots = _capture_call_snapshots(
+        [
+            TelegramError(
+                'sendPhoto: HTTP 400: {"ok":false,"error_code":400,'
+                '"description":"Bad Request: PREMIUM_ACCOUNT_REQUIRED"}'
+            ),
+            {"message_id": 42},
+        ]
+    )
+    client._call = mock_call  # noqa: SLF001
+
+    result = client.send_photo(
+        123,
+        b"PNG",
+        caption="cap",
+        message_effect_id="5089460564141278042",
+    )
+
+    assert result == {"message_id": 42}
+    assert len(snapshots) == 2
+    assert snapshots[0]["message_effect_id"] == "5089460564141278042"
+    assert "message_effect_id" not in snapshots[1]
+
+
+def test_send_message_retries_without_effect_on_premium_required() -> None:
+    """``sendMessage`` тоже должен переотправляться без эффекта (тот же кейс)."""
+    client = TelegramClient("token")
+    mock_call, snapshots = _capture_call_snapshots(
+        [
+            TelegramError(
+                'sendMessage: HTTP 400: {"ok":false,"error_code":400,'
+                '"description":"Bad Request: PREMIUM_ACCOUNT_REQUIRED"}'
+            ),
+            {"message_id": 7},
+        ]
+    )
+    client._call = mock_call  # noqa: SLF001
+
+    result = client.send_message(123, "hi", message_effect_id="5089460564141278042")
+
+    assert result == {"message_id": 7}
+    assert len(snapshots) == 2
+    assert snapshots[0]["message_effect_id"] == "5089460564141278042"
+    assert "message_effect_id" not in snapshots[1]
+
+
+def test_send_message_retries_without_effect_on_message_effect_error() -> None:
+    """Также реагируем на старое сообщение Telegram про сам `message_effect_id`."""
+    client = TelegramClient("token")
+    client._call = MagicMock(  # noqa: SLF001
+        side_effect=[
+            TelegramError(
+                "sendMessage: HTTP 400: Bad Request: message_effect_id invalid"
+            ),
+            {"message_id": 8},
+        ]
+    )
+
+    result = client.send_message(123, "hi", message_effect_id="bogus")
+
+    assert result == {"message_id": 8}
+    assert client._call.call_count == 2  # noqa: SLF001
+
+
+def test_send_message_does_not_retry_on_unrelated_errors() -> None:
+    """Ошибки, не связанные с эффектом, наружу — не маскируем."""
+    client = TelegramClient("token")
+    client._call = MagicMock(  # noqa: SLF001
+        side_effect=TelegramError("sendMessage: HTTP 403: Forbidden: bot was blocked")
+    )
+
+    with pytest.raises(TelegramError, match="bot was blocked"):
+        client.send_message(123, "hi", message_effect_id="5089460564141278042")
+
+    client._call.assert_called_once()  # noqa: SLF001
+
+
 def _ok_response(result):
     response = MagicMock(spec=requests.Response)
     response.status_code = 200
