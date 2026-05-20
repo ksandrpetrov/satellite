@@ -219,6 +219,7 @@ def test_create_event_serializes_dtstart_dtend_in_utc_with_dtstamp():
     # Москва на 3 часа впереди UTC → 10:00 MSK == 07:00 UTC.
     assert "DTSTART:20260520T070000Z" in body
     assert "DTEND:20260520T080000Z" in body
+    assert "ORGANIZER:mailto:me@vk.team" in body
     assert uid in body
 
 
@@ -236,6 +237,56 @@ def test_create_event_treats_naive_datetime_as_utc():
     body = stub.saved_ical.decode()
     assert "DTSTART:20260520T100000Z" in body
     assert "DTEND:20260520T110000Z" in body
+
+
+def test_find_handle_matches_url_with_trailing_slash():
+    stub = _StubCalendarObj()
+    service = _service_with_handle(
+        "https://fake/calendars/primary/", stub
+    )
+    handle = service._find_handle("https://fake/calendars/primary")
+    assert handle is not None
+    assert handle.url.endswith("primary/")
+
+
+def test_require_handle_invalidates_cache_on_miss():
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login="me@vk.team",
+        app_password="pw",
+        cache_ttl_sec=300,
+    )
+    from satellite.calendar.caldav_client import CalendarHandle, _DiscoveryResult
+    import time as _time
+
+    stale = CalendarHandle(name="old", obj=_StubCalendarObj(), url="https://fake/old/")
+    service._cache = _DiscoveryResult(
+        endpoint="https://fake/",
+        calendars=[stale],
+        cached_at=_time.monotonic(),
+    )
+    discovery_calls = {"count": 0}
+    real_discovery = service._do_discovery
+
+    def counting_discovery():
+        discovery_calls["count"] += 1
+        return _DiscoveryResult(
+            endpoint="https://fake/",
+            calendars=[
+                CalendarHandle(
+                    name="new",
+                    obj=_StubCalendarObj(),
+                    url="https://fake/calendars/primary/",
+                )
+            ],
+            cached_at=_time.monotonic(),
+        )
+
+    service._do_discovery = counting_discovery  # type: ignore[method-assign]
+    handle = service._require_handle("https://fake/calendars/primary")
+    assert handle.name == "new"
+    assert discovery_calls["count"] == 1
+    service._do_discovery = real_discovery  # type: ignore[method-assign]
 
 
 def test_create_event_converts_dav_error_to_caldav_error():

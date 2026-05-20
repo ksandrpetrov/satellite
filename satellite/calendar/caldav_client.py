@@ -315,6 +315,9 @@ class CalDAVService:
         component.add("summary", title)
         component.add("dtstart", _to_utc(start))
         component.add("dtend", _to_utc(end))
+        login = (self._login or "").strip()
+        if login and "@" in login:
+            component.add("organizer", f"mailto:{login}")
         if location:
             component.add("location", location)
         if description:
@@ -539,12 +542,25 @@ class CalDAVService:
         matched = self._filter_handles_by_urls(handles, [calendar_url])
         return matched or list(handles)
 
-    def _require_handle(self, calendar_url: str) -> CalendarHandle:
+    def _find_handle(self, calendar_url: str) -> CalendarHandle | None:
         result = self._ensure_discovery()
-        target = calendar_url.rstrip("/")
+        target = _normalize_calendar_url(calendar_url)
+        if not target:
+            return None
         for handle in result.calendars:
-            if handle.url.rstrip("/") == target:
+            if _normalize_calendar_url(handle.url) == target:
                 return handle
+        return None
+
+    def _require_handle(self, calendar_url: str) -> CalendarHandle:
+        handle = self._find_handle(calendar_url)
+        if handle is not None:
+            return handle
+        # Кэш discovery мог устареть после смены календарей на стороне Mail.ru.
+        self.invalidate()
+        handle = self._find_handle(calendar_url)
+        if handle is not None:
+            return handle
         raise CalDAVError("Calendar handle not found")
 
     def _get_event_object(self, event_url: str) -> Any:

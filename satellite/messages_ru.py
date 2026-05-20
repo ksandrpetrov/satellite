@@ -283,6 +283,11 @@ CREATE_EVENT_INVALID_DATE = "⚠️ Не понял дату. Пример: 20.0
 CREATE_EVENT_INVALID_TIME = "⚠️ Не понял время. Формат ЧЧ:ММ"
 CREATE_EVENT_INVALID_DURATION = "⚠️ Укажите длительность в минутах, например 60"
 CREATE_EVENT_SUCCESS_HTML = "✅ Событие создано в вашем календаре."
+CREATE_EVENT_FAILED_HTML = (
+    "⚠️ Не удалось создать событие в календаре.\n"
+    "Проверьте, что у пароля приложения есть право записи в календарь, "
+    "и попробуйте ещё раз. Если не поможет — переподключите календарь."
+)
 CREATE_EVENT_CANCELLED_HTML = "Создание события отменено."
 
 CB_CREATE_CONFIRM = "create:confirm"

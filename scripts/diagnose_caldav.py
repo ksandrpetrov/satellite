@@ -17,6 +17,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
 from satellite.calendar.caldav_client import (  # noqa: E402
     CalDAVError,
     CalDAVService,
@@ -49,7 +51,29 @@ def main() -> int:
     print("primary:", primary)
     print("calendars:", len(handles))
     for h in handles[:5]:
-        print(" -", h.name)
+        print(" -", h.name, "->", h.url[:72])
+    if os.getenv("CALDAV_TEST_CREATE", "").strip().lower() in {"1", "true", "yes"}:
+        if not primary:
+            print("SKIP create test: no primary calendar")
+            return 3
+        start = datetime.now(tz=timezone.utc).replace(second=0, microsecond=0)
+        end = start + timedelta(minutes=30)
+        try:
+            uid, event_url = service.create_event(
+                calendar_url=primary,
+                title="Satellite diagnose test",
+                start=start,
+                end=end,
+            )
+        except CalDAVError as exc:
+            print("CREATE FAIL:", exc)
+            return 4
+        print("CREATE OK:", uid, event_url[:80])
+        try:
+            service.delete_event(event_url)
+            print("DELETE OK (cleanup)")
+        except CalDAVError as exc:
+            print("DELETE WARN (cleanup failed):", exc)
     return 0
 
 

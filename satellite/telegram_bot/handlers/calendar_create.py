@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 from ...calendar.providers.base import CalendarEventPayload, CalendarProviderError
 from ...calendar.time_utils import normalize_hhmm_input, parse_hhmm
 from ...messages_ru import (
+    CALENDAR_NOT_CONNECTED_HTML,
     CB_CREATE_CANCEL,
     CB_CREATE_CONFIRM,
     CREATE_EVENT_ASK_DATE,
@@ -17,6 +18,7 @@ from ...messages_ru import (
     CREATE_EVENT_ASK_TITLE,
     CREATE_EVENT_CANCELLED_HTML,
     CREATE_EVENT_CONFIRM_HTML,
+    CREATE_EVENT_FAILED_HTML,
     CREATE_EVENT_INVALID_DATE,
     CREATE_EVENT_INVALID_DURATION,
     CREATE_EVENT_INVALID_TIME,
@@ -162,8 +164,18 @@ def _confirm_create(ctx: HandlerContext, cb: IncomingCallback) -> None:
         safe_answer_callback(ctx, cb, text="Готово")
     except CalendarProviderError as exc:
         log.error("Create event failed user_id=%s code=%s", cb.user_id, exc.error_code)
-        send(ctx, cb.chat_id, ERR_CALDAV_UNAVAILABLE_TEXT)
+        send(ctx, cb.chat_id, _create_failure_text(exc))
         safe_answer_callback(ctx, cb)
+
+
+def _create_failure_text(exc: CalendarProviderError) -> str:
+    if exc.error_code == "CREATE_FAILED":
+        return CREATE_EVENT_FAILED_HTML
+    if exc.error_code in {"NO_CALENDAR", "CALENDAR_NOT_CONNECTED"}:
+        return CALENDAR_NOT_CONNECTED_HTML
+    if exc.error_code == "CALDAV_UNAVAILABLE":
+        return ERR_CALDAV_UNAVAILABLE_TEXT
+    return ERR_CALDAV_UNAVAILABLE_TEXT
 
 
 def _parse_target_date(text: str, ctx: HandlerContext) -> date | None:

@@ -117,32 +117,41 @@ class MailruCalendarProvider:
         tz: tzinfo,
     ) -> CalendarEventRef:
         service = self._service(context.credentials)
-        calendar_url = context.primary_calendar_url
-        if not calendar_url:
+        calendar_urls = effective_enabled_calendar_urls_from_parts(
+            enabled_calendar_urls=context.enabled_calendar_urls,
+            primary_calendar_url=context.primary_calendar_url,
+        )
+        if not calendar_urls:
             raise CalendarProviderError(
                 "Календарь не настроен.", error_code="NO_CALENDAR"
             )
         start = payload.start if payload.start.tzinfo else payload.start.replace(tzinfo=tz)
         end = payload.end if payload.end.tzinfo else payload.end.replace(tzinfo=tz)
-        try:
-            uid, url = service.create_event(
-                calendar_url=calendar_url,
-                title=payload.title,
-                start=start,
-                end=end,
-                location=payload.location,
-                description=payload.description,
-            )
-        except CalDAVError as exc:
-            log.warning(
-                "Mail.ru create_event failed: %s",
-                str(exc).splitlines()[-1][:200],
-            )
-            raise CalendarProviderError(
-                "Не удалось создать событие. Проверьте права доступа.",
-                error_code="CREATE_FAILED",
-            ) from exc
-        return CalendarEventRef(uid=uid, url=url)
+        last_exc: CalDAVError | None = None
+        for calendar_url in calendar_urls:
+            try:
+                uid, url = service.create_event(
+                    calendar_url=calendar_url,
+                    title=payload.title,
+                    start=start,
+                    end=end,
+                    location=payload.location,
+                    description=payload.description,
+                )
+            except CalDAVError as exc:
+                last_exc = exc
+                log.warning(
+                    "Mail.ru create_event failed url=%s: %s",
+                    calendar_url[:48],
+                    str(exc).splitlines()[-1][:200],
+                )
+                continue
+            return CalendarEventRef(uid=uid, url=url)
+        assert last_exc is not None
+        raise CalendarProviderError(
+            "Не удалось создать событие. Проверьте права доступа.",
+            error_code="CREATE_FAILED",
+        ) from last_exc
 
     def update_event(
         self,
