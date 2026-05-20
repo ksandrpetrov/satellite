@@ -131,8 +131,9 @@ WEBAPP_BASE_URL=...
 
 **Частые причины:**
 
-1. **Страница открыта в браузере**, а не внутри Telegram (нет `initData`). Открывайте только кнопкой «Подключить календарь» **в чате с ботом**, не закладкой `https://cassinilab.ru/connect` в Safari.
-2. **На сервере другой `TELEGRAM_BOT_TOKEN`**, чем бот, из которого открыли Web App (тестовый vs боевой бот).
+1. **Страница открыта в Safari/Chrome**, а не в WebView Telegram. Не открывайте закладку `https://cassinilab.ru/connect`. Нужна кнопка **«Подключить календарь»** в **чате с ботом** (reply-клавиатура), не «открыть в браузере».
+2. **Кнопка меню в BotFather** настроена как обычный URL, а не **Web App** — тогда Desktop открывает Safari без сессии. BotFather → бот → Menu Button → **Web App** → `https://cassinilab.ru/connect`.
+3. **На сервере другой `TELEGRAM_BOT_TOKEN`**, чем бот, из которого открыли Web App (тестовый vs боевой бот).
 
 Проверка на VPS:
 

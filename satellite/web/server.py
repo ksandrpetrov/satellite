@@ -171,14 +171,16 @@ def _serve_html(handler: BaseHTTPRequestHandler, path: Path) -> None:
     handler.send_header("Content-Length", str(len(body)))
     handler.send_header("Cache-Control", "no-store")
     handler.send_header("X-Content-Type-Options", "nosniff")
-    handler.send_header("X-Frame-Options", "SAMEORIGIN")
     handler.send_header("Referrer-Policy", "no-referrer")
+    # Не ставим X-Frame-Options: SAMEORIGIN — ломает WebView Telegram Desktop/Web.
     handler.send_header(
         "Content-Security-Policy",
         "default-src 'self'; "
         "script-src 'self' https://telegram.org 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:; connect-src 'self'",
+        "img-src 'self' data:; connect-src 'self'; "
+        "frame-ancestors 'self' https://web.telegram.org https://*.web.telegram.org "
+        "https://telegram.org https://*.telegram.org",
     )
     handler.end_headers()
     handler.wfile.write(body)

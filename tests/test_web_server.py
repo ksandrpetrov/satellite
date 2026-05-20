@@ -131,7 +131,8 @@ def test_connect_html_served_with_security_headers(started_server):
         assert resp.status == 200
         assert resp.headers["Content-Type"].startswith("text/html")
         assert resp.headers["X-Content-Type-Options"] == "nosniff"
-        assert resp.headers["X-Frame-Options"] == "SAMEORIGIN"
+        assert "frame-ancestors" in resp.headers["Content-Security-Policy"]
+        assert "telegram.org" in resp.headers["Content-Security-Policy"]
         assert "Content-Security-Policy" in resp.headers
 
 

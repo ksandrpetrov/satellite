@@ -234,24 +234,33 @@
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
 
+    function initDataFromLocation() {
+      const hash = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+      const raw = hash.get('tgWebAppData') || new URLSearchParams(location.search).get('tgWebAppData') || '';
+      if (!raw) return '';
+      try {
+        return decodeURIComponent(raw);
+      } catch (_) {
+        return raw;
+      }
+    }
+
     function resolveInitData() {
       if (tg && tg.initData) return tg.initData;
-      const hash = new URLSearchParams((location.hash || '').replace(/^#/, ''));
-      const fromHash = hash.get('tgWebAppData');
-      if (fromHash) return fromHash;
-      return new URLSearchParams(location.search).get('tgWebAppData') || '';
+      return initDataFromLocation();
     }
 
     async function waitForInitData(maxMs) {
       let data = resolveInitData();
-      if (data || !tg) return data;
+      if (data) return data;
+      if (!tg) return '';
       return new Promise((resolve) => {
         const started = Date.now();
         const tick = () => {
           tg.ready();
           data = resolveInitData();
-          if (data || Date.now() - started >= maxMs) resolve(data);
-          else setTimeout(tick, 80);
+          if (data || Date.now() - started >= maxMs) resolve(data || '');
+          else setTimeout(tick, 100);
         };
         tick();
       });
@@ -259,7 +268,10 @@
 
     function telegramErrorMessage(code) {
       if (code === 'no_init_data') {
-        return 'Откройте Web App только из Telegram-бота (кнопка «Подключить календарь»). В Safari/Chrome без Telegram авторизация не работает.';
+        if (!tg) {
+          return 'Вы открыли страницу в браузере. В Telegram откройте чат с ботом → кнопка «Подключить календарь» (не закладка и не кнопка меню как обычная ссылка).';
+        }
+        return 'Telegram не передал сессию. Закройте это окно, в чате бота снова нажмите «Подключить календарь». В BotFather кнопка меню должна быть типа Web App, не обычный URL.';
       }
       if (code === 'bad_signature') {
         return 'На сервере указан другой TELEGRAM_BOT_TOKEN, чем бот, из которого вы открыли Web App. Проверьте .env и перезапустите бота.';
@@ -271,7 +283,7 @@
     }
 
     (async function gateTelegramClient() {
-      const initData = await waitForInitData(500);
+      const initData = await waitForInitData(2500);
       if (initData) return;
       const gate = document.getElementById('telegramGate');
       gate.textContent = telegramErrorMessage('no_init_data');
@@ -310,7 +322,7 @@
     }
 
     async function api(method, path, body) {
-      const initData = await waitForInitData(500);
+      const initData = await waitForInitData(2500);
       if (!initData) {
         const err = new Error(telegramErrorMessage('no_init_data'));
         err.code = 'no_init_data';
