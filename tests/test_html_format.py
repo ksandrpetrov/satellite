@@ -27,10 +27,17 @@ def test_expandable_blockquote_skips_short_text() -> None:
     assert expandable_blockquote("one line", threshold=3) == "one line"
 
 
-def test_tg_emoji_known_char() -> None:
+def test_tg_emoji_falls_back_to_plain_char_when_unregistered() -> None:
+    """Без зарегистрированного ``emoji-id`` возвращаем голый символ.
+
+    ``<tg-emoji>`` доступен только ботам с купленным на Fragment именем; для
+    «обычного» бота любой id ведёт на DOCUMENT_INVALID и ломает sendMessage.
+    Поэтому таблица сейчас пустая и любое обращение к ``tg_emoji()`` отдаёт
+    исходный символ без обёртки.
+    """
     out = tg_emoji("🪶")
-    assert "<tg-emoji" in out
-    assert "🪶" in out
+    assert out == "🪶"
+    assert "<tg-emoji" not in out
 
 
 def test_strip_tg_emoji_tags() -> None:

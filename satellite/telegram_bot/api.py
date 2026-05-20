@@ -30,9 +30,25 @@ class TelegramError(RuntimeError):
 
 
 def is_custom_emoji_rejected(exc: BaseException) -> bool:
-    """Telegram отклонил ``<tg-emoji emoji-id="…">`` в HTML-тексте."""
+    """Telegram отклонил ``<tg-emoji emoji-id="…">`` в HTML-тексте.
+
+    Возможные ответы Telegram:
+
+    * ``CUSTOM_EMOJI_ID_INVALID`` / ``tg-emoji ...`` — известная нам форма,
+      когда id отвергнут явно;
+    * ``DOCUMENT_INVALID`` — приходит от ``sendMessage``/``editMessageText``,
+      когда ``emoji-id`` ссылается на несуществующий sticker document
+      (типично для ботов без купленного на Fragment имени: им custom emoji
+      запрещены, и ``<tg-emoji>`` всегда указывает «в никуда»). В сообщении
+      нет файла, поэтому ``DOCUMENT_INVALID`` может прийти только от
+      кастомного эмодзи — безопасно трактовать как сигнал «снять теги».
+    """
     text = str(exc).lower()
-    return "custom_emoji" in text or "tg-emoji" in text
+    return (
+        "custom_emoji" in text
+        or "tg-emoji" in text
+        or "document_invalid" in text
+    )
 
 
 def is_html_entities_rejected(exc: BaseException) -> bool:

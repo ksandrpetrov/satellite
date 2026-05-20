@@ -234,6 +234,32 @@ def test_send_message_retries_without_tg_emoji_on_custom_emoji_error() -> None:
     assert "🪶" in snapshots[1]["text"]
 
 
+def test_send_message_retries_without_tg_emoji_on_document_invalid() -> None:
+    """``DOCUMENT_INVALID`` — типичный ответ Telegram на ``<tg-emoji>`` у бота
+    без купленного имени на Fragment. Тоже должно лечиться снятием тегов.
+    """
+    client = TelegramClient("token")
+    mock_call, snapshots = _capture_call_snapshots(
+        [
+            TelegramError(
+                'sendMessage: HTTP 400: {"ok":false,"error_code":400,'
+                '"description":"Bad Request: DOCUMENT_INVALID"}'
+            ),
+            {"message_id": 17},
+        ]
+    )
+    client._call = mock_call  # noqa: SLF001
+
+    html = '<tg-emoji emoji-id="1">🪶</tg-emoji> привет'
+    result = client.send_message(123, html)
+
+    assert result == {"message_id": 17}
+    assert len(snapshots) == 2
+    assert "<tg-emoji" in snapshots[0]["text"]
+    assert "<tg-emoji" not in snapshots[1]["text"]
+    assert "🪶" in snapshots[1]["text"]
+
+
 def test_send_message_link_preview_options_json() -> None:
     client = TelegramClient("token")
     captured: dict = {}
