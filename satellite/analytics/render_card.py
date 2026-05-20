@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import io
-from typing import Sequence
-
-from PIL import Image, ImageDraw, ImageFont
+from typing import TYPE_CHECKING, Sequence
 
 from ..calendar.period_stats import AnalyticsReport, format_week_range_label
+
+if TYPE_CHECKING:
+    from PIL import ImageDraw, ImageFont
 
 CARD_WIDTH = 1200
 CARD_HEIGHT = 1600
@@ -26,7 +27,15 @@ COLOR_GRID = (226, 232, 240)
 _WEEKDAY_LABELS = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 
 
+def _pil():
+    """Импорт Pillow только при рендере — без него бот должен стартовать."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    return Image, ImageDraw, ImageFont
+
+
 def _load_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    _, _, ImageFont = _pil()
     candidates = (
         "/System/Library/Fonts/Supplemental/Arial Bold.ttf" if bold else None,
         "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -140,6 +149,7 @@ def _draw_sparkline(
 
 
 def render_analytics_card(report: AnalyticsReport) -> bytes:
+    Image, ImageDraw, _ = _pil()
     img = Image.new("RGB", (CARD_WIDTH, CARD_HEIGHT), COLOR_BG)
     draw = ImageDraw.Draw(img)
     font_title = _load_font(44, bold=True)
