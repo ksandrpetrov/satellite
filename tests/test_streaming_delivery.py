@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from satellite.telegram_bot.api import TelegramError
-from satellite.telegram_bot.streaming_delivery import StreamingReply, open_streaming_reply
+from satellite.telegram_bot.streaming_delivery import (
+    StreamingReply,
+    _close_open_tags,
+    _safe_slice,
+    _typewriter_chunks,
+    open_streaming_reply,
+)
 
 
 def _telegram() -> MagicMock:
@@ -72,3 +76,120 @@ def test_dismiss_clears_draft() -> None:
     last = tg.send_message_draft.call_args
     assert last is not None
     assert last[0][2] == ""
+
+
+def test_dismiss_deletes_legacy_loading_message() -> None:
+    """В legacy-режиме dismiss обязан убрать loading-сообщение из чата."""
+    tg = _telegram()
+    tg.send_message_draft = MagicMock(return_value=False)
+    tg.send_message = MagicMock(return_value={"message_id": 777})
+    tg.delete_message = MagicMock(return_value=True)
+    stream = StreamingReply.open(tg, 600, "⏳")
+    stream.dismiss()
+    tg.delete_message.assert_called_once_with(600, 777)
+
+
+def test_native_thinking_placeholder_uses_empty_text() -> None:
+    """Пустой initial_text → черновик стартует с text='' (Bot API 10.0 placeholder)."""
+    tg = _telegram()
+    open_streaming_reply(tg, 700, "", draft_id=11)
+    assert tg.send_message_draft.call_args[0][2] == ""
+
+
+def test_empty_text_rejected_falls_back_to_placeholder() -> None:
+    """Старый Bot API (< 10.0): после отказа на text='' пробуем '⏳'."""
+    tg = _telegram()
+    calls: list[str] = []
+
+    def _draft(_chat_id, _draft_id, text, **_kw):
+        calls.append(text)
+        if text == "":
+            raise TelegramError("Bad Request: message text is empty")
+        return True
+
+    tg.send_message_draft = MagicMock(side_effect=_draft)
+    stream = open_streaming_reply(tg, 800, "", draft_id=12)
+    assert calls == ["", "⏳"]
+    stream.finish("done")
+    tg.send_message.assert_called_once()
+
+
+def test_finish_runs_typewriter_in_draft_mode() -> None:
+    """В draft-режиме перед финалом происходит несколько растущих кадров."""
+    tg = _telegram()
+    stream = open_streaming_reply(tg, 900, "⏳", draft_id=13)
+    tg.send_message_draft.reset_mock()
+    long_text = "Слово " * 60
+    stream.finish(long_text, typewriter=True)
+    assert tg.send_message_draft.call_count >= 2
+    tg.send_message.assert_called_once()
+    assert tg.send_message.call_args[0][1] == long_text
+
+
+def test_finish_skips_typewriter_in_legacy_mode() -> None:
+    tg = _telegram()
+    tg.send_message_draft = MagicMock(return_value=False)
+    tg.edit_message_text = MagicMock(return_value={"message_id": 1})
+    stream = StreamingReply.open(tg, 1000, "⏳")
+    long_text = "Слово " * 60
+    stream.finish(long_text, typewriter=True)
+    # Legacy не должен крутить typewriter через черновик: только одна правка.
+    tg.send_message_draft.assert_called_once()  # стартовый attempt
+    tg.edit_message_text.assert_called_once()
+
+
+# --- HTML-safe нарезка ------------------------------------------------------
+
+
+def test_safe_slice_does_not_break_html_tag() -> None:
+    text = "Hello <b>bold</b> world"
+    # cut посреди '<b>'
+    sliced = _safe_slice(text, 7)
+    assert "<b" not in sliced or sliced.endswith("</b>")
+    assert "</b>" not in sliced or sliced.count("<b>") == sliced.count("</b>")
+
+
+def test_safe_slice_does_not_break_html_entity() -> None:
+    text = "5 &amp; 3 is even"
+    # cut внутри '&amp;'
+    sliced = _safe_slice(text, 4)
+    assert "&" not in sliced or ";" in sliced
+
+
+def test_safe_slice_closes_open_tags() -> None:
+    text = "<b>Hello world</b>"
+    sliced = _safe_slice(text, 8)
+    assert sliced.count("<b>") == sliced.count("</b>")
+
+
+def test_close_open_tags_handles_nested_pairs() -> None:
+    assert _close_open_tags("<b><i>hi") == "<b><i>hi</i></b>"
+    assert _close_open_tags("<b>x</b><i>y") == "<b>x</b><i>y</i>"
+    assert _close_open_tags("plain text") == "plain text"
+
+
+def test_typewriter_chunks_are_monotonic_and_html_safe() -> None:
+    text = "<b>Заголовок</b>\n" + ("Длинный текст. " * 30)
+    chunks = _typewriter_chunks(text)
+    assert len(chunks) >= 2
+    for prev, curr in zip(chunks, chunks[1:]):
+        assert len(curr) >= len(prev)
+    for chunk in chunks:
+        assert chunk.count("<b>") == chunk.count("</b>")
+
+
+def test_typewriter_chunks_skipped_on_short_text() -> None:
+    assert _typewriter_chunks("hi") == []
+    assert _typewriter_chunks("x" * 50) == []
+
+
+def test_clip_to_telegram_limit_preserves_html() -> None:
+    long = "<b>" + ("a" * 5000) + "</b>"
+    tg = _telegram()
+    stream = StreamingReply.open(tg, 1100, "⏳", draft_id=14)
+    tg.send_message_draft.reset_mock()
+    stream.push(long)
+    sent = tg.send_message_draft.call_args[0][2]
+    assert len(sent) <= 4096
+    # HTML-теги остались сбалансированы
+    assert sent.count("<b>") == sent.count("</b>")

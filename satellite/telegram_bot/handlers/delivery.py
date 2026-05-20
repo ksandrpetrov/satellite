@@ -1,7 +1,8 @@
-"""Низкоуровневые Telegram-операции: send/edit/finalize/answer-callback.
+"""Низкоуровневые Telegram-операции: streaming/edit-callback/answer-callback.
 
 Здесь собрана вся обвязка вокруг ``TelegramClient`` так, чтобы хендлеры
 сценариев не знали про детали send/edit и обработку ошибок отправки.
+Промежуточная доставка длинных ответов — через :mod:`..streaming_delivery`.
 """
 
 from __future__ import annotations
@@ -12,7 +13,6 @@ from urllib.parse import quote
 from ...config import WebAppConfig
 from ...messages_ru import ERR_GENERIC_HANDLER_TEXT
 from ..api import TelegramError
-from ..message_editing import edit_or_send_message
 from ..streaming_delivery import StreamingReply, open_streaming_reply as _open_streaming_reply
 from .context import HandlerContext, IncomingCallback
 
@@ -35,48 +35,22 @@ def send(ctx: HandlerContext, chat_id: int | None, text: str) -> None:
 def open_streaming_reply(
     ctx: HandlerContext,
     chat_id: int,
-    initial_text: str,
+    initial_text: str = "",
     *,
     draft_id: int | None = None,
     message_thread_id: int | None = None,
 ) -> StreamingReply:
-    """Потоковый ответ: ``sendMessageDraft`` с fallback на loading+edit."""
+    """Потоковый ответ: ``sendMessageDraft`` с fallback на loading+edit.
+
+    Пустой ``initial_text`` (по умолчанию) → нативный «Thinking…» из Bot API
+    10.0; на старых серверах сервис подставит ``⏳`` placeholder.
+    """
     return _open_streaming_reply(
         ctx.telegram,
         chat_id,
         initial_text,
         draft_id=draft_id,
         message_thread_id=message_thread_id,
-    )
-
-
-def try_send_return_message_id(
-    ctx: HandlerContext, chat_id: int | None, text: str
-) -> int | None:
-    """Как `send`, но возвращает ``message_id`` для последующего ``editMessageText``."""
-    if chat_id is None:
-        return None
-    try:
-        result = ctx.telegram.send_message(chat_id, text)
-    except TelegramError as exc:
-        log.warning("Failed to send status message: %s", exc)
-        return None
-    mid = result.get("message_id") if isinstance(result, dict) else None
-    return int(mid) if isinstance(mid, int) else None
-
-
-def finalize_message(
-    ctx: HandlerContext,
-    chat_id: int,
-    loading_message_id: int | None,
-    text: str,
-) -> None:
-    edit_or_send_message(
-        ctx.telegram,
-        chat_id,
-        loading_message_id,
-        text,
-        reply_markup=None,
     )
 
 

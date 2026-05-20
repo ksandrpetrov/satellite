@@ -131,8 +131,6 @@ def test_set_attendee_partstat_updates_ics(monkeypatch):
     class _GetResp:
         status_code = 200
         content = ics_bytes
-
-    class _HeadResp:
         headers = {"ETag": '"1"'}
 
     class _PutResp:
@@ -147,9 +145,6 @@ def test_set_attendee_partstat_updates_ics(monkeypatch):
 
     monkeypatch.setattr(
         "satellite.calendar.caldav_client.requests.get", fake_get
-    )
-    monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.head", lambda *a, **k: _HeadResp()
     )
     monkeypatch.setattr(
         "satellite.calendar.caldav_client.requests.put", fake_put
@@ -192,6 +187,7 @@ def test_set_attendee_partstat_adds_attendee_when_missing(monkeypatch):
     class _GetResp:
         status_code = 200
         content = ics_bytes
+        headers: dict = {}
 
     class _PutResp:
         status_code = 204
@@ -200,10 +196,7 @@ def test_set_attendee_partstat_adds_attendee_when_missing(monkeypatch):
         "satellite.calendar.caldav_client.requests.get",
         lambda *a, **k: _GetResp(),
     )
-    monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.head",
-        lambda *a, **k: type("R", (), {"headers": {}})(),
-    )
+
     def fake_put(*args, **kwargs):
         saved["body"] = kwargs.get("data") or (args[1] if len(args) > 1 else None)
         return _PutResp()
@@ -281,6 +274,7 @@ def test_set_attendee_partstat_updates_pending_attendee_without_login_match(monk
     class _GetResp:
         status_code = 200
         content = ics_bytes
+        headers: dict = {}
 
     class _PutResp:
         status_code = 204
@@ -289,10 +283,7 @@ def test_set_attendee_partstat_updates_pending_attendee_without_login_match(monk
         "satellite.calendar.caldav_client.requests.get",
         lambda *a, **k: _GetResp(),
     )
-    monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.head",
-        lambda *a, **k: type("R", (), {"headers": {}})(),
-    )
+
     def fake_put(*args, **kwargs):
         saved["body"] = kwargs.get("data") or (args[1] if len(args) > 1 else None)
         return _PutResp()
