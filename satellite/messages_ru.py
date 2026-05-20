@@ -358,6 +358,59 @@ UPCOMING_EMPTY_HTML = (
     "🗓 На ближайшие дни встреч нет.\n"
     "Небо чистое — самое время для глубокой работы."
 )
+# Минимум строк событий в дне, чтобы обернуть их в expandable blockquote.
+# Одиночная встреча остаётся обычным текстом под заголовком (развёрнуто).
+UPCOMING_DAY_EXPANDABLE_MIN_LINES = 2
+
+
+def upcoming_events_day_sections(
+    events,
+    tz,
+    reference_date,
+    *,
+    days: int = 7,
+    max_events: int = 30,
+) -> list[str]:
+    """Секции «Ближайшие события» по одному дню (заголовок + события)."""
+    from html import escape
+
+    from .calendar.events import build_upcoming_events_groups
+    from .telegram_bot.html_format import expandable_blockquote
+
+    sections: list[str] = []
+    for group in build_upcoming_events_groups(
+        events, tz, reference_date, days=days, max_events=max_events
+    ):
+        header = f"<b>{group['header']}</b>"
+        event_lines: list[str] = []
+        for item in group["events"]:
+            title = escape(str(item["title"]))
+            event_lines.append(f"{item['marker']} {item['time_range']} — {title}")
+        if not event_lines:
+            sections.append(header)
+            continue
+        body = "\n".join(event_lines)
+        wrapped = expandable_blockquote(
+            body, threshold=UPCOMING_DAY_EXPANDABLE_MIN_LINES
+        )
+        sections.append(f"{header}\n{wrapped}")
+    return sections
+
+
+def upcoming_events_html(
+    events,
+    tz,
+    reference_date,
+    *,
+    days: int = 7,
+    max_events: int = 30,
+) -> str:
+    """HTML тела «Ближайшие события» со сворачиванием по дням."""
+    return "\n\n".join(
+        upcoming_events_day_sections(
+            events, tz, reference_date, days=days, max_events=max_events
+        )
+    )
 CREATE_EVENT_ASK_TITLE = "➕ Как назвать встречу? Напиши одной строкой."
 CREATE_EVENT_ASK_DATE = (
     "📅 На какой день? Жми кнопку ниже или напиши:\n"

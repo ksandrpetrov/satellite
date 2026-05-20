@@ -5,12 +5,15 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from ...calendar.events import format_upcoming_events_lines
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
-from ...messages_ru import ERR_CALDAV_UNAVAILABLE_TEXT, UPCOMING_EMPTY_HTML, UPCOMING_FETCH_STATUS
+from ...messages_ru import (
+    ERR_CALDAV_UNAVAILABLE_TEXT,
+    UPCOMING_EMPTY_HTML,
+    UPCOMING_FETCH_STATUS,
+    upcoming_events_day_sections,
+)
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingMessage
-from ..html_format import expandable_blockquote
 from ..visual import is_private_chat, pick_upcoming_message_effect
 from .delivery import open_streaming_reply
 
@@ -34,20 +37,17 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
             end_date=end,
             tz=ctx.tz,
         )
-        body = format_upcoming_events_lines(events, ctx.tz, today, days=_UPCOMING_DAYS)
-        if not body:
+        day_sections = upcoming_events_day_sections(
+            events, ctx.tz, today, days=_UPCOMING_DAYS
+        )
+        if not day_sections:
             stream.finish(UPCOMING_EMPTY_HTML)
             return
-        header = "🗓 <b>Ближайшие события</b>"
-        parts = [header, ""]
-        for line in body:
-            parts.append(line)
-            stream.push("\n".join(parts))
-        raw_body = "\n".join(parts[2:]) if len(parts) > 2 else ""
-        if raw_body.count("\n") >= 6:
-            text = "\n".join(parts[:2]) + "\n" + expandable_blockquote(raw_body, threshold=6)
-        else:
-            text = "\n".join(parts)
+        parts = ["🗓 <b>Ближайшие события</b>", ""]
+        for section in day_sections:
+            parts.append(section)
+            stream.push("\n\n".join(parts))
+        text = "\n\n".join(parts)
     except CalendarNotConnectedError:
         text = ERR_CALDAV_UNAVAILABLE_TEXT
     except CalendarProviderError as exc:
