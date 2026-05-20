@@ -64,10 +64,11 @@ satellite/
       calendar_list.py   # /upcoming
       calendar_sources.py # календари в плане/дайджесте
       calendar_foreign.py # чужие (пошаренные) календари
-      calendar_invitations.py # /invitations, PARTSTAT ACCEPTED/DECLINED/TENTATIVE
-      calendar_create.py # /create FSM
+    calendar_invitations.py # /invitations, PARTSTAT ACCEPTED/DECLINED/TENTATIVE
+    calendar_manage.py # /manage — список встреч на 7 дней + смена PARTSTAT
+    calendar_create.py # /create FSM
       plan.py, settings.py, subscription.py
-    api.py, message_editing.py, commands.py
+    api.py, message_editing.py, streaming_delivery.py, commands.py
     digest_state.py, calendar_state.py
     offset_store.py, offset_tracker.py
     concurrency.py, instance_lock.py
@@ -86,6 +87,7 @@ satellite/
 | Список CalDAV-календарей в UI | [`handlers/calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py) — `fetch_calendars` (→ `CalendarListResult`) и `build_calendar_sources_screen` |
 | Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users.py`](satellite/users.py) |
 | URL Web App connect | [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `webapp_connect_url(ctx)` |
+| Потоковый ответ (черновик + финал) | [`streaming_delivery.py`](satellite/telegram_bot/streaming_delivery.py), [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `open_streaming_reply` |
 | Расписание дайджеста | [`scheduler.py`](satellite/scheduler.py) + [`subscriptions.py`](satellite/subscriptions.py) |
 | Доступ, заявки, календарь пользователя | [`users.py`](satellite/users.py), шифрование — [`security/token_vault.py`](satellite/security/token_vault.py) |
 | Web App connect | handlers + HTTP в [`bot.py`](satellite/telegram_bot/bot.py); env — [`config.py`](satellite/config.py) |
@@ -94,6 +96,7 @@ satellite/
 | CalDAV / провайдеры | [`calendar/caldav_client.py`](satellite/calendar/caldav_client.py), [`calendar/providers/`](satellite/calendar/providers/), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) |
 | Список / создание событий в боте | [`handlers/calendar_list.py`](satellite/telegram_bot/handlers/calendar_list.py), [`calendar_create.py`](satellite/telegram_bot/handlers/calendar_create.py); формат строк — [`events.py`](satellite/calendar/events.py) |
 | Приглашения (NEEDS-ACTION, ответ в CalDAV) | [`handlers/calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py), [`events.py`](satellite/calendar/events.py) (`collect_pending_invitations`, `is_pending_invitation_for_user`), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) (`list_events_for_invitations`, `set_attendee_partstat`), [`caldav_client.py`](satellite/calendar/caldav_client.py) (PARTSTAT refresh/update) |
+| «Изменить статус встречи» (любой PARTSTAT) | [`handlers/calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py), [`events.py`](satellite/calendar/events.py) (`collect_manageable_events`) — список + детальный экран по встрече, действия завязаны на тот же `set_attendee_partstat` |
 | Ввод времени (дайджест, /create) | [`time_utils.py`](satellite/calendar/time_utils.py); подсказки — [`messages_ru.py`](satellite/messages_ru.py) |
 | Нумерация встреч (дайджест, /upcoming) | [`event_index_marker`](satellite/calendar/events.py) |
 | Web App REST API | [`web/server.py`](satellite/web/server.py) |
@@ -220,6 +223,20 @@ production, ngrok/Cloudflare Tunnel в dev).
 | `logs/telegram-offset.json` | Watermark long-polling |
 | `logs/subscriptions.json` | Per-user дайджест |
 | `logs/users.json` | Доступ + зашифрованные CalDAV-credentials |
-| `.env` | См. [`.env.example`](.env.example) |
+| `logs/backups/` | Снапшоты `users.json`/`subscriptions.json` на каждый старт ([`backup.py`](satellite/backup.py)) — last 20, имя `<file>.YYYYMMDD-HHMMSSZ.bak` |
+| `.env` | См. [`.env.example`](.env.example); должен быть `chmod 600` |
 
 Все в `.gitignore`.
+
+### Сохранность данных между деплоями
+
+`logs/` и `.env` не коммитятся и не трогаются ни одним из скриптов
+([`scripts/install.sh`](scripts/install.sh) / [`scripts/install-server.sh`](scripts/install-server.sh) / `make deploy`).
+Стандартный апдейт-цикл (`git pull && systemctl restart satellite-bot.service`
+или `make deploy`) сохраняет per-user настройки: `users.json` и
+`subscriptions.json` живут в `logs/`, на старте бот снапшотит их в
+`logs/backups/`. В журнале при старте появляется строка
+`Persistence loaded: users total=… approved=… connected=… subscriptions total=… active=… key_fingerprint=…` —
+по `key_fingerprint` (sha256[0:8]) видно, что `TOKEN_ENCRYPTION_KEY` не сменился.
+Если хоть один approved-пользователь не расшифровывается текущим ключом,
+[`bot.py`](satellite/telegram_bot/bot.py) пишет `CRITICAL Encryption self-check failed`.

@@ -460,6 +460,36 @@ def collect_pending_invitations(
     return pending[: max(0, max_events)]
 
 
+def collect_manageable_events(
+    events: Sequence[Event],
+    login: str,
+    tz: tzinfo,
+    *,
+    now: datetime,
+    max_events: int = 30,
+) -> list[Event]:
+    """Будущие встречи, где пользователь — участник (есть ATTENDEE-запись).
+
+    Это набор для экрана «Изменить статус»: всё, по чему ещё можно поменять
+    решение (включая уже ACCEPTED / DECLINED / TENTATIVE / NEEDS-ACTION).
+    Отфильтровываем cancelled и уже завершённые встречи; события без URL не
+    показываем — без url мы не сможем обновить PARTSTAT на сервере.
+    """
+    login_norm = (login or "").strip()
+    if not login_norm:
+        return []
+    manageable = [
+        ev
+        for ev in events
+        if (ev.get("url") or "").strip()
+        and not is_cancelled_event(ev)
+        and user_partstat(ev, login_norm) is not None
+        and event_ends_after(ev, tz, moment=now)
+    ]
+    manageable.sort(key=lambda ev: sort_key(ev, tz))
+    return manageable[: max(0, max_events)]
+
+
 def format_invitation_list_lines(
     events: Sequence[Event],
     tz: tzinfo,

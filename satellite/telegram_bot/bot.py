@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import signal
 import threading
@@ -10,14 +11,15 @@ from concurrent.futures import ThreadPoolExecutor
 
 from zoneinfo import ZoneInfo
 
+from ..backup import snapshot_all
 from ..calendar.operation_log import CalendarOperationLog
 from ..calendar.user_calendar_service import UserCalendarService
 from ..config import Settings
 from ..plan_service import PlanBuilder
 from ..scheduler import DigestScheduler
-from ..security.token_vault import TokenVault
+from ..security.token_vault import TokenDecryptError, TokenVault
 from ..subscriptions import SubscriptionStore
-from ..users import UserStore
+from ..users import USER_STATUS_APPROVED, UserStore
 from ..weather.client import WeatherForecastClient
 from ..web.connect_token import ConnectTokenStore
 from ..web.server import WebAppServer, WebAppServerConfig
@@ -57,7 +59,15 @@ class TelegramBot:
         self._tz = ZoneInfo(settings.plan.tz_name)
         self._telegram = TelegramClient(settings.telegram.bot_token)
         logs_dir = settings.project_root / "logs"
-        self._users = UserStore(logs_dir / "users.json")
+        self._users_path = logs_dir / "users.json"
+        self._subscriptions_path = logs_dir / "subscriptions.json"
+        # Снапшоты до открытия сторов: если кто-то руками подменил файл и сейчас
+        # запись битая, мы успеем сохранить его как-есть до того, как сторы
+        # перезапишут диск своим in-memory представлением.
+        self._startup_snapshots = snapshot_all(
+            [self._users_path, self._subscriptions_path]
+        )
+        self._users = UserStore(self._users_path)
         self._token_vault = TokenVault(settings.security.encryption_key)
         self._operation_log = CalendarOperationLog(logs_dir / "calendar_ops.jsonl")
         self._calendar_service = UserCalendarService(
@@ -68,7 +78,7 @@ class TelegramBot:
         )
         self._offset_store = OffsetStore(logs_dir / "telegram-offset.json")
         self._offset_tracker = OffsetTracker(self._offset_store)
-        self._subscriptions = SubscriptionStore(logs_dir / "subscriptions.json")
+        self._subscriptions = SubscriptionStore(self._subscriptions_path)
         self._weather_client: WeatherForecastClient | None = (
             WeatherForecastClient() if settings.weather.enabled else None
         )
@@ -127,6 +137,8 @@ class TelegramBot:
             self._settings.digest.mode,
             self._settings.webapp.base_url or "<not configured>",
         )
+        self._log_persistence_summary()
+        self._verify_encryption_key_against_existing_users()
         self._register_commands_safely()
         self._webapp.start()
         self._scheduler.start()
@@ -134,6 +146,67 @@ class TelegramBot:
             self._main_loop()
         finally:
             self.shutdown()
+
+    def _log_persistence_summary(self) -> None:
+        """Печатает в журнал, сколько пользователей и подписок загрузилось.
+
+        Нужно, чтобы при каждом ``systemctl restart`` админ видел в журнале
+        стабильные числа («users approved=2 connected=2 subs active=2») и не
+        ловил ложное «после деплоя всё сбросилось». Падать здесь нельзя — это
+        диагностика, а не валидация.
+        """
+        users = self._users.list_all()
+        approved = sum(1 for rec in users if rec.status == USER_STATUS_APPROVED)
+        with_calendar = sum(1 for rec in users if rec.has_calendar)
+        subs_all = self._subscriptions.list_all()
+        subs_active = sum(1 for sub in subs_all if sub.digest_enabled)
+        snapshots = [str(path) for path in self._startup_snapshots]
+        log.info(
+            "Persistence loaded: users total=%d approved=%d calendar_connected=%d "
+            "subscriptions total=%d active=%d users_path=%s subscriptions_path=%s "
+            "key_fingerprint=%s snapshots=%s",
+            len(users),
+            approved,
+            with_calendar,
+            len(subs_all),
+            subs_active,
+            self._users_path,
+            self._subscriptions_path,
+            _encryption_key_fingerprint(self._settings.security.encryption_key),
+            snapshots or "[]",
+        )
+
+    def _verify_encryption_key_against_existing_users(self) -> None:
+        """Пробует расшифровать хоть один существующий ``encrypted_credentials``.
+
+        Сценарий, ради которого это нужно: админ случайно перегенерил
+        ``TOKEN_ENCRYPTION_KEY`` в ``.env`` (или ``.env`` уехал из бэкапа со
+        старого хоста). Бот стартует, но все подключения календарей становятся
+        «битыми» — пользователи видят «настройки сбросились». Лучше один раз
+        громко крикнуть в журнал, чем молча работать с осиротевшими записями.
+        """
+        candidates = [
+            rec
+            for rec in self._users.list_all()
+            if rec.encrypted_credentials and rec.status == USER_STATUS_APPROVED
+        ]
+        if not candidates:
+            return
+        for rec in candidates:
+            try:
+                self._token_vault.decrypt(rec.encrypted_credentials or "")
+            except TokenDecryptError:
+                continue
+            return
+        log.critical(
+            "Encryption self-check failed: %d approved users have credentials, "
+            "but none decrypt with current TOKEN_ENCRYPTION_KEY (fingerprint=%s). "
+            "The key was likely rotated since users connected their calendars. "
+            "Restore the previous .env (or logs/backups snapshot) to keep settings; "
+            "see docs/troubleshooting.md.",
+            len(candidates),
+            _encryption_key_fingerprint(self._settings.security.encryption_key),
+        )
 
     def _register_commands_safely(self) -> None:
         try:
@@ -310,3 +383,15 @@ class TelegramBot:
             if remaining <= 0:
                 return
             self._stop_event.wait(timeout=min(0.5, remaining))
+
+
+def _encryption_key_fingerprint(encryption_key: str) -> str:
+    """Короткий отпечаток ключа шифрования для журнала.
+
+    SHA256 over the key, truncated to 8 hex chars. Не позволяет восстановить
+    ключ, но даёт визуальный «равно/не равно» между перезапусками — если
+    ``key_fingerprint`` поменялся, значит ``.env`` подменили (или его
+    перегенерировал ``make env`` / ``scripts/install.sh``).
+    """
+    digest = hashlib.sha256(encryption_key.encode("utf-8")).hexdigest()
+    return digest[:8]

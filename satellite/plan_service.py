@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, tzinfo
 
@@ -44,6 +45,7 @@ class PlanBuilder:
         telegram_user_id: int,
         target_date: date,
         reference_date: date,
+        on_progress: Callable[[str], None] | None = None,
     ) -> str:
         started_at = time.monotonic()
         cfg = self.weather_config
@@ -100,6 +102,16 @@ class PlanBuilder:
                 prefetched = prefetch_box.get("forecast")
         else:
             prefetched = _WEATHER_FETCH_INLINE
+
+        if on_progress is not None:
+            on_progress(
+                render_digest_from_stats(
+                    stats,
+                    meal_footer,
+                    escape_html=True,
+                    weather_line=None,
+                )
+            )
 
         weather_started = time.monotonic()
         weather_line = self._build_weather_line(

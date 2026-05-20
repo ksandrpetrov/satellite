@@ -13,6 +13,7 @@ from satellite.calendar.events import (
     is_pending_invitation_for_user,
 )
 from satellite.calendar.callback_tokens import event_callback_token
+from satellite.telegram_bot.handlers.calendar_invitations import _find_event_by_token
 from satellite.telegram_bot.handlers.routing import InvitationsCommand, recognize_message
 from satellite.messages_ru import BUTTON_INVITATIONS
 
@@ -182,6 +183,25 @@ def test_set_attendee_partstat_adds_attendee_when_missing(monkeypatch):
 def test_event_callback_token_ignores_trailing_slash():
     url = "https://calendar.mail.ru/cal/abc.ics"
     assert event_callback_token(url) == event_callback_token(url + "/")
+
+
+def test_find_event_by_token_when_not_pending():
+    """Кнопка привязана к URL; при ответе событие может выпасть из pending без PARTSTAT в REPORT."""
+    url = "https://calendar.mail.ru/calendars/vk.team/u/evt.ics"
+    token = event_callback_token(url)
+    events = [
+        {
+            "summary": "SocServ| Техно check up",
+            "url": url,
+            "dtstart": "2026-06-26T15:00:00+03:00",
+            "dtend": "2026-06-26T16:00:00+03:00",
+            "attendees": [f"mailto:{LOGIN}"],
+        },
+    ]
+    assert not is_pending_invitation_for_user(events[0], LOGIN)
+    found = _find_event_by_token(events, token)
+    assert found is not None
+    assert found["summary"] == "SocServ| Техно check up"
 
 
 def test_set_attendee_partstat_loads_before_read(monkeypatch):

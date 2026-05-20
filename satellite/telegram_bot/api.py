@@ -20,6 +20,8 @@ _SEND_MESSAGE_TIMEOUT_SEC = 8.0
 _SEND_MESSAGE_MAX_RETRIES = 1
 _EDIT_MESSAGE_TIMEOUT_SEC = 3.0
 _EDIT_MESSAGE_MAX_RETRIES = 0
+_DRAFT_MESSAGE_TIMEOUT_SEC = 3.0
+_DRAFT_MESSAGE_MAX_RETRIES = 0
 _LONG_POLL_METHOD = "getUpdates"
 
 
@@ -206,6 +208,39 @@ class TelegramClient:
             timeout=_EDIT_MESSAGE_TIMEOUT_SEC,
             max_retries=_EDIT_MESSAGE_MAX_RETRIES,
         )
+
+    def send_message_draft(
+        self,
+        chat_id: int | str,
+        draft_id: int,
+        text: str = "",
+        *,
+        message_thread_id: int | None = None,
+        parse_mode: str | None = "HTML",
+    ) -> bool:
+        """``sendMessageDraft`` (Bot API 9.3+): потоковый черновик в поле ввода.
+
+        Возвращает ``True`` при успехе. Финальный текст нужно отправить
+        отдельным ``sendMessage`` — см. :mod:`streaming_delivery`.
+        """
+        if not draft_id:
+            raise ValueError("draft_id must be non-zero")
+        data: dict[str, Any] = {
+            "chat_id": chat_id,
+            "draft_id": draft_id,
+            "text": text,
+        }
+        if message_thread_id is not None:
+            data["message_thread_id"] = message_thread_id
+        if parse_mode:
+            data["parse_mode"] = parse_mode
+        result = self._call(
+            "sendMessageDraft",
+            data=data,
+            timeout=_DRAFT_MESSAGE_TIMEOUT_SEC,
+            max_retries=_DRAFT_MESSAGE_MAX_RETRIES,
+        )
+        return result is True
 
     def set_my_commands(
         self,

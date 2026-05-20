@@ -386,8 +386,21 @@ def test_parse_subscription_action_no_match():
     assert parse_subscription_action("/settings") is None
 
 
+def test_plan_uses_send_message_draft_when_supported():
+    """При поддержке API — черновик + финальный sendMessage, без edit."""
+    ctx = _plan_handler_context()
+    ctx.telegram.send_message_draft = MagicMock(return_value=True)
+    msg = IncomingMessage(update_id=2, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td")
+    handle_message(ctx, msg)
+
+    ctx.telegram.send_message_draft.assert_called()
+    ctx.telegram.send_message.assert_called_once()
+    assert ctx.telegram.send_message.call_args[0][1] == "<b>Plan HTML</b>"
+    ctx.telegram.edit_message_text.assert_not_called()
+
+
 def test_plan_text_command_sends_loading_then_edits_to_digest():
-    """Команда `/td` тоже должна следовать паттерну loading → edit, без двух сообщений."""
+    """Без ``sendMessageDraft`` — прежний паттерн loading → edit."""
     ctx = _plan_handler_context()
     msg = IncomingMessage(update_id=2, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td")
     handle_message(ctx, msg)
@@ -472,10 +485,8 @@ def test_plan_replaces_loading_with_generic_error_on_unexpected_exception(
     with caplog.at_level(logging.ERROR, logger="satellite.telegram_bot.handlers"):
         handle_message(ctx, msg)
 
-    ctx.telegram.send_message.assert_called_once_with(
-        9004,
-        PLAN_FETCH_STATUS_TEXT["today"],
-    )
+    assert ctx.telegram.send_message.call_count == 1
+    assert ctx.telegram.send_message.call_args[0][1] == PLAN_FETCH_STATUS_TEXT["today"]
     ctx.telegram.edit_message_text.assert_called_once()
     edit_kw = ctx.telegram.edit_message_text.call_args
     assert edit_kw[0][2] == ERR_DIGEST_BUILD_FAILED_TEXT

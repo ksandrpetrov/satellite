@@ -394,6 +394,8 @@ class CalDAVService:
             raise CalDAVError("Login is required to update PARTSTAT")
         login_variants = login_variants_for_caldav(self._login)
         try:
+            with self._partstat_cache_lock:
+                self._partstat_cache.pop(event_url, None)
             event_obj = self._get_event_object(event_url)
             event_obj.load(only_if_unloaded=True)
             raw = event_obj.data
@@ -760,8 +762,9 @@ class CalDAVService:
         Возвращает (attendees, status) или None при сетевой ошибке.
         """
         with self._partstat_cache_lock:
-            if event_url in self._partstat_cache:
-                return self._partstat_cache[event_url]
+            cached = self._partstat_cache.get(event_url)
+            if cached is not None:
+                return cached
         try:
             response = requests.get(
                 event_url,
@@ -775,8 +778,6 @@ class CalDAVService:
                 _redact_url(event_url),
                 exc.__class__.__name__,
             )
-            with self._partstat_cache_lock:
-                self._partstat_cache[event_url] = None
             return None
         if response.status_code != 200 or not response.content:
             log.debug(
@@ -784,13 +785,9 @@ class CalDAVService:
                 response.status_code,
                 _redact_url(event_url),
             )
-            with self._partstat_cache_lock:
-                self._partstat_cache[event_url] = None
             return None
         parsed = parse_calendar_events(response.content, calendar_name="")
         if not parsed:
-            with self._partstat_cache_lock:
-                self._partstat_cache[event_url] = None
             return None
         attendees: list[str] = []
         status: str | None = None

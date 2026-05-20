@@ -23,6 +23,7 @@ BUTTON_TOMORROW = "➡️ Завтра"
 BUTTON_DAY_AFTER = "⏭ Послезавтра"
 BUTTON_UPCOMING = "🗓 Ближайшие события"
 BUTTON_INVITATIONS = "📨 Приглашения"
+BUTTON_MANAGE_EVENTS = "🛠 Изменить статус"
 BUTTON_CREATE_EVENT = "➕ Создать событие"
 BUTTON_SUBSCRIBE = "🔔 Подписаться на дайджест"
 BUTTON_UNSUBSCRIBE = "🔕 Отключить дайджест"
@@ -78,6 +79,7 @@ _NORMALIZED_BUTTON_SETTINGS = normalize_button_text(BUTTON_SETTINGS)
 _NORMALIZED_BUTTON_DIGEST_SETTINGS = normalize_button_text(BUTTON_DIGEST_SETTINGS)
 _NORMALIZED_BUTTON_UPCOMING = normalize_button_text(BUTTON_UPCOMING)
 _NORMALIZED_BUTTON_INVITATIONS = normalize_button_text(BUTTON_INVITATIONS)
+_NORMALIZED_BUTTON_MANAGE_EVENTS = normalize_button_text(BUTTON_MANAGE_EVENTS)
 _NORMALIZED_BUTTON_CREATE_EVENT = normalize_button_text(BUTTON_CREATE_EVENT)
 _NORMALIZED_BUTTON_CONNECT = normalize_button_text(BUTTON_CONNECT_CALENDAR)
 _NORMALIZED_BUTTON_RECONNECT = normalize_button_text(BUTTON_RECONNECT_CALENDAR)
@@ -132,6 +134,12 @@ def button_text_is_invitations(text: str | None) -> bool:
     return normalize_button_text(text) == _NORMALIZED_BUTTON_INVITATIONS
 
 
+def button_text_is_manage_events(text: str | None) -> bool:
+    if not text:
+        return False
+    return normalize_button_text(text) == _NORMALIZED_BUTTON_MANAGE_EVENTS
+
+
 def button_text_is_create_event(text: str | None) -> bool:
     if not text:
         return False
@@ -182,6 +190,7 @@ BOT_WELCOME_HTML = (
     "📅 <b>Сегодня</b> / ➡️ <b>Завтра</b> — план на день\n"
     "🗓 <b>Ближайшие</b> — события на неделю вперёд\n"
     "📨 <b>Приглашения</b> — встречи, где нужно принять решение\n"
+    "🛠 <b>Изменить статус</b> — поменять решение по любой ближайшей встрече\n"
     "👥 <b>Чужие календари</b> — что у коллег\n"
     "➕ <b>Создать</b> — новая встреча в твой календарь\n"
     "⚙️ <b>Настройки</b> — дайджест, аналитика, подключение\n\n"
@@ -195,6 +204,7 @@ BOT_HELP_HTML = (
     "📅 Сегодня, ➡️ Завтра — план на день\n"
     "🗓 Ближайшие — события на 7 дней\n"
     "📨 Приглашения — принять, отклонить или «может быть»\n"
+    "🛠 Изменить статус — поменять решение по любой встрече на неделе\n"
     "👥 Чужие календари — пошаренные от коллег\n"
     "➕ Создать событие — добавить встречу\n"
     "⚙️ Настройки — дайджест, аналитика, подключение\n\n"
@@ -202,6 +212,7 @@ BOT_HELP_HTML = (
     "/today, /tomorrow, /aftertomorrow — план дня\n"
     "/upcoming — ближайшие события\n"
     "/invitations — ответить на приглашения\n"
+    "/manage — изменить статус встречи на неделе\n"
     "/foreign — чужие календари\n"
     "/create — создать встречу\n"
     "/settings — настройки\n"
@@ -548,7 +559,7 @@ def build_approved_main_keyboard() -> dict:
         "keyboard": [
             [{"text": BUTTON_TODAY}, {"text": BUTTON_TOMORROW}],
             [{"text": BUTTON_UPCOMING}, {"text": BUTTON_INVITATIONS}],
-            [{"text": BUTTON_FOREIGN_CALENDARS}],
+            [{"text": BUTTON_MANAGE_EVENTS}, {"text": BUTTON_FOREIGN_CALENDARS}],
             [{"text": BUTTON_CREATE_EVENT}],
             [{"text": BUTTON_SETTINGS}],
         ],
@@ -734,6 +745,108 @@ def invitations_list_html(*, body_lines: list[str], truncated: bool) -> str:
         parts.append("")
         parts.append(
             "<i>Показаны первые встречи — обновите список после ответов.</i>"
+        )
+    return "\n".join(parts)
+
+
+# --- изменение статуса встречи (PARTSTAT) ----------------------------------
+
+CB_MANAGE_CLOSE = "mng:close"
+CB_MANAGE_BACK = "mng:back"
+CB_MANAGE_REFRESH = "mng:refresh"
+CB_MANAGE_PICK_PREFIX = "mng:p:"
+CB_MANAGE_RESPOND_PREFIX = "mng:r:"
+
+MANAGE_FETCH_STATUS = "🛠 Чайка собирает встречи на неделе…"
+MANAGE_INTRO_HTML = (
+    "🛠 <b>Изменить статус встречи</b>\n\n"
+    "Встречи на ближайшие 7 дней, где ты участник. Тапни строку — Чайка покажет, "
+    "что можно поменять: ✅ принять, 🤔 может быть, ❌ отклонить.\n\n"
+    "<i>Отклонённые встречи Чайка не показывает в плане и дайджесте.</i>"
+)
+MANAGE_EMPTY_HTML = (
+    "🛠 <b>Изменить статус встречи</b>\n\n"
+    "На ближайшую неделю встреч, где ты участник, не нашлось — менять статус нечему."
+)
+MANAGE_CLOSED_TEXT = "🛠 Чайка свернула список встреч."
+MANAGE_NOT_FOUND_TEXT = "Встреча не нашлась — обновите список."
+MANAGE_RESPOND_FAIL_TEXT = "Не удалось обновить статус. Попробуйте позже."
+MANAGE_RESPOND_ACCEPTED = "✅ Принято"
+MANAGE_RESPOND_DECLINED = "❌ Отклонено"
+MANAGE_RESPOND_TENTATIVE = "🤔 Может быть"
+
+_MANAGE_PARTSTAT_LABEL_RU = {
+    "ACCEPTED": "✅ принято",
+    "TENTATIVE": "🤔 может быть",
+    "DECLINED": "❌ отклонено",
+    "NEEDS-ACTION": "📨 ждёт ответа",
+    "DELEGATED": "↪️ делегировано",
+}
+
+
+def manage_partstat_label(partstat: str | None) -> str | None:
+    if not partstat:
+        return None
+    return _MANAGE_PARTSTAT_LABEL_RU.get(partstat.strip().upper())
+
+
+def manage_detail_html(*, title: str, when: str, partstat: str | None) -> str:
+    label = manage_partstat_label(partstat) or "—"
+    return (
+        "🛠 <b>{title}</b>\n"
+        "{when}\n\n"
+        "📌 Сейчас: <b>{label}</b>\n\n"
+        "<i>Поменять решение можно сколько угодно — Чайка пошлёт ответ в календарь.</i>"
+    ).format(title=title, when=when, label=label)
+
+
+def build_manage_list_keyboard(rows: list[tuple[str, str]]) -> dict:
+    """rows: [(token, label like '1️⃣ 14:00 — Standup')]."""
+    inline: list[list[dict[str, str]]] = []
+    for token, label in rows:
+        clipped = label if len(label) <= 60 else label[:57] + "…"
+        inline.append(
+            [{"text": clipped, "callback_data": f"{CB_MANAGE_PICK_PREFIX}{token}"}]
+        )
+    inline.append([{"text": "🔄 Обновить", "callback_data": CB_MANAGE_REFRESH}])
+    inline.append([{"text": "⬅️ Закрыть", "callback_data": CB_MANAGE_CLOSE}])
+    return {"inline_keyboard": inline}
+
+
+def build_manage_detail_keyboard(token: str, *, partstat: str | None) -> dict:
+    cur = (partstat or "").strip().upper()
+    mark = lambda code, label: f"{label} ✓" if cur == code else label  # noqa: E731
+    return {
+        "inline_keyboard": [
+            [
+                {
+                    "text": mark("ACCEPTED", "✅ Принять"),
+                    "callback_data": f"{CB_MANAGE_RESPOND_PREFIX}{token}:a",
+                },
+                {
+                    "text": mark("TENTATIVE", "🤔 Может быть"),
+                    "callback_data": f"{CB_MANAGE_RESPOND_PREFIX}{token}:t",
+                },
+            ],
+            [
+                {
+                    "text": mark("DECLINED", "❌ Отклонить"),
+                    "callback_data": f"{CB_MANAGE_RESPOND_PREFIX}{token}:d",
+                },
+            ],
+            [{"text": "⬅️ К списку", "callback_data": CB_MANAGE_BACK}],
+        ]
+    }
+
+
+def manage_list_html(*, body_lines: list[str], truncated: bool) -> str:
+    parts = [MANAGE_INTRO_HTML]
+    if body_lines:
+        parts.extend(["", *body_lines])
+    if truncated:
+        parts.append("")
+        parts.append(
+            "<i>Показаны первые встречи — обновите список после изменений.</i>"
         )
     return "\n".join(parts)
 

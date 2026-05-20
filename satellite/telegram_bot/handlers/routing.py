@@ -18,6 +18,7 @@ from ...messages_ru import (
     button_text_is_disconnect_calendar,
     button_text_is_foreign_calendars,
     button_text_is_invitations,
+    button_text_is_manage_events,
     button_text_is_subscribe,
     button_text_is_unsubscribe,
     button_text_is_upcoming,
@@ -56,6 +57,11 @@ class UpcomingCommand:
 
 @dataclass(frozen=True)
 class InvitationsCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class ManageEventsCommand:
     pass
 
 
@@ -107,6 +113,7 @@ RecognizedCommand = Union[
     CalendarSourcesCommand,
     ForeignCalendarsCommand,
     InvitationsCommand,
+    ManageEventsCommand,
     PendingCommand,
 ]
 
@@ -131,6 +138,8 @@ def recognize_message(text: str | None) -> RecognizedCommand | None:
         return UpcomingCommand()
     if is_invitations_request(text):
         return InvitationsCommand()
+    if is_manage_events_request(text):
+        return ManageEventsCommand()
     if is_create_event_request(text):
         return CreateCommand()
     if is_connect_calendar_request(text):
@@ -171,6 +180,9 @@ _CMD_DIGEST_SETTINGS = re.compile(r"/settings(?:@[a-z0-9_]+)?\Z")
 _CMD_UPCOMING = re.compile(r"/(?:upcoming|events)(?:@[a-z0-9_]+)?\Z")
 _CMD_INVITATIONS = re.compile(
     r"/(?:invitations|invites|respond)(?:@[a-z0-9_]+)?\Z"
+)
+_CMD_MANAGE_EVENTS = re.compile(
+    r"/(?:manage|edit|status)(?:@[a-z0-9_]+)?\Z"
 )
 _CMD_CREATE = re.compile(r"/(?:create|addevent)(?:@[a-z0-9_]+)?\Z")
 _CMD_CONNECT = re.compile(r"/connect(?:@[a-z0-9_]+)?\Z")
@@ -264,6 +276,15 @@ def is_invitations_request(text: str | None) -> bool:
     if button_text_is_invitations(raw):
         return True
     return bool(_CMD_INVITATIONS.fullmatch(_command_part(raw)))
+
+
+def is_manage_events_request(text: str | None) -> bool:
+    if not text:
+        return False
+    raw = text.strip()
+    if button_text_is_manage_events(raw):
+        return True
+    return bool(_CMD_MANAGE_EVENTS.fullmatch(_command_part(raw)))
 
 
 def is_create_event_request(text: str | None) -> bool:

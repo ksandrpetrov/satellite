@@ -34,11 +34,10 @@ from ...messages_ru import (
 )
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from ..message_editing import edit_or_send_message
 from .delivery import (
     edit_callback_message,
+    open_streaming_reply,
     safe_answer_callback,
-    try_send_return_message_id,
 )
 from .settings_hub import show_settings_calendar_menu
 
@@ -86,7 +85,8 @@ def _load_screen(ctx: HandlerContext, user_id: int) -> tuple[str, dict]:
     )
 
 
-def _fetch_pending(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
+def _fetch_invitation_events(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
+    """Все события на горизонте приглашений (до фильтра NEEDS-ACTION)."""
     now = datetime.now(tz=ctx.tz)
     today = now.date()
     end = today + timedelta(days=_INVITATION_HORIZON_DAYS)
@@ -98,6 +98,11 @@ def _fetch_pending(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
         end_date=end,
         tz=ctx.tz,
     )
+    return events, login, now
+
+
+def _fetch_pending(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
+    events, login, now = _fetch_invitation_events(ctx, user_id)
     pending = collect_pending_invitations(
         events,
         login,
@@ -111,9 +116,17 @@ def _fetch_pending(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
     return pending, login, truncated
 
 
-def _find_pending_by_token(pending: list, token: str):
+def _find_event_by_token(events: list, token: str):
+    """Ищет событие по токену кнопки среди полной выдачи, не только pending.
+
+    При повторном CalDAV REPORT Mail.ru часто не отдаёт PARTSTAT в ATTENDEE,
+    и событие выпадает из ``pending``, хотя URL тот же — ответ на приглашение
+    всё равно нужно отправить по этому URL.
+    """
     needle = (token or "").strip()
-    for ev in pending:
+    if not needle:
+        return None
+    for ev in events:
         if event_callback_token(str(ev.get("url") or "")) == needle:
             return ev
     return None
@@ -122,25 +135,18 @@ def _find_pending_by_token(pending: list, token: str):
 def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_connected(ctx, msg) or msg.chat_id is None or msg.user_id is None:
         return
-    loading_id = try_send_return_message_id(ctx, msg.chat_id, INVITATIONS_FETCH_STATUS)
-
-    def build() -> tuple[str, dict]:
-        return _load_screen(ctx, msg.user_id)
+    stream = open_streaming_reply(
+        ctx, msg.chat_id, INVITATIONS_FETCH_STATUS, draft_id=msg.update_id
+    )
 
     try:
-        text, keyboard = build()
+        text, keyboard = _load_screen(ctx, msg.user_id)
     except CalendarNotConnectedError:
         text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
     except CalendarProviderError as exc:
         log.error("Invitations list failed user_id=%s: %s", msg.user_id, exc.error_code)
         text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
-    edit_or_send_message(
-        ctx.telegram,
-        msg.chat_id,
-        loading_id,
-        text,
-        reply_markup=keyboard,
-    )
+    stream.finish(text, reply_markup=keyboard)
     log.info("Opened invitations: user_id=%s", msg.user_id)
 
 
@@ -200,9 +206,14 @@ def _handle_respond(ctx: HandlerContext, cb: IncomingCallback, data: str) -> Non
         safe_answer_callback(ctx, cb)
         return
     try:
-        pending, _login, truncated = _fetch_pending(ctx, cb.user_id)
-        event = _find_pending_by_token(pending, token)
+        events, _login, _now = _fetch_invitation_events(ctx, cb.user_id)
+        event = _find_event_by_token(events, token)
         if event is None:
+            log.warning(
+                "Invitation respond: event not found by token user_id=%s token=%s",
+                cb.user_id,
+                token,
+            )
             _edit_invitations_screen(ctx, cb, toast=INVITATIONS_RESPOND_FAIL_TEXT)
             return
         event_url = str(event.get("url") or "")

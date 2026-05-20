@@ -39,6 +39,17 @@ def test_network_error_does_not_leak_bot_token() -> None:
     assert "<telegram-token>" in message
 
 
+def test_send_message_draft_posts_to_dedicated_method() -> None:
+    client = TelegramClient("token")
+    client._session.request = MagicMock(  # noqa: SLF001
+        return_value=_ok_response(True)
+    )
+    assert client.send_message_draft(123, 99, "hi", parse_mode="HTML") is True
+    call = client._session.request.call_args  # noqa: SLF001
+    assert "sendMessageDraft" in call[0][1]
+    assert call.kwargs["data"]["draft_id"] == 99
+
+
 def test_long_poll_uses_separate_session_from_outgoing() -> None:
     """``getUpdates`` и исходящие запросы не должны делить пул соединений.
 

@@ -2,6 +2,7 @@ from satellite.messages_ru import (
     BUTTON_CREATE_EVENT,
     BUTTON_DAY_AFTER,
     BUTTON_FOREIGN_CALENDARS,
+    BUTTON_MANAGE_EVENTS,
     BUTTON_SETTINGS,
     BUTTON_TODAY,
     BUTTON_TOMORROW,
@@ -41,6 +42,7 @@ def test_approved_main_keyboard_layout():
         BUTTON_TOMORROW,
         BUTTON_UPCOMING,
         BUTTON_INVITATIONS,
+        BUTTON_MANAGE_EVENTS,
         BUTTON_FOREIGN_CALENDARS,
         BUTTON_CREATE_EVENT,
         BUTTON_SETTINGS,
@@ -48,6 +50,9 @@ def test_approved_main_keyboard_layout():
     # Сегодня и Завтра — рядом в одном ряду
     first_row = [btn["text"] for btn in kb["keyboard"][0]]
     assert first_row == [BUTTON_TODAY, BUTTON_TOMORROW]
+    # «Изменить статус» делит ряд с «Чужие календари» — компактный второй блок
+    manage_row = [btn["text"] for btn in kb["keyboard"][2]]
+    assert manage_row == [BUTTON_MANAGE_EVENTS, BUTTON_FOREIGN_CALENDARS]
 
 
 def test_format_duration_ru():

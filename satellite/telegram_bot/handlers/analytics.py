@@ -25,9 +25,8 @@ from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
     edit_callback_message,
-    finalize_message,
+    open_streaming_reply,
     safe_answer_callback,
-    try_send_return_message_id,
 )
 
 log = logging.getLogger(__name__)
@@ -60,7 +59,9 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         safe_answer_callback(ctx, cb)
         return
 
-    loading_id = try_send_return_message_id(ctx, cb.chat_id, ANALYTICS_FETCH_STATUS)
+    stream = open_streaming_reply(
+        ctx, cb.chat_id, ANALYTICS_FETCH_STATUS, draft_id=cb.update_id
+    )
 
     def build() -> tuple[bytes, str]:
         today = datetime.now(tz=ctx.tz).date()
@@ -75,26 +76,21 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
     try:
         png, caption = build()
     except CalendarNotConnectedError:
-        finalize_message(ctx, cb.chat_id, loading_id, ERR_CALDAV_UNAVAILABLE_TEXT)
+        stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
         safe_answer_callback(ctx, cb)
         return
     except CalendarProviderError as exc:
         log.error("Analytics failed user_id=%s: %s", cb.user_id, exc.error_code)
-        finalize_message(ctx, cb.chat_id, loading_id, ERR_CALDAV_UNAVAILABLE_TEXT)
+        stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
         safe_answer_callback(ctx, cb)
         return
     except Exception:  # noqa: BLE001 - не оставляем «сводит неделю…» висеть в чате
         log.exception("Analytics build failed user_id=%s", cb.user_id)
-        finalize_message(ctx, cb.chat_id, loading_id, ERR_GENERIC_HANDLER_TEXT)
+        stream.finish(ERR_GENERIC_HANDLER_TEXT)
         safe_answer_callback(ctx, cb)
         return
 
-    if loading_id is not None:
-        try:
-            ctx.telegram.delete_message(cb.chat_id, loading_id)
-        except Exception:  # noqa: BLE001
-            pass
-
+    stream.dismiss()
     ctx.telegram.send_photo(cb.chat_id, png, caption=caption)
     safe_answer_callback(ctx, cb)
     log.info("Sent weekly analytics user_id=%s chat_id=%s", cb.user_id, cb.chat_id)

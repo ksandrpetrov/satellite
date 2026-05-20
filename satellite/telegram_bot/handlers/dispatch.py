@@ -20,6 +20,7 @@ from .admin import handle_pending_command, route_admin_callback
 from .calendar_create import handle_create_text_input, route_create_callback, start_create_event
 from .calendar_invitations import handle_open_invitations, route_invitations_callback
 from .calendar_list import handle_upcoming_events
+from .calendar_manage import handle_open_manage_events, route_manage_events_callback
 from .calendar_setup import (
     handle_check_calendar,
     handle_connect_calendar_button,
@@ -45,6 +46,7 @@ from .routing import (
     DisconnectCommand,
     ForeignCalendarsCommand,
     InvitationsCommand,
+    ManageEventsCommand,
     PendingCommand,
     PlanCommand,
     RecognizedCommand,
@@ -153,6 +155,10 @@ def _dispatch_recognized(
         if ensure_calendar_connected(ctx, msg):
             handle_open_invitations(ctx, msg)
         return
+    if isinstance(cmd, ManageEventsCommand):
+        if ensure_calendar_connected(ctx, msg):
+            handle_open_manage_events(ctx, msg)
+        return
     if isinstance(cmd, CreateCommand):
         start_create_event(ctx, msg)
         return
@@ -213,6 +219,8 @@ def _route_callback(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if route_create_callback(ctx, cb):
         return
     if route_invitations_callback(ctx, cb):
+        return
+    if route_manage_events_callback(ctx, cb):
         return
     if route_settings_hub_callback(ctx, cb):
         return

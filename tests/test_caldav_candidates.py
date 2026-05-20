@@ -318,6 +318,41 @@ def test_create_event_converts_dav_error_to_caldav_error():
         )
 
 
+def test_partstat_refresh_does_not_cache_failed_get(monkeypatch):
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login="me@vk.team",
+        app_password="pw",
+        cache_ttl_sec=300,
+    )
+    from satellite.calendar.caldav_client import _DiscoveryResult
+    import time as _time
+
+    service._cache = _DiscoveryResult(
+        endpoint="https://fake/",
+        calendars=[],
+        cached_at=_time.monotonic(),
+        auth_username="me",
+    )
+
+    calls = {"n": 0}
+
+    def fail_get(*_args, **_kwargs):
+        calls["n"] += 1
+        raise requests.RequestException("timeout")
+
+    import requests
+
+    monkeypatch.setattr(
+        "satellite.calendar.caldav_client.requests.get", fail_get
+    )
+
+    url = "https://fake/calendars/cal/abc.ics"
+    assert service._refresh_attendees_via_get(url) is None
+    assert service._refresh_attendees_via_get(url) is None
+    assert calls["n"] == 2
+
+
 def test_search_events_skips_get_when_partstat_already_present(monkeypatch):
     raw = _StubRawEvent(
         data=_ICS_WITH_ATTENDEE,

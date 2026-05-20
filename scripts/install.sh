@@ -102,6 +102,11 @@ else
     log ".env уже существует — не трогаю"
 fi
 
+# `cp .env.example .env` наследует mode 0755 у образца, оставляя секреты
+# (TELEGRAM_BOT_TOKEN, TOKEN_ENCRYPTION_KEY) world-readable. Жёстко выставляем
+# 0600 на каждом запуске — идемпотентно, ломать ничего не должно.
+chmod 600 .env
+
 cat <<'EOF'
 
 Готово. Дальше:

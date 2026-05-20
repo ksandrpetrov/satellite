@@ -13,6 +13,7 @@ from ...config import WebAppConfig
 from ...messages_ru import ERR_GENERIC_HANDLER_TEXT
 from ..api import TelegramError
 from ..message_editing import edit_or_send_message
+from ..streaming_delivery import StreamingReply, open_streaming_reply as _open_streaming_reply
 from .context import HandlerContext, IncomingCallback
 
 log = logging.getLogger(__name__)
@@ -29,6 +30,24 @@ def send(ctx: HandlerContext, chat_id: int | None, text: str) -> None:
     if chat_id is None:
         return
     ctx.telegram.send_message(chat_id, text)
+
+
+def open_streaming_reply(
+    ctx: HandlerContext,
+    chat_id: int,
+    initial_text: str,
+    *,
+    draft_id: int | None = None,
+    message_thread_id: int | None = None,
+) -> StreamingReply:
+    """Потоковый ответ: ``sendMessageDraft`` с fallback на loading+edit."""
+    return _open_streaming_reply(
+        ctx.telegram,
+        chat_id,
+        initial_text,
+        draft_id=draft_id,
+        message_thread_id=message_thread_id,
+    )
 
 
 def try_send_return_message_id(
