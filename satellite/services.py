@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from .config import Settings, load_settings
+from .config import Settings, assert_telegram_bot_token_valid, load_settings
 from .logging_setup import setup_logging
 from .telegram_bot.bot import TelegramBot
 from .telegram_bot.instance_lock import InstanceLock, InstanceLockError
@@ -21,6 +21,7 @@ def run_bot(*, settings: Settings | None = None) -> None:
             require_webapp=True,
             require_encryption_key=True,
         )
+        assert_telegram_bot_token_valid(settings.telegram.bot_token)
     setup_logging(
         level=settings.log_level,
         log_file=settings.project_root / "logs" / "bot.log",

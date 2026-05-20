@@ -18,6 +18,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import requests
 from dotenv import dotenv_values, load_dotenv
 
 from .users import parse_admin_ids
@@ -256,6 +257,29 @@ def _load_weather_config(env_path: Path) -> WeatherConfig:
         timezone=tz_name,
         cache_ttl_minutes=ttl,
         show_normal_weather=show_normal,
+    )
+
+
+def assert_telegram_bot_token_valid(token: str) -> None:
+    """Проверяет токен через Bot API ``getMe`` (сеть). Вызывать перед long-polling."""
+    try:
+        resp = requests.get(
+            f"https://api.telegram.org/bot{token}/getMe",
+            timeout=10,
+        )
+        payload = resp.json()
+    except requests.RequestException as exc:
+        raise ValueError(
+            "TELEGRAM_BOT_TOKEN: не удалось вызвать getMe (сеть или таймаут). "
+            "Проверьте интернет на сервере и токен от @BotFather."
+        ) from exc
+    if payload.get("ok"):
+        return
+    desc = payload.get("description") or resp.text[:200]
+    raise ValueError(
+        f"TELEGRAM_BOT_TOKEN: Telegram отклонил токен (getMe: {desc}). "
+        "В @BotFather откройте бота → API Token, скопируйте целиком; в .env одна строка "
+        "без кавычек: TELEGRAM_BOT_TOKEN=123456789:AAH..."
     )
 
 

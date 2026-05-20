@@ -1,0 +1,175 @@
+---
+- name: Deploy Satellite (Docker + Traefik + Certbot)
+  hosts: satellite
+  gather_facts: true
+
+  vars:
+    satellite_image: "{{ ghcr_registry }}/{{ ghcr_image }}:{{ image_tag }}"
+    webapp_base_url: "https://{{ domain }}/connect"
+    certbot_staging_flag: "{{ '--staging' if certbot_staging else '' }}"
+
+  pre_tasks:
+    - name: Check for existing .env on server
+      ansible.builtin.stat:
+        path: "{{ deploy_dir }}/.env"
+      register: deploy_env_stat
+
+    - name: Read TOKEN_ENCRYPTION_KEY from existing .env
+      ansible.builtin.shell: >-
+        grep -m1 '^TOKEN_ENCRYPTION_KEY=' "{{ deploy_dir }}/.env" | cut -d= -f2- | tr -d '\r'
+      register: existing_token_key
+      changed_when: false
+      failed_when: false
+      when:
+        - deploy_env_stat.stat.exists
+        - (token_encryption_key | default('') | trim | length) == 0
+
+    - name: Ensure TOKEN_ENCRYPTION_KEY
+      ansible.builtin.set_fact:
+        token_encryption_key_effective: >-
+          {{
+            token_encryption_key | trim
+            if (token_encryption_key | default('') | trim | length) > 0
+            else (
+              existing_token_key.stdout | default('') | trim
+              if (
+                existing_token_key is defined
+                and not (existing_token_key.skipped | default(false))
+                and (existing_token_key.stdout | default('') | trim | length) > 0
+              )
+              else lookup(
+                'pipe',
+                'python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+              )
+            )
+          }}
+
+  tasks:
+    - name: Install Docker packages (Debian/Ubuntu)
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: true
+      when: ansible_os_family == "Debian"
+
+    - name: Add Docker apt key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+      when: ansible_os_family == "Debian"
+
+    - name: Add Docker apt repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ ansible_architecture | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }}
+          signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/{{ ansible_distribution | lower }}
+          {{ ansible_distribution_release }} stable
+        filename: docker
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install Docker Engine and Compose plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+      when: ansible_os_family == "Debian"
+
+    - name: Ensure Docker service is running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create deploy directory tree
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0750"
+      loop:
+        - "{{ deploy_dir }}"
+        - "{{ deploy_dir }}/traefik"
+        - "{{ deploy_dir }}/traefik/dynamic"
+
+    - name: Deploy base configuration files
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "{{ deploy_dir }}/{{ item.dest }}"
+        mode: "{{ item.mode | default('0644') }}"
+      loop:
+        - { src: docker-compose.yml.j2, dest: docker-compose.yml }
+        - { src: env.j2, dest: .env, mode: "0600" }
+        - { src: traefik.yml.j2, dest: traefik/traefik.yml }
+        - { src: dynamic-routers.yml.j2, dest: traefik/dynamic/routers.yml }
+      notify: Restart stack
+
+    - name: Pull container images
+      ansible.builtin.command:
+        cmd: docker compose pull
+        chdir: "{{ deploy_dir }}"
+      environment:
+        COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
+      changed_when: true
+
+    - name: Start Traefik and ACME webroot (HTTP)
+      ansible.builtin.command:
+        cmd: docker compose up -d traefik nginx-acme
+        chdir: "{{ deploy_dir }}"
+      environment:
+        COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
+      changed_when: true
+
+    - name: Obtain TLS certificate (Certbot)
+      ansible.builtin.command:
+        cmd: >-
+          docker compose run --rm certbot certonly --webroot
+          -w /var/www/certbot
+          --email {{ certbot_email }}
+          --agree-tos --no-eff-email
+          {{ certbot_staging_flag }}
+          -d {{ domain }}
+          --non-interactive
+          --keep-until-expiring
+        chdir: "{{ deploy_dir }}"
+      environment:
+        COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
+      register: certbot_obtain
+      changed_when: >-
+        'Certificate not yet due for renewal' not in (certbot_obtain.stdout | default(''))
+        and certbot_obtain.rc == 0
+      failed_when: >-
+        certbot_obtain.rc != 0
+        and 'Certificate not yet due for renewal' not in (certbot_obtain.stdout | default(''))
+        and 'Congratulations' not in (certbot_obtain.stdout | default(''))
+
+    - name: Deploy Traefik TLS configuration
+      ansible.builtin.template:
+        src: dynamic-tls.yml.j2
+        dest: "{{ deploy_dir }}/traefik/dynamic/tls.yml"
+        mode: "0644"
+
+    - name: Start full stack
+      ansible.builtin.command:
+        cmd: docker compose up -d
+        chdir: "{{ deploy_dir }}"
+      environment:
+        COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
+      changed_when: true
+
+  handlers:
+    - name: Restart stack
+      ansible.builtin.command:
+        cmd: docker compose up -d
+        chdir: "{{ deploy_dir }}"
+      environment:
+        COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"

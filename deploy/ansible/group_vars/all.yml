@@ -1,0 +1,38 @@
+---
+# Все параметры деплоя — без extra-vars на командной строке.
+
+# --- SSH / пути ---
+deploy_dir: /opt/satellite
+deploy_compose_project: satellite
+
+# --- Домен и TLS (Certbot + Traefik) ---
+domain: satellite.example.com
+certbot_email: admin@example.com
+certbot_staging: false
+
+# --- Образ из GHCR (публикуется workflow release-docker.yml) ---
+ghcr_registry: ghcr.io
+ghcr_image: ksandrpetrov/satellite
+# Тег образа: latest или semver из GitHub Release (например 1.2.3 без префикса v).
+image_tag: latest
+
+# --- Секреты приложения (заполните перед деплоем) ---
+telegram_bot_token: "REPLACE_ME"
+admin_telegram_ids: "111111111"
+# Пустая строка — playbook сгенерирует Fernet-ключ при первом деплое.
+token_encryption_key: ""
+
+# --- Настройки бота (см. .env.example) ---
+digest_mode: tomorrow
+tz_name: Europe/Moscow
+hide_all_day_events: true
+hide_lunch_events: true
+log_level: INFO
+bot_workers: 4
+
+# --- Погода (опционально) ---
+weather_enabled: false
+
+# --- Traefik ---
+traefik_dashboard_enabled: false
+traefik_log_level: INFO

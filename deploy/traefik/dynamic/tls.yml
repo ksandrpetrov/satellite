@@ -1,0 +1,4 @@
+tls:
+  certificates:
+    - certFile: /etc/letsencrypt/live/satellite.example.com/fullchain.pem
+      keyFile: /etc/letsencrypt/live/satellite.example.com/privkey.pem

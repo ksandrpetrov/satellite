@@ -73,9 +73,36 @@ WEBAPP_BASE_URL=...
 - Reverse proxy должен проксировать на `WEBAPP_HOST:WEBAPP_PORT` (обычно `127.0.0.1:8080`).
 - Прямой доступ к порту 8080 из интернета не требуется и не рекомендуется.
 
-## Telegram token неверный
+## Telegram token неверный (HTTP 401 Unauthorized)
 
-Перевыпустите токен у BotFather и перезапустите бота.
+Telegram отвечает 401 на `getUpdates` / `setMyCommands`, если `TELEGRAM_BOT_TOKEN`
+в `.env` неверный, устарел или искажён при копировании.
+
+На сервере:
+
+```bash
+# Формат строки (без кавычек и пробелов вокруг =)
+sudo grep '^TELEGRAM_BOT_TOKEN=' /opt/satellite/.env | sed 's/\(.\{12\}\).*/\1…/'
+
+# Проверка токена (должен быть "ok":true)
+sudo -u satellite bash -c 'set -a; . /opt/satellite/.env; set +a; \
+  curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe"'
+```
+
+Типичные ошибки:
+
+- кавычки в `.env`: `TELEGRAM_BOT_TOKEN="123:ABC"` — systemd может передать
+  кавычки как часть значения;
+- пробел после `=` или в конце строки;
+- вставлен @username бота вместо токена;
+- токен отозван в @BotFather, а в `.env` остался старый.
+
+Исправление: [@BotFather](https://t.me/BotFather) → ваш бот → **API Token** →
+скопировать целиком (`цифры:буквы`), вписать в `/opt/satellite/.env`,
+`sudo systemctl restart satellite-bot.service`.
+
+После обновления кода бот при старте сам вызовет `getMe` и упадёт с понятным
+текстом, если токен невалиден.
 
 ## Дайджест не приходит
 
