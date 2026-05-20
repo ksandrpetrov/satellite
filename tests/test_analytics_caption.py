@@ -15,8 +15,8 @@ from satellite.calendar.period_stats import (
 
 def _week(busy: int, *, start: date) -> WeekSummary:
     days = tuple(
-        DaySlice(start + __import__("datetime").timedelta(days=i), busy // 7, 400, 1, 0)
-        for i in range(7)
+        DaySlice(start + __import__("datetime").timedelta(days=i), busy // 5, 400, 1, 0)
+        for i in range(5)
     )
     return WeekSummary(
         week_start=start,

@@ -24,7 +24,7 @@ COLOR_TREND_DOWN = (22, 163, 74)
 COLOR_TREND_FLAT = (100, 116, 139)
 COLOR_GRID = (226, 232, 240)
 
-_WEEKDAY_LABELS = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+_WEEKDAY_LABELS = ("Пн", "Вт", "Ср", "Чт", "Пт")
 
 
 def _pil():
@@ -84,8 +84,9 @@ def _draw_week_bars(
     max_busy = max((d.busy_minutes for d in report.current.days), default=0)
     max_free = max((d.free_minutes for d in report.current.days), default=0)
     max_val = max(max_busy + max_free, 60)
+    n_days = len(report.current.days)
     bar_area_w = right - left
-    group_w = bar_area_w / 7
+    group_w = bar_area_w / max(n_days, 1)
     bar_w = min(36, group_w * 0.28)
 
     for idx, day in enumerate(report.current.days):
@@ -105,7 +106,7 @@ def _draw_week_bars(
             [x2, chart_bottom - free_h, x3, chart_bottom],
             fill=COLOR_FREE,
         )
-        label = _WEEKDAY_LABELS[idx]
+        label = _WEEKDAY_LABELS[idx] if idx < len(_WEEKDAY_LABELS) else ""
         draw.text(
             (cx, chart_bottom + 8),
             label,

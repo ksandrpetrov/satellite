@@ -44,7 +44,24 @@ def test_build_week_summary_busy_and_free():
     summary = build_week_summary(events, mon, tz=TZ, login=LOGIN, options=opts)
     assert summary.total_busy == 120
     assert summary.load_percent > 0
-    assert len(summary.days) == 7
+    assert len(summary.days) == 5
+
+
+def test_weekend_meetings_excluded_from_summary():
+    mon = date(2026, 5, 11)
+    sat = mon + timedelta(days=5)
+    sun = mon + timedelta(days=6)
+    events = [
+        _caldav_ev("Weekday", mon, 10, 12),
+        _caldav_ev("Saturday", sat, 10, 14),
+        _caldav_ev("Sunday", sun, 10, 14),
+    ]
+    summary = build_week_summary(
+        events, mon, tz=TZ, login=LOGIN, options=WorkdayOptions()
+    )
+    assert summary.total_busy == 120
+    assert summary.days[0].busy_minutes == 120
+    assert summary.days[4].busy_minutes == 0
 
 
 def test_analytics_report_quarter_has_13_points():

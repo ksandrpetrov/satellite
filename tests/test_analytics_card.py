@@ -23,7 +23,7 @@ def _report() -> AnalyticsReport:
             meetings_count=2,
             overlaps_count=0,
         )
-        for i in range(7)
+        for i in range(5)
     )
     current = WeekSummary(
         week_start=start,

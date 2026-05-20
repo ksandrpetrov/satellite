@@ -1,4 +1,4 @@
-"""Агрегация метрик за неделю и квартал (чистые функции, без Telegram)."""
+"""Агрегация метрик за рабочую неделю (Пн–Пт) и квартал (без Telegram)."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from .events import Event, event_occurs_on
 from .stats import WorkdayOptions, calculate_day_stats, normalize_caldav_event
 
 QUARTER_WEEKS = 13
+WORK_WEEK_DAYS = 5  # Пн–Пт; выходные не входят в аналитику
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,7 @@ def workday_options_from_preset(preset: str | None) -> WorkdayOptions:
 
 
 def _effective_week_capacity(options: WorkdayOptions) -> int:
-    return options.to_minutes().effective_minutes * 7
+    return options.to_minutes().effective_minutes * WORK_WEEK_DAYS
 
 
 def _load_percent(total_busy: int, capacity: int) -> int:
@@ -113,7 +114,7 @@ def build_week_summary(
 ) -> WeekSummary:
     days = tuple(
         _day_slice(events, week_start + timedelta(days=offset), tz=tz, login=login, options=options)
-        for offset in range(7)
+        for offset in range(WORK_WEEK_DAYS)
     )
     total_busy = sum(d.busy_minutes for d in days)
     total_free = sum(d.free_minutes for d in days)
