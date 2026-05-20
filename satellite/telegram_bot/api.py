@@ -211,17 +211,23 @@ class TelegramClient:
 
     def send_message_draft(
         self,
-        chat_id: int | str,
+        chat_id: int,
         draft_id: int,
         text: str = "",
         *,
         message_thread_id: int | None = None,
         parse_mode: str | None = "HTML",
     ) -> bool:
-        """``sendMessageDraft`` (Bot API 9.3+): потоковый черновик в поле ввода.
+        """``sendMessageDraft``: потоковый черновик в поле ввода.
 
-        Возвращает ``True`` при успехе. Финальный текст нужно отправить
-        отдельным ``sendMessage`` — см. :mod:`streaming_delivery`.
+        Bot API 9.3 (31 dec 2025) — метод добавлен; 9.5 (1 mar 2026) — открыт
+        для всех ботов и всех типов чатов; 10.0 (8 may 2026) — разрешён
+        пустой ``text`` (клиент показывает нативный «Thinking…» placeholder).
+
+        ``chat_id`` по официальной спеке — только Integer (username не
+        принимается, в отличие от ``sendMessage``). Возвращает ``True`` при
+        успехе. Финальный текст нужно отправить отдельным ``sendMessage`` —
+        см. :mod:`streaming_delivery`.
         """
         if not draft_id:
             raise ValueError("draft_id must be non-zero")
