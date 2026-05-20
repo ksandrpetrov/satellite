@@ -83,15 +83,25 @@ class _StubEventObj:
     ``data`` — property (getter/setter), ``save()`` — без аргументов. Это
     воспроизводит сигнатуру caldav>=2.x; передавать ICS позиционно в
     ``save()`` нельзя (там ``no_overwrite: bool``), новые данные кладутся
-    через ``event_obj.data = ...``.
+    через ``event_obj.data = ...``. ``load()`` обязателен до чтения ``data``
+    у «пустого» объекта с сервера.
     """
 
-    def __init__(self, data: bytes):
-        self._data = data
+    def __init__(self, data: bytes, *, unloaded: bool = False):
+        self._data = None if unloaded else data
+        self._loaded_data = data
         self.save_called = False
+        self.load_called = False
+
+    def load(self, only_if_unloaded: bool = False) -> "_StubEventObj":
+        if only_if_unloaded and self._data is not None:
+            return self
+        self.load_called = True
+        self._data = self._loaded_data
+        return self
 
     @property
-    def data(self) -> bytes:
+    def data(self) -> bytes | None:
         return self._data
 
     @data.setter
@@ -131,3 +141,33 @@ def test_set_attendee_partstat_updates_ics(monkeypatch):
     for vevent in updated.walk("vevent"):
         attendee = vevent.get("ATTENDEE")
         assert attendee.params["PARTSTAT"] == "ACCEPTED"
+
+
+def test_set_attendee_partstat_loads_before_read(monkeypatch):
+    component = IcsEvent()
+    component.add("uid", "u@test")
+    component.add(
+        "attendee",
+        "mailto:alex",
+        parameters={"PARTSTAT": "NEEDS-ACTION", "CN": "Alex"},
+    )
+    component.add("dtstart", datetime(2026, 5, 20, 10, 0))
+    component.add("dtend", datetime(2026, 5, 20, 11, 0))
+    cal = IcsCalendar()
+    cal.add_component(component)
+    stub = _StubEventObj(cal.to_ical(), unloaded=True)
+
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login="alex@vk.team",
+        app_password="pw",
+        cache_ttl_sec=0,
+    )
+    monkeypatch.setattr(service, "_get_event_object", lambda _url: stub)
+
+    service.set_attendee_partstat("https://fake/e.ics", "DECLINED")
+
+    assert stub.load_called is True
+    updated = IcsCalendar.from_ical(stub.data)
+    for vevent in updated.walk("vevent"):
+        assert vevent.get("ATTENDEE").params["PARTSTAT"] == "DECLINED"

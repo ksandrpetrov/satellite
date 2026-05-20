@@ -17,7 +17,7 @@ from caldav import DAVClient
 from caldav.lib.error import DAVError
 
 from .events import day_bounds
-from .ical_parser import parse_calendar_events
+from .ical_parser import _attendee_to_str, parse_calendar_events
 
 DEFAULT_CALDAV_URL = "https://calendar.mail.ru/"
 
@@ -48,6 +48,24 @@ def login_variants_for_caldav(login: str) -> list[str]:
     if sep and local and local not in variants:
         variants.append(local)
     return variants
+
+
+def _attendee_matches_login_variants(
+    attendee: Any, login_variants: Sequence[str]
+) -> bool:
+    """True, если ``login_variants`` встречается в сериализованном ATTENDEE.
+
+    ``str(vCalAddress)`` отдаёт только mailto без PARTSTAT — сравниваем через
+    ``_attendee_to_str``, как в ``ical_parser`` / ``events.user_partstat``.
+    """
+    blob = _attendee_to_str(attendee).casefold()
+    if not blob:
+        return False
+    for variant in login_variants:
+        needle = (variant or "").strip().casefold()
+        if needle and needle in blob:
+            return True
+    return False
 
 
 def build_candidate_urls(caldav_url: str | None, login: str) -> list[str]:
@@ -331,12 +349,17 @@ class CalDAVService:
         allowed = {"ACCEPTED", "DECLINED", "TENTATIVE", "NEEDS-ACTION", "DELEGATED"}
         if normalized not in allowed:
             raise CalDAVError(f"Unsupported PARTSTAT: {partstat!r}")
-        login_norm = (self._login or "").strip().casefold()
-        if not login_norm:
+        if not (self._login or "").strip():
             raise CalDAVError("Login is required to update PARTSTAT")
+        login_variants = login_variants_for_caldav(self._login)
         try:
             event_obj = self._get_event_object(event_url)
-            calendar = IcsCalendar.from_ical(event_obj.data)
+            event_obj.load(only_if_unloaded=True)
+            raw = event_obj.data
+            if not raw:
+                raise CalDAVError("Empty event data")
+            payload = raw.encode() if isinstance(raw, str) else raw
+            calendar = IcsCalendar.from_ical(payload)
             updated = False
             for component in calendar.walk("vevent"):
                 raw_attendees = component.get("ATTENDEE")
@@ -346,7 +369,7 @@ class CalDAVService:
                     raw_attendees if isinstance(raw_attendees, list) else [raw_attendees]
                 )
                 for attendee in items:
-                    if login_norm not in str(attendee).casefold():
+                    if not _attendee_matches_login_variants(attendee, login_variants):
                         continue
                     attendee.params["PARTSTAT"] = normalized
                     updated = True
@@ -369,6 +392,8 @@ class CalDAVService:
                 _dav_reason(exc),
             )
             raise CalDAVError(f"Failed to update invitation response: {exc}") from exc
+        except ValueError as exc:
+            raise CalDAVError(f"Invalid event ICS: {exc}") from exc
         except (ConnectionError, TimeoutError, OSError) as exc:
             raise CalDAVError(f"Network error during PARTSTAT update: {exc}") from exc
 
@@ -435,8 +460,12 @@ class CalDAVService:
     ) -> None:
         try:
             event_obj = self._get_event_object(event_url)
+            event_obj.load(only_if_unloaded=True)
             raw = event_obj.data
-            calendar = IcsCalendar.from_ical(raw)
+            if not raw:
+                raise CalDAVError("Empty event data")
+            payload = raw.encode() if isinstance(raw, str) else raw
+            calendar = IcsCalendar.from_ical(payload)
             utc_start = _to_utc(start)
             utc_end = _to_utc(end)
             for component in calendar.walk("vevent"):
