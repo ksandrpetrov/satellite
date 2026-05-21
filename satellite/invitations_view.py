@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any, cast
@@ -114,6 +116,38 @@ def load_pending_invitations_screen(
         now=now,
     )
     pending, truncated = collect_pending_from_events(events, login, tz, now=moment)
+    # #region agent log
+    try:
+        summaries = [str(e.get("summary") or "")[:40] for e in pending[:5]]
+        with open(
+            "/Users/aleksandr/Developer/satellite/.cursor/debug-2d45ee.log",
+            "a",
+            encoding="utf-8",
+        ) as _df:
+            _df.write(
+                json.dumps(
+                    {
+                        "sessionId": "2d45ee",
+                        "hypothesisId": "H1-H4",
+                        "location": "invitations_view.py:load_pending",
+                        "message": "pending_invitations_screen",
+                        "data": {
+                            "user_id": user_id,
+                            "events_fetched": len(events),
+                            "pending_count": len(pending),
+                            "truncated": truncated,
+                            "first_pending": summaries,
+                            "login_domain": login.split("@")[-1] if "@" in login else "",
+                        },
+                        "timestamp": int(time.time() * 1000),
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+    except OSError:
+        pass
+    # #endregion
     today = moment.date()
     text, keyboard = screen_from_pending(
         pending,

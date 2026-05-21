@@ -93,6 +93,15 @@ def test_collect_pending_invitations_keeps_recent_ended_with_lookback():
     assert [ev["summary"] for ev in pending] == ["May26 invite", "May29 invite"]
 
 
+def test_is_pending_when_needs_action_on_unmatched_mailto():
+    """Mail.ru: PARTSTAT на mailto-алиасе без совпадения с логином CalDAV."""
+    ev = {
+        **_ev(),
+        "attendees": ["mailto:alias.other@vk.team;CN=Александра;PARTSTAT=NEEDS-ACTION"],
+    }
+    assert is_pending_invitation_for_user(ev, LOGIN)
+
+
 def test_is_pending_when_duplicate_attendee_lines_disagree():
     ev = {
         **_ev(),

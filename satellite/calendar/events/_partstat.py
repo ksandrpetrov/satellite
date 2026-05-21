@@ -62,15 +62,27 @@ def is_pending_invitation_for_user(event: Event, login: str) -> bool:
     если на один mailto несколько записей и хотя бы в одной NEEDS-ACTION —
     приглашение неотвеченное (``user_partstat`` взял бы «лучший» ACCEPTED).
     Строки без PARTSTAT не считаем pending — см. ``user_partstat``.
+
+    Если совпадений с логином нет, но в ICS одна (или любая) строка с
+    NEEDS-ACTION/DELEGATED — Mail.ru иногда кладёт чужой mailto/CN (алиас).
     """
     login_norm = (login or "").strip()
     if not login_norm:
         return False
+    matched_login = False
     for attendee in event.get("attendees", []):
-        if not _attendee_line_matches_login(str(attendee), login_norm):
+        line = str(attendee)
+        if not _attendee_line_matches_login(line, login_norm):
             continue
-        status = _partstat_from_attendee_line(str(attendee))
+        matched_login = True
+        status = _partstat_from_attendee_line(line)
         if status in {"NEEDS-ACTION", "DELEGATED"}:
+            return True
+    if matched_login:
+        return False
+    for attendee in event.get("attendees", []):
+        blob = str(attendee).casefold()
+        if "partstat=needs-action" in blob or "partstat=delegated" in blob:
             return True
     return False
 

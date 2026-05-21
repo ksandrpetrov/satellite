@@ -7,7 +7,7 @@ import threading
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timezone, tzinfo
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any
 from uuid import uuid4
 
@@ -19,7 +19,9 @@ from icalendar import Calendar as IcsCalendar
 from icalendar import Event as IcsEvent
 
 from .events import day_bounds, event_local_start_date, sort_key
+from .events._collectors import event_relevant_for_invitations
 from .events._partstat import user_partstat
+from .events._time import event_ends_after
 from .ical_parser import _attendee_to_str, parse_calendar_events
 
 DEFAULT_CALDAV_URL = "https://calendar.mail.ru/"
@@ -376,11 +378,13 @@ class CalDAVService:
                     ev["url"] = str(getattr(raw_event, "url", "") or "")
                 out.extend(parsed)
         if enrich_partstat:
+            verify_moment = datetime.now(tz) if invitation_partstat_verify else None
             self._enrich_events_partstat(
                 out,
                 tz=tz,
                 prioritize_from=start_date,
                 invitation_verify=invitation_partstat_verify,
+                moment=verify_moment,
             )
         out.sort(key=lambda event: event.get("dtstart") or "")
         return out
@@ -420,7 +424,15 @@ class CalDAVService:
             raise last_value_error
         raise CalDAVError("CalDAV range search failed without exception")
 
-    def _event_needs_partstat_refresh(self, ev: Event, *, invitation_verify: bool) -> bool:
+    def _event_needs_partstat_refresh(
+        self,
+        ev: Event,
+        *,
+        invitation_verify: bool,
+        tz: tzinfo | None = None,
+        moment: datetime | None = None,
+        lookback_days: int = 14,
+    ) -> bool:
         """Нужен ли GET на ресурс события для достоверного PARTSTAT."""
         if invitation_verify:
             login = (self._login or "").strip()
@@ -431,9 +443,37 @@ class CalDAVService:
             status = user_partstat(ev, login)
             if status in {"NEEDS-ACTION", "DELEGATED", "DECLINED"}:
                 return False
+            if (
+                status in {"ACCEPTED", "TENTATIVE"}
+                and tz is not None
+                and moment is not None
+                and not event_ends_after(ev, tz, moment=moment)
+            ):
+                start_day = event_local_start_date(ev, tz)
+                if start_day is not None and start_day < moment.date() - timedelta(
+                    days=lookback_days
+                ):
+                    return False
             # Mail.ru в REPORT иногда отдаёт ложный ACCEPTED — перепроверяем GET.
             return True
         return not self._has_user_partstat([ev])
+
+    def _invitation_partstat_refresh_order(
+        self,
+        ev: Event,
+        *,
+        tz: tzinfo,
+        moment: datetime,
+        lookback_days: int = 14,
+    ) -> tuple:
+        """Порядок GET для /invitations: сначала текущие/будущие, потом lookback."""
+        if event_ends_after(ev, tz, moment=moment):
+            return (0, sort_key(ev, tz))
+        if event_relevant_for_invitations(ev, tz, moment=moment, lookback_days=lookback_days):
+            day = event_local_start_date(ev, tz)
+            inv = -(day.toordinal()) if day is not None else 0
+            return (1, inv, sort_key(ev, tz))
+        return (2, sort_key(ev, tz))
 
     def _enrich_events_partstat(
         self,
@@ -442,6 +482,8 @@ class CalDAVService:
         tz: tzinfo,
         prioritize_from: date | None = None,
         invitation_verify: bool = False,
+        moment: datetime | None = None,
+        lookback_days: int = 14,
     ) -> None:
         """Дополняет ATTENDEE/PARTSTAT через GET там, где REPORT их не отдал."""
         if self._partstat_refresh_limit <= 0 or not self._login:
@@ -449,7 +491,13 @@ class CalDAVService:
         refresh_started = time.monotonic()
         refresh_count = 0
         ordered = list(events)
-        if prioritize_from is not None:
+        if invitation_verify and moment is not None:
+            ordered.sort(
+                key=lambda ev: self._invitation_partstat_refresh_order(
+                    ev, tz=tz, moment=moment, lookback_days=lookback_days
+                )
+            )
+        elif prioritize_from is not None:
 
             def _group(ev: Event) -> int:
                 day = event_local_start_date(ev, tz)
@@ -466,7 +514,11 @@ class CalDAVService:
                 break
             event_url = str(ev.get("url") or "")
             if not event_url or not self._event_needs_partstat_refresh(
-                ev, invitation_verify=invitation_verify
+                ev,
+                invitation_verify=invitation_verify,
+                tz=tz,
+                moment=moment,
+                lookback_days=lookback_days,
             ):
                 continue
             refreshed = self._refresh_attendees_via_get(event_url)
@@ -478,6 +530,36 @@ class CalDAVService:
                 ev["attendees"] = list(attendees)
             if status is not None and not ev.get("status"):
                 ev["status"] = status
+        # #region agent log
+        if invitation_verify and moment is not None:
+            try:
+                import json as _json
+
+                with open(
+                    "/Users/aleksandr/Developer/satellite/.cursor/debug-2d45ee.log",
+                    "a",
+                    encoding="utf-8",
+                ) as _df:
+                    _df.write(
+                        _json.dumps(
+                            {
+                                "sessionId": "2d45ee",
+                                "hypothesisId": "H1",
+                                "location": "caldav_client.py:_enrich_events_partstat",
+                                "message": "partstat_refresh_done",
+                                "data": {
+                                    "refreshed": refresh_count,
+                                    "total_events": len(events),
+                                },
+                                "timestamp": int(time.time() * 1000),
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                    )
+            except OSError:
+                pass
+        # #endregion
 
     def _set_attendee_partstat_once(
         self,
