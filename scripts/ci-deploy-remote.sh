@@ -177,7 +177,14 @@ if [[ "${healthy}" -ne 1 ]]; then
 fi
 
 health_body="$(curl -fsS --max-time 10 http://127.0.0.1:8080/healthz)"
-if [[ "${health_body}" != '{"status":"ok"}' ]]; then
+if ! printf '%s' "${health_body}" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except json.JSONDecodeError:
+    sys.exit(1)
+sys.exit(0 if data == {'status': 'ok'} else 1)
+"; then
     echo "Unexpected /healthz on host: ${health_body}" >&2
     docker compose logs --tail=80 satellite >&2 || true
     exit 1
