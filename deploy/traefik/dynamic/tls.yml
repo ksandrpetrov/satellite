@@ -1,4 +1,0 @@
-tls:
-  certificates:
-    - certFile: /etc/letsencrypt/live/cassinilab.ru/fullchain.pem
-      keyFile: /etc/letsencrypt/live/cassinilab.ru/privkey.pem

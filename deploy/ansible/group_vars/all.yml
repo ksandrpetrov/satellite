@@ -1,14 +1,23 @@
 ---
 # Все параметры деплоя — без extra-vars на командной строке.
+#
+# В этой схеме reverse proxy и TLS — внешний nginx на хосте; в Docker крутится
+# только сам бот. Контейнер слушает 127.0.0.1:<satellite_host_port> — nginx
+# проксирует /connect и /api/calendar/* туда (см. deploy/nginx/).
 
 # --- SSH / пути ---
 deploy_dir: /opt/satellite
 deploy_compose_project: satellite
 
-# --- Домен и TLS (Certbot + Traefik) ---
+# --- Домен (используется только для WEBAPP_BASE_URL в .env) ---
+# TLS-сертификат для domain выпускает ваш существующий nginx + certbot, не playbook.
 domain: cassinilab.ru
-certbot_email: admin@example.com
-certbot_staging: false
+
+# --- Порт бота на хосте ---
+# nginx должен проксировать на http://127.0.0.1:<satellite_host_port>.
+# Playbook останавливает legacy satellite-bot.service (systemd), если он был
+# установлен через scripts/install-server.sh — иначе 8080 уже занят.
+satellite_host_port: 8080
 
 # --- Образ бота ---
 # satellite_image_source:
@@ -43,7 +52,3 @@ bot_workers: 4
 
 # --- Погода (опционально) ---
 weather_enabled: false
-
-# --- Traefik ---
-traefik_dashboard_enabled: false
-traefik_log_level: INFO

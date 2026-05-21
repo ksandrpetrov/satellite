@@ -1,55 +1,11 @@
 # Эталонный compose (генерируется Ansible из templates/docker-compose.yml.j2).
 # На сервере живёт копия в deploy_dir (по умолчанию /opt/satellite).
+#
+# В стеке только бот: TLS и reverse proxy — внешний nginx на хосте
+# (см. deploy/nginx/satellite-webapp.conf.example).
 name: satellite
 
 services:
-  traefik:
-    image: traefik:v3.3
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./traefik/dynamic:/etc/traefik/dynamic:ro
-      - certbot-certs:/etc/letsencrypt:ro
-    networks:
-      - public
-
-  nginx-acme:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    volumes:
-      - certbot-www:/usr/share/nginx/html:ro
-    networks:
-      - public
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=satellite_public
-      - traefik.http.routers.acme.rule=PathPrefix(`/.well-known/acme-challenge/`)
-      - traefik.http.routers.acme.entrypoints=web
-      - traefik.http.routers.acme.priority=100
-      - traefik.http.services.acme.loadbalancer.server.port=80
-
-  certbot:
-    image: certbot/certbot:v3.0.0
-    restart: unless-stopped
-    volumes:
-      - certbot-certs:/etc/letsencrypt
-      - certbot-www:/var/www/certbot
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        trap exit TERM
-        while :; do
-          certbot renew --webroot -w /var/www/certbot --quiet
-          sleep 12h & wait $$!
-        done
-
   satellite:
     image: ${SATELLITE_IMAGE}
     restart: unless-stopped
@@ -58,29 +14,16 @@ services:
     environment:
       WEBAPP_HOST: "0.0.0.0"
       WEBAPP_PORT: "8080"
+    ports:
+      - "127.0.0.1:8080:8080"
     volumes:
       - satellite-logs:/app/logs
-    networks:
-      - public
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=satellite_public
-      - traefik.http.routers.satellite-webapp.rule=Host(`cassinilab.ru`) && (PathPrefix(`/connect`) || PathPrefix(`/api/`))
-      - traefik.http.routers.satellite-webapp.entrypoints=websecure
-      - traefik.http.routers.satellite-webapp.tls=true
-      - traefik.http.services.satellite-webapp.loadbalancer.server.port=8080
-
-networks:
-  public:
-    name: satellite_public
 
 volumes:
-  certbot-certs:
-  certbot-www:
   satellite-logs:

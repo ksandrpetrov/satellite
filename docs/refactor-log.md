@@ -64,15 +64,18 @@ callback_data, HTTP-ответы) не менялся; baseline pytest-набо�
       `mypy` (информативный, `continue-on-error: true`), плюс `pytest`.
       Strict mypy планируется подключать модуль за модулем по мере очистки.
 10. **Документация** — AGENTS.md и docs/ синхронизированы с canonical-путями
-    (`visual_cards/base`, `partstat_flow`,
+    (`visual_cards/base`, `partstat_flow`, `action_guard`,
     single mutator, data-driven routing, `messages_ru/`, `analytics/service`,
     `make check`, `logs/backups/`). Этот файл — чек-лист для будущих
     рефакторингов.
-11. **Guard недельной аналитики** — `_AnalyticsRunGuard` в
-    `handlers/analytics.py`: повторный `CB_ANALYTICS_RUN` во время сборки или
-    в течение 45 с после успешного `sendPhoto` → toast
-    `ANALYTICS_BUSY_TOAST`, без второго PNG. Регрессия —
-    `tests/test_analytics_handler.py::test_duplicate_run_within_cooldown_skips_second_photo`.
+11. **Guard недельной аналитики** — изначально `_AnalyticsRunGuard` в
+    `handlers/analytics.py`; позже обобщён в `ActionGuard`
+    (`handlers/action_guard.py`) и подключён к plan, upcoming, invitations,
+    manage, partstat. Аналитика: повторный `CB_ANALYTICS_RUN` во время сборки
+    или в течение 45 с после успешного `sendPhoto` → toast `ANALYTICS_BUSY_TOAST`.
+    Регрессии — `tests/test_analytics_handler.py`,
+    `tests/test_action_guard.py`; между тестами guard'ы сбрасывает
+    `conftest._reset_action_guards`.
 
 ## Что НЕ менялось
 
@@ -112,3 +115,22 @@ callback_data, HTTP-ответы) не менялся; baseline pytest-набо�
   встречи с `NEEDS-ACTION`/`DELEGATED` остаются в списке (`event_relevant_for_invitations`
   + `lookback_days` в `collect_pending_invitations`).
 - Документация UX: [telegram-ux.md](telegram-ux.md); тесты — `test_calendar_invitations.py`.
+
+## Docker-деплой: внешний nginx вместо Traefik (2026-05-21)
+
+- Compose на сервере — только `satellite`; TLS и `/connect` → `127.0.0.1:<satellite_host_port>`
+  настраивает хостовой nginx ([`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example)).
+- Ansible: `satellite_host_port`, миграция со старого стека Traefik/Certbot в playbook.
+- Документация: `deploy/README.md`, `docs/operations.md`, `docs/configuration.md`,
+  `docs/troubleshooting.md`, `README.md`, `AGENTS.md`.
+
+## ActionGuard и streaming plan/upcoming (2026-05-21)
+
+- `handlers/action_guard.py` — дедуп долгих действий per `(chat_id, action_key)`:
+  блокирует параллельный запуск и повтор сразу после успеха (cooldown настраивается
+  per сценарий). Закрывает прод-инцидент с двумя PNG аналитики при двойном тапе
+  (см. комментарии в `action_guard.py` / `analytics.py`).
+- План (`plan.py`) и `/upcoming` (`calendar_list.py`) переведены на
+  `open_streaming_reply`; guard'ы 30 с / 15 с — без второго дайджеста/списка.
+- Документация: AGENTS.md, architecture.md, telegram-ux.md, testing.md,
+  troubleshooting.md.

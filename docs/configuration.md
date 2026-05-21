@@ -64,13 +64,21 @@ WEBAPP_PORT=8080
   (отдельный поток). Снаружи доступ только через reverse proxy по
   `WEBAPP_BASE_URL`; прямой проброс порта в интернет не нужен.
 
-**Локально и systemd:** оставьте `WEBAPP_HOST=127.0.0.1` — nginx/Traefik на
-хосте проксирует на `127.0.0.1:8080`.
+**Локально и systemd:** оставьте `WEBAPP_HOST=127.0.0.1` — внешний nginx/Caddy
+проксирует на `127.0.0.1:8080`.
 
 **Docker (Ansible / compose):** в контейнере нужен `WEBAPP_HOST=0.0.0.0`, иначе
-Traefik не достучится до Web App внутри сети Docker. Playbook и
-[`deploy/.env.example`](../deploy/.env.example) выставляют это автоматически;
-`WEBAPP_BASE_URL` собирается как `https://<domain>/connect`.
+порт не отдастся наружу; контейнер биндится на `127.0.0.1:<satellite_host_port>`
+хоста, и наружу его проксирует ваш nginx (см.
+[`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example)).
+Playbook и [`deploy/.env.example`](../deploy/.env.example) выставляют
+`WEBAPP_HOST=0.0.0.0` автоматически; `WEBAPP_BASE_URL` собирается как
+`https://<domain>/connect`.
+
+Порт публикации на хосте (`127.0.0.1:<port>:8080` в compose) задаётся только в
+Ansible — `satellite_host_port` в
+[`deploy/ansible/group_vars/all.yml`](../deploy/ansible/group_vars/all.yml), не
+отдельной переменной в `.env`. nginx на сервере должен проксировать на этот порт.
 
 **Образ бота на сервере** задаётся переменной `SATELLITE_IMAGE` в `.env` рядом с
 `docker-compose.yml` (сервис `satellite` использует `image: ${SATELLITE_IMAGE}`):

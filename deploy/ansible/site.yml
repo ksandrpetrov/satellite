@@ -1,5 +1,5 @@
 ---
-- name: Deploy Satellite (Docker + Traefik + Certbot)
+- name: Deploy Satellite (Docker, nginx — внешний на хосте)
   hosts: satellite
   gather_facts: true
 
@@ -7,7 +7,6 @@
     satellite_image: "{{ ghcr_registry }}/{{ ghcr_image }}:{{ image_tag }}"
     satellite_repo_root: "{{ playbook_dir | dirname | dirname }}"
     webapp_base_url: "https://{{ domain }}/connect"
-    certbot_staging_flag: "{{ '--staging' if certbot_staging else '' }}"
 
   pre_tasks:
     - name: Check for existing .env on server
@@ -122,13 +121,29 @@
 
     - name: Create deploy directory tree
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ deploy_dir }}"
         state: directory
         mode: "0750"
-      loop:
-        - "{{ deploy_dir }}"
-        - "{{ deploy_dir }}/traefik"
-        - "{{ deploy_dir }}/traefik/dynamic"
+
+    - name: Stop legacy Traefik stack if running
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd "{{ deploy_dir }}"
+        if [ -f docker-compose.yml ] && grep -q 'traefik:' docker-compose.yml; then
+          docker compose down || true
+        fi
+      args:
+        executable: /bin/bash
+      environment:
+        COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
+      register: legacy_down
+      changed_when: "'Container' in (legacy_down.stderr | default(''))"
+      failed_when: false
+
+    - name: Remove legacy Traefik config directories
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}/traefik"
+        state: absent
 
     - name: Deploy base configuration files
       ansible.builtin.template:
@@ -138,9 +153,7 @@
       loop:
         - { src: docker-compose.yml.j2, dest: docker-compose.yml }
         - { src: env.j2, dest: .env, mode: "0600" }
-        - { src: traefik.yml.j2, dest: traefik/traefik.yml }
-        - { src: dynamic-routers.yml.j2, dest: traefik/dynamic/routers.yml }
-      notify: Restart stack
+      notify: Restart satellite
 
     - name: Remove previous satellite build context
       ansible.builtin.file:
@@ -192,14 +205,6 @@
         - (ghcr_pull_user | default('') | length) > 0
         - (ghcr_pull_token | default('') | length) > 0
 
-    - name: Pull infrastructure container images
-      ansible.builtin.command:
-        cmd: docker compose pull traefik nginx-acme certbot
-        chdir: "{{ deploy_dir }}"
-      environment:
-        COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
-      changed_when: true
-
     - name: Pull satellite image from GHCR
       ansible.builtin.command:
         cmd: docker compose pull satellite
@@ -209,55 +214,58 @@
       changed_when: true
       when: satellite_image_source == 'ghcr'
 
-    - name: Start Traefik and ACME webroot (HTTP)
+    - name: Check if legacy satellite-bot.service unit exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/satellite-bot.service
+      register: legacy_bot_unit
+
+    - name: Stop and disable legacy systemd bot (frees 127.0.0.1:{{ satellite_host_port }})
+      ansible.builtin.systemd:
+        name: satellite-bot.service
+        state: stopped
+        enabled: false
+        daemon_reload: true
+      when: legacy_bot_unit.stat.exists
+
+    - name: Stop previous satellite container (releases host port mapping)
       ansible.builtin.command:
-        cmd: docker compose up -d traefik nginx-acme
+        cmd: docker compose stop satellite
         chdir: "{{ deploy_dir }}"
       environment:
         COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
-      changed_when: true
+      register: stop_prev_container
+      changed_when: stop_prev_container.rc == 0
+      failed_when: false
 
-    - name: Obtain TLS certificate (Certbot)
+    - name: Check satellite host port is free
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ satellite_host_port }}"
+        state: stopped
+        timeout: 15
+      register: satellite_port_free
+
+    - name: Fail if host port still in use
+      ansible.builtin.fail:
+        msg: >-
+          127.0.0.1:{{ satellite_host_port }} занят другим процессом.
+          На сервере: ss -tlnp | grep ':{{ satellite_host_port }}'.
+          Остановите лишний сервис или задайте свободный satellite_host_port в
+          group_vars/all.yml и обновите proxy_pass в nginx.
+      when: satellite_port_free is failed
+
+    - name: Start satellite container
       ansible.builtin.command:
-        cmd: >-
-          docker compose run --rm certbot certonly --webroot
-          -w /var/www/certbot
-          --email {{ certbot_email }}
-          --agree-tos --no-eff-email
-          {{ certbot_staging_flag }}
-          -d {{ domain }}
-          --non-interactive
-          --keep-until-expiring
-        chdir: "{{ deploy_dir }}"
-      environment:
-        COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
-      register: certbot_obtain
-      changed_when: >-
-        'Certificate not yet due for renewal' not in (certbot_obtain.stdout | default(''))
-        and certbot_obtain.rc == 0
-      failed_when: >-
-        certbot_obtain.rc != 0
-        and 'Certificate not yet due for renewal' not in (certbot_obtain.stdout | default(''))
-        and 'Congratulations' not in (certbot_obtain.stdout | default(''))
-
-    - name: Deploy Traefik TLS configuration
-      ansible.builtin.template:
-        src: dynamic-tls.yml.j2
-        dest: "{{ deploy_dir }}/traefik/dynamic/tls.yml"
-        mode: "0644"
-
-    - name: Start full stack
-      ansible.builtin.command:
-        cmd: docker compose up -d
+        cmd: docker compose up -d satellite
         chdir: "{{ deploy_dir }}"
       environment:
         COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
       changed_when: true
 
   handlers:
-    - name: Restart stack
+    - name: Restart satellite
       ansible.builtin.command:
-        cmd: docker compose up -d
+        cmd: docker compose up -d satellite
         chdir: "{{ deploy_dir }}"
       environment:
         COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"

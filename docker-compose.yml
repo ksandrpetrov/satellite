@@ -2,7 +2,7 @@
 # webapp-портом. Подходит для запуска на ноуте за ngrok/cloudflared или на
 # VPS с уже настроенным reverse proxy.
 #
-# Production-стек с Traefik/Certbot/Ansible живёт в deploy/docker-compose.yml.
+# Production-стек (Ansible + контейнер бота, внешний nginx) — в deploy/docker-compose.yml.
 name: satellite-dev
 
 services:

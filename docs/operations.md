@@ -23,7 +23,7 @@ python telegram_test_command.py
 | Вариант | Когда удобно | Обновление |
 |---------|--------------|------------|
 | **systemd** (`install-server.sh`) | один процесс Python на VPS, свой nginx/Caddy | повторный `install-server.sh` |
-| **Docker** (`make deploy`) | Traefik + Certbot из коробки, образ из GHCR | push в `main` → [deploy.yml](../.github/workflows/deploy.yml) (rolling update по SSH); стек/секреты — снова `make deploy` |
+| **Docker** (`make deploy`) | бот в контейнере, внешний nginx на хосте берёт TLS | push в `main` → [deploy.yml](../.github/workflows/deploy.yml) (rolling update по SSH); стек/секреты — снова `make deploy` |
 
 Общее: один `TELEGRAM_BOT_TOKEN`, один каталог `logs/` с `users.json` и
 `subscriptions.json`. Не смешивайте два варианта на одном сервере с одним токеном.
@@ -170,10 +170,13 @@ sudo SATELLITE_DIR=/srv/satellite SATELLITE_BRANCH=stable \
 > Reverse proxy для Web App настраивается отдельно — см. раздел
 > [Reverse proxy для Web App](#reverse-proxy-для-web-app) ниже.
 
-### Docker (GHCR + Traefik + Certbot)
+### Docker
 
-Альтернатива systemd: стек из четырёх контейнеров на сервере, HTTPS и маршруты
-`/connect` и `/api/*` → Web App без ручного nginx.
+Альтернатива systemd: бот живёт в контейнере, образ собирает GitHub Actions
+и кладёт в GHCR, на сервере `docker compose up -d satellite` поднимает один
+контейнер на `127.0.0.1:<satellite_host_port>`. TLS и проксирование
+`/connect` / `/api/calendar/*` — ваш существующий nginx на хосте
+(см. [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example)).
 
 #### Образ
 
@@ -199,16 +202,16 @@ ghcr.io/ksandrpetrov/satellite:<semver>      # для тега vX.Y.Z
 
 1. [`deploy/ansible/inventory.yml`](../deploy/ansible/inventory.yml) — IP и SSH-пользователь.
 2. [`deploy/ansible/group_vars/all.yml`](../deploy/ansible/group_vars/all.yml):
-   - `domain`, `certbot_email`;
+   - `domain` — пишется в `WEBAPP_BASE_URL`;
+   - `satellite_host_port` — порт на хосте (default `8080`), на который проксирует nginx;
    - `telegram_bot_token`, `admin_telegram_ids`;
-   - `image_tag` (`latest` или semver без `v`, например `1.2.0`) — только для
-     первичного деплоя; дальше образ на сервере задаёт `SATELLITE_IMAGE` в `.env`
-     (Actions перезаписывает на `:sha-<short>`);
-   - `token_encryption_key` — оставьте пустым при первом деплое (playbook сгенерирует Fernet-ключ; при повторном деплое ключ из существующего `.env` на сервере сохраняется).
-3. DNS: A-запись `domain` → IP сервера; порты **80** и **443** открыты.
+   - `satellite_image_source: build` для первого деплоя, потом `ghcr`;
+   - `token_encryption_key` — пусто при первом деплое (playbook сгенерирует Fernet-ключ; при повторном деплое ключ из существующего `.env` сохраняется).
+3. В вашем nginx добавьте `location`-блоки из
+   [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example)
+   внутрь `server { listen 443 ssl; server_name <domain>; ... }`, затем
+   `sudo nginx -t && sudo systemctl reload nginx`.
 4. На машине деплоя: `ansible`, SSH-доступ на сервер.
-
-Для тестового TLS: `certbot_staging: true` в `group_vars` (Let's Encrypt staging).
 
 #### Деплой
 
@@ -218,19 +221,33 @@ make deploy
 
 Эквивалент: `cd deploy/ansible && ansible-playbook site.yml`.
 
-Playbook ставит Docker Engine, кладёт конфиги в `deploy_dir` (по умолчанию
-`/opt/satellite`), выпускает сертификат Certbot, поднимает compose-проект
-`satellite`.
+Playbook ставит Docker Engine, кладёт `docker-compose.yml` и `.env` в `deploy_dir`
+(по умолчанию `/opt/satellite`), поднимает compose-проект `satellite`. nginx
+на хосте и его сертификаты playbook не трогает.
 
 | Сервис | Назначение |
 |--------|------------|
-| `traefik` | HTTPS: `/connect`, `/api/calendar/*` → бот:8080 |
-| `nginx-acme` | Webroot для ACME challenge |
-| `certbot` | Выпуск и продление Let's Encrypt |
-| `satellite` | Бот; `logs/` в volume `satellite-logs` |
+| `satellite` | Бот; `logs/` в volume `satellite-logs`; порт `127.0.0.1:<satellite_host_port>` |
 
-В `.env` на сервере Ansible прописывает `WEBAPP_HOST=0.0.0.0` и
-`WEBAPP_BASE_URL=https://<domain>/connect` — см. [configuration.md](configuration.md).
+В `.env` на сервере Ansible прописывает `WEBAPP_HOST=0.0.0.0` (внутри контейнера)
+и `WEBAPP_BASE_URL=https://<domain>/connect` — см. [configuration.md](configuration.md).
+
+Порт на хосте задаётся в Ansible (`satellite_host_port` в
+[`group_vars/all.yml`](../deploy/ansible/group_vars/all.yml), по умолчанию `8080`),
+не в `.env`. nginx должен проксировать на `http://127.0.0.1:<satellite_host_port>`.
+
+#### Миграция со стека Traefik
+
+Раньше `make deploy` поднимал Traefik, Certbot и `nginx-acme`. Сейчас в compose
+остался только `satellite`. Повторный `make deploy`:
+
+1. Останавливает старый compose, если в `docker-compose.yml` ещё есть `traefik:`.
+2. Удаляет каталог `traefik/` в `deploy_dir`.
+3. Накатывает новый `docker-compose.yml` и перезапускает бота.
+
+`logs/` (volume `satellite-logs`) и `TOKEN_ENCRYPTION_KEY` в `.env` сохраняются.
+После миграции обязательно добавьте `location` в **ваш** nginx — TLS больше не
+выдаёт playbook (см. [Reverse proxy](#reverse-proxy-для-web-app)).
 
 #### Автодеплой из GitHub Actions
 
@@ -254,12 +271,13 @@ Workflow перезаписывает `SATELLITE_IMAGE`
 | `SSH_KNOWN_HOSTS` | опционально: `ssh-keyscan -H $DEPLOY_HOST` |
 | `GHCR_PULL_TOKEN` | опционально: PAT с `read:packages` для приватного GHCR-пакета |
 
-`logs/` (volume `satellite-logs`), `TOKEN_ENCRYPTION_KEY` и Traefik/Certbot этот
+`logs/` (volume `satellite-logs`), `TOKEN_ENCRYPTION_KEY` и nginx на хосте этот
 путь не трогает — только тег образа бота.
 
 #### Полный playbook (когда нужен)
 
-Только при изменении стека (домен, Traefik, Certbot, секреты в `.env`):
+Только при изменении конфигурации `.env` (токены, `WEBAPP_BASE_URL`, погода)
+или `docker-compose.yml` бота:
 
 1. При необходимости выставьте `image_tag` в `group_vars/all.yml` на конкретный semver.
 2. `make deploy` (playbook сделает `docker compose pull` и перезапуск).
@@ -406,22 +424,35 @@ logs/bot.lock
 Telegram открывает только публичный HTTPS URL из `WEBAPP_BASE_URL`. Типичная схема:
 
 ```text
-Internet → nginx/Caddy (TLS) → 127.0.0.1:WEBAPP_PORT
+Internet → nginx/Caddy (TLS) → 127.0.0.1:<порт на хосте>
 ```
 
-Готовый фрагмент: [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example).
+| Вариант | Порт на хосте | `WEBAPP_HOST` в `.env` |
+|---------|---------------|------------------------|
+| **systemd** | `WEBAPP_PORT` (обычно `8080`) | `127.0.0.1` |
+| **Docker** | `satellite_host_port` в Ansible (обычно `8080`) | `0.0.0.0` (внутри контейнера слушает `8080`) |
+
+Готовый фрагмент nginx: [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example).
+В `proxy_pass` подставьте тот же порт, что слушает бот на loopback (для Docker —
+значение `satellite_host_port` из `group_vars`).
 
 **Проверка, что бот слушает Web App** (на сервере):
 
 ```bash
 curl -sS http://127.0.0.1:8080/healthz
 # ожидается HTTP 200 и {"status":"ok"}
+# для Docker с другим satellite_host_port — замените 8080
 ```
 
-Если connection refused — в `/opt/satellite/.env` должны быть `WEBAPP_HOST=127.0.0.1`,
-`WEBAPP_PORT=8080`, сервис запущен: `systemctl status satellite-bot.service`.
+**systemd:** если connection refused — в `/opt/satellite/.env` должны быть
+`WEBAPP_HOST=127.0.0.1`, `WEBAPP_PORT=8080`, сервис запущен:
+`systemctl status satellite-bot.service`.
 
-**nginx (systemd, домен cassinilab.ru):** внутрь существующего `server { listen 443 ssl; ... }`
+**Docker:** `docker compose ps` → `healthy`; в `.env` — `WEBAPP_HOST=0.0.0.0`;
+на хосте порт из `docker compose port satellite 8080` или из
+`satellite_host_port` в Ansible. Логи: `docker compose logs satellite`.
+
+**nginx (systemd или Docker, домен cassinilab.ru):** внутрь существующего `server { listen 443 ssl; ... }`
 добавьте прокси на `/connect` и `/api/calendar/` (без `/api/calendar/` форма
 подключения откроется, но сохранение пароля вернёт 404):
 

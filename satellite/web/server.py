@@ -6,8 +6,9 @@
 ``initData`` (HMAC по bot token) и дополнительно фильтруются по
 ``UserStore`` (статус ``approved``).
 
-HTTPS делегируется внешнему reverse proxy (Traefik с Let's Encrypt в
-production-compose). Локально сервер слушает на ``WEBAPP_HOST:WEBAPP_PORT``.
+HTTPS делегируется внешнему reverse proxy (nginx на хосте в production,
+ngrok/Cloudflare Tunnel локально). Локально сервер слушает на
+``WEBAPP_HOST:WEBAPP_PORT``.
 
 Структура пакета: общий ``routing`` собирает таблицу маршрутов, конкретные
 хендлеры живут в ``web/api/``, статичные страницы — в ``web/static_pages``.

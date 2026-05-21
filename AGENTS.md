@@ -72,6 +72,7 @@ satellite/
       dispatch.py        # data-driven routing + access gating (см. _MESSAGE_ROUTES)
       routing.py         # recognize_message — таблица матчеров _RECOGNIZERS
       partstat_flow.py   # общий PARTSTAT-флоу для invitations и manage
+      action_guard.py    # ActionGuard — дедуп долгих действий (plan/upcoming/analytics/…)
       calendar_view.py   # общие хелперы списка календарей (sources/foreign/hub)
       delivery.py, context.py  # context.py: HandlerContext + role-based views
       access.py, admin.py
@@ -119,7 +120,8 @@ satellite/
 | Нумерация встреч (дайджест, /upcoming) | [`event_index_marker`](satellite/calendar/events.py) |
 | Web App REST API | [`web/api/calendar.py`](satellite/web/api/calendar.py); регистрация маршрута — [`web/routing.py`](satellite/web/routing.py); сам сервер — [`web/server.py`](satellite/web/server.py) |
 | Сборку текста плана | [`plan_service.py`](satellite/plan_service.py) — callers передают calendar identity |
-| Недельную аналитику (PNG + подпись) | [`analytics/service.py`](satellite/analytics/service.py) (canonical путь; `satellite/analytics_service.py` — shim для back-compat), [`calendar/period_stats.py`](satellite/calendar/period_stats.py), [`calendar/event_kinds.py`](satellite/calendar/event_kinds.py), [`handlers/analytics.py`](satellite/telegram_bot/handlers/analytics.py) (`_AnalyticsRunGuard`: один прогон на chat + cooldown 45 с после успеха) |
+| Недельную аналитику (PNG + подпись) | [`analytics/service.py`](satellite/analytics/service.py) (canonical путь; `satellite/analytics_service.py` — shim для back-compat), [`calendar/period_stats.py`](satellite/calendar/period_stats.py), [`calendar/event_kinds.py`](satellite/calendar/event_kinds.py), [`handlers/analytics.py`](satellite/telegram_bot/handlers/analytics.py) (`ActionGuard`, cooldown 45 с) |
+| Дедуп повторных команд/кнопок (два PNG, два плана…) | [`handlers/action_guard.py`](satellite/telegram_bot/handlers/action_guard.py) — `try_acquire` / `release`; синглтоны сбрасывает `tests/conftest.py::_reset_action_guards` |
 | Ответ на встречу (PARTSTAT) | [`handlers/partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py) — общий флоу; [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) и [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — тонкие адаптеры |
 | PNG недельной аналитики | [`analytics/render_card.py`](satellite/analytics/render_card.py), примитивы — [`visual_cards/base.py`](satellite/visual_cards/base.py) |
 | JSON-store мутацию (users / subscriptions) | [`users.py`](satellite/users.py) (`_update_locked`, `UserRecord.{to,from}_json`) и [`subscriptions.py`](satellite/subscriptions.py) (`_upsert_locked`, `DigestSettings.{to,from}_json`); прямой `replace()` не использовать |
@@ -166,6 +168,7 @@ satellite/
 - Прямой `<blockquote>` / `<tg-emoji>` в хендлерах — только [`html_format.py`](satellite/telegram_bot/html_format.py); fallback при отказе Telegram — в [`api.py`](satellite/telegram_bot/api.py), не дублировать в сценариях.
 - Свой retry без `<tg-emoji>` в хендлерах — только `TelegramClient.send_message` / `edit_message_text`.
 - Дублирование PARTSTAT-логики в [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) / [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — общий флоу только в [`partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py).
+- Свой cooldown/дедуп долгих команд — только [`ActionGuard`](satellite/telegram_bot/handlers/action_guard.py) (не дублировать `_running` set в хендлерах).
 - Параллельный PNG-render (своя палитра/шрифты/`_load_font`/`_paste_brand_logo`) — все примитивы только в [`visual_cards/base.py`](satellite/visual_cards/base.py).
 - Прямой mutate `UserRecord`/`DigestSettings` в `users.json`/`subscriptions.json` без `_update_locked` / `_upsert_locked` — атомарность теряется.
 - `isinstance(..., RecognizedFoo)` / `if/elif` для роутинга команд и callback'ов — только таблицы `_MESSAGE_ROUTES` / `_CALLBACK_ROUTERS` в [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py).
@@ -213,7 +216,8 @@ python telegram_test_command.py                   # make run
 CI: [`.github/workflows/test.yml`](.github/workflows/test.yml) (PR + push: ruff, mypy, py_compile, pytest);
 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — push в `main` или тег `v*`: test → образ в GHCR;
 rolling deploy по SSH (`scripts/ci-deploy-remote.sh`) — только для `main` и `workflow_dispatch`
-(тег `v*` лишь пушит semver-образ). Первичный стек (Traefik/Certbot/.env) — `make deploy` (Ansible),
+(тег `v*` лишь пушит semver-образ). Первичный деплой (`.env`, `docker-compose.yml`, образ) — `make deploy` (Ansible);
+TLS и reverse proxy на 443 — ваш существующий nginx на хосте, не из стека.
 см. [`deploy/README.md`](deploy/README.md).
 
 ## Скрипты
@@ -254,9 +258,11 @@ Endpoint-ы:
 | `POST /api/calendar/events` | Создать событие |
 | `DELETE /api/calendar/events/{uid}?url=` | Удалить событие |
 
-HTTPS не делает сам сервер — это задача reverse proxy (Traefik в
+HTTPS не делает сам сервер — это задача reverse proxy (nginx на хосте в
 production, ngrok/Cloudflare Tunnel в dev). Проксируйте `/connect` и
-префикс `/api/calendar/` (см. [operations.md](docs/operations.md)).
+префикс `/api/calendar/` на `127.0.0.1:<satellite_host_port>` (см.
+[deploy/nginx/satellite-webapp.conf.example](deploy/nginx/satellite-webapp.conf.example),
+[operations.md](docs/operations.md)).
 
 ## Runtime-артефакты
 

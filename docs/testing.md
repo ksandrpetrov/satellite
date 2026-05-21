@@ -170,7 +170,13 @@ python -m pytest tests/test_weather.py
 
 - PNG недельной аналитики;
 - подпись и хендлер аналитики из хаба настроек (ошибки сборки/`sendPhoto`,
-  `_AnalyticsRunGuard` — второй callback в cooldown → toast, один `sendPhoto`);
+  `ActionGuard` — второй callback в cooldown → toast, один `sendPhoto`);
+
+**ActionGuard** (`test_action_guard.py`):
+
+- `try_acquire` / `release`, cooldown после `sent=True`;
+- autouse-фикстура `_reset_action_guards` в `conftest.py` сбрасывает синглтоны
+  plan/upcoming/analytics/invitations/manage/partstat между тестами.
 - `period_stats` / `event_kinds` — фильтры для недельного отчёта.
 
 **Telegram presentation** (`test_visual.py`, `test_html_format.py`,

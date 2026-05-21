@@ -13,7 +13,7 @@ help:
 	@echo "  make install        bootstrap venv + runtime deps + .env (через scripts/install.sh)"
 	@echo "  make install-dev    то же + requirements-dev.txt"
 	@echo "  make install-server sudo установка на сервер (systemd) — scripts/install-server.sh"
-	@echo "  make deploy         Docker-деплой на сервер (Ansible + Traefik + Certbot)"
+	@echo "  make deploy         Docker-деплой на сервер (Ansible; nginx — внешний на хосте)"
 	@echo "  make run            запустить бота через venv (long-polling)"
 	@echo "  make test           pytest"
 	@echo "  make compile        py_compile всех модулей (как в CI)"

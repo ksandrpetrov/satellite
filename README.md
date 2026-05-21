@@ -36,7 +36,9 @@ Production Telegram-бот для календарных дайджестов и
 - Расчет занятости, свободного времени, пересечений и обеда; неподтверждённые
   приглашения не в метриках, в дайджесте помечаются ⚠️.
 - Open-Meteo погода с кэшем и безопасным fallback.
-- Паттерн `loading message -> editMessageText`.
+- Потоковая доставка плана и `/upcoming` (`sendMessageDraft` → финал); приглашения
+  и manage — `loading message` → `editMessageText`. Повторные тапы ограничивает
+  `ActionGuard` (см. [architecture.md](docs/architecture.md)).
 - Компактная reply-клавиатура для одобренных (план, upcoming, чужие календари, настройки).
 - Thread-safe JSON storage настроек и пользователей.
 
@@ -84,7 +86,7 @@ make check   # ruff + mypy + py_compile + pytest (перед коммитом)
 ## Запуск на сервере
 
 Два варианта: **systemd** (Python на VPS + свой reverse proxy) или **Docker**
-(Traefik + Certbot + образ из GHCR). Подробнее — [docs/operations.md](docs/operations.md#запуск-на-сервере).
+(контейнер бота + внешний nginx на хосте, образ из GHCR). Подробнее — [docs/operations.md](docs/operations.md#запуск-на-сервере).
 
 ### Развертывание одной командой (systemd)
 
@@ -128,7 +130,7 @@ journalctl -u satellite-bot.service -f
 Перед production настройте reverse proxy на `WEBAPP_BASE_URL` →
 `WEBAPP_HOST:WEBAPP_PORT` (см. [docs/operations.md](docs/operations.md#reverse-proxy-для-web-app)).
 
-### Альтернатива: Docker (Traefik + Certbot)
+### Альтернатива: Docker (бот в контейнере, ваш nginx — снаружи)
 
 Первичный стек — одной командой после правки `deploy/ansible/inventory.yml` и
 `deploy/ansible/group_vars/all.yml`:
@@ -140,7 +142,7 @@ make deploy
 Образы в GHCR собирает [deploy.yml](.github/workflows/deploy.yml) на каждый push в
 `main` (теги `:sha-<short>` и `:latest`); rolling update на сервер — автоматически
 по SSH. Подробности: [deploy/README.md](deploy/README.md),
-[docs/operations.md](docs/operations.md#docker-ghcr--traefik--certbot).
+[docs/operations.md](docs/operations.md#docker).
 
 ## Главное про конфиг
 
@@ -190,7 +192,7 @@ CI/CD:
 - [deploy.yml](.github/workflows/deploy.yml) — push в `main` или тег `v*`: test → образ в GHCR
   (`:sha-<short>`, на main ещё `:latest`, на теге — semver). Rolling deploy по SSH — только
   для `main` и ручного **Run workflow**; тег `v*` только публикует образ. Секреты и
-  первичный стек — [deploy/README.md](deploy/README.md).
+  первичный деплой (Ansible) — [deploy/README.md](deploy/README.md).
 
 ## Runtime-файлы
 

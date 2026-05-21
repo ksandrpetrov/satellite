@@ -133,20 +133,20 @@ WEBAPP_BASE_URL=...
 - Прямой доступ к порту 8080 из интернета не требуется и не рекомендуется.
 - Быстрая проверка изнутри контейнера/хоста: `curl -sS http://127.0.0.1:8080/healthz` → `{"status":"ok"}`.
 
-### Docker-стек (Traefik)
+### Docker-стек (бот в контейнере, внешний nginx)
 
 - В контейнере бота обязательно `WEBAPP_HOST=0.0.0.0` (не `127.0.0.1`).
 - `WEBAPP_BASE_URL` должен совпадать с публичным URL: `https://<domain>/connect`.
-- Traefik проксирует `/connect` и `/api/*` (см. labels в `docker-compose.yml`).
+- Контейнер слушает `127.0.0.1:<satellite_host_port>` на хосте (default `8080`).
 - Healthcheck контейнера: `docker compose ps` → колонка `STATUS` должна показать `healthy`.
 - Проверка с сервера: `curl -sS -o /dev/null -w '%{http_code}\n' https://<domain>/connect` (ожидается **200**, не 404/502).
 - **404 Not Found (nginx)** — в конфиге сайта нет `location` для `/connect` и
-  `/api/calendar/` на `127.0.0.1:8080`; см.
-  [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example).
+  `/api/calendar/` на `127.0.0.1:<satellite_host_port>`; см.
+  [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example),
+  затем `sudo nginx -t && sudo systemctl reload nginx`.
 - Сначала `curl http://127.0.0.1:8080/healthz` на сервере: если не 200, чините бота, не nginx.
-- Логи: `docker compose -f /opt/satellite/docker-compose.yml logs traefik satellite`.
-- Certbot: при ошибке выпуска сертификата смотрите вывод playbook; для отладки —
-  `certbot_staging: true` в `deploy/ansible/group_vars/all.yml`.
+- Логи бота: `docker compose -f /opt/satellite/docker-compose.yml logs -f satellite`.
+- Логи nginx: `sudo journalctl -u nginx -f` (или `/var/log/nginx/error.log`).
 
 ### Локальный запуск через ngrok/Cloudflare Tunnel
 
@@ -254,10 +254,17 @@ sudo -u satellite bash -c 'set -a; . /opt/satellite/.env; set +a; \
 Недельная аналитика строится долго (CalDAV за ~13 недель). Повторное нажатие
 «Построить отчёт» во время сборки или сразу после успешной отправки не запускает
 второй прогон: пользователь видит toast «Уже строю отчёт — подожди немного».
-Cooldown после успеха — 45 с (`_AnalyticsRunGuard` в `handlers/analytics.py`).
+Cooldown после успеха — 45 с (`ActionGuard` в `handlers/analytics.py`).
 
 Если два PNG всё же пришли на старой версии бота — обновите деплой. В логе
 ищите пары `Sent weekly analytics` с разницой в секундах для одного `chat_id`.
+
+## Два плана или два списка upcoming подряд
+
+Повтор `/today` (или кнопки плана) и `/upcoming`, пока первый запрос ещё идёт
+или в течение cooldown после успеха, молча игнорируется (`ActionGuard` в
+`plan.py` — 30 с, `calendar_list.py` — 15 с). В логе: `Plan run skipped
+(duplicate within cooldown)` или `Upcoming skipped (duplicate within cooldown)`.
 
 ## Loading-сообщение не отредактировалось
 

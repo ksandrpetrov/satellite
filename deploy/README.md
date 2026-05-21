@@ -1,4 +1,12 @@
-# Docker-деплой (GHCR + Traefik + Certbot)
+# Docker-деплой (бот в контейнере, nginx — внешний)
+
+Reverse proxy и TLS для `cassinilab.ru` — ваш существующий **nginx на хосте** (он же
+обслуживает другие сайты и Telegram Web App). В Docker крутится **только бот**,
+слушает `127.0.0.1:<satellite_host_port>` (по умолчанию `8080`); nginx проксирует
+туда `/connect`, `/api/calendar/*` и `/healthz` — см.
+[`deploy/nginx/satellite-webapp.conf.example`](nginx/satellite-webapp.conf.example).
+
+Никаких Traefik/Certbot/nginx-acme в стеке нет — они конфликтовали бы с вашим nginx за порт 443.
 
 ## CI/CD: GitHub Actions под ключ
 
@@ -9,9 +17,7 @@ Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на 
 2. **build** — Docker-образ в GHCR: `:sha-<short>` (всегда), `:latest` (только `main`),
    semver-теги (только `v*`).
 3. **deploy** — SSH на сервер: обновить `SATELLITE_IMAGE` в `.env`, `docker compose pull satellite`,
-   `docker compose up -d satellite`. **Только** для push в `main` и ручного `workflow_dispatch`
-   (тег `v*` образ публикует, на сервер не катит — для релиза на prod используйте **Run workflow**
-   или дождитесь merge в `main`).
+   `docker compose up -d satellite`. Только для push в `main` и ручного `workflow_dispatch`.
 
 Пакет в GHCR после первой сборки сделайте **public** (или задайте `GHCR_PULL_TOKEN`, см. ниже):
 `Settings → Packages → satellite → Package settings → Change visibility`.
@@ -20,7 +26,7 @@ Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на 
 
 В [`ansible/group_vars/all.yml`](ansible/group_vars/all.yml) по умолчанию
 `satellite_image_source: build` — playbook **собирает образ на сервере** из
-исходников репозитория (не тянет `ghcr.io/.../satellite:latest`).
+исходников (не тянет `ghcr.io/.../satellite:latest`).
 
 После того как GitHub Actions хотя бы раз запушил образ в GHCR, переключите:
 
@@ -28,7 +34,7 @@ Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на 
 satellite_image_source: ghcr
 ```
 
-и снова `make deploy` (или дальше только push в `main` — Actions сам обновит бота).
+и снова `make deploy` (или дальше — только push в `main`, Actions сам обновит бота).
 
 ### Секреты для деплоя (Settings → Secrets and variables → Actions)
 
@@ -44,10 +50,14 @@ satellite_image_source: ghcr
 
 1. Отредактируйте [`ansible/inventory.yml`](ansible/inventory.yml) — IP и SSH-пользователь.
 2. Отредактируйте [`ansible/group_vars/all.yml`](ansible/group_vars/all.yml):
-   - `domain`, `certbot_email`
-   - `telegram_bot_token`, `admin_telegram_ids`
-   - `image_tag` для первичного деплоя (`latest`, semver или `sha-<commit>`)
-3. DNS: A-запись `domain` → IP сервера, порты **80** и **443** открыты.
+   - `domain` — используется только в `WEBAPP_BASE_URL` в `.env`;
+   - `satellite_host_port` — порт на хосте, на который проксирует nginx (default `8080`);
+   - `telegram_bot_token`, `admin_telegram_ids`;
+   - `image_tag` для первичного деплоя (`latest`, semver или `sha-<commit>`).
+3. На вашем nginx добавьте `location`-блоки из
+   [`deploy/nginx/satellite-webapp.conf.example`](nginx/satellite-webapp.conf.example) внутрь
+   существующего `server { listen 443 ssl; server_name cassinilab.ru; ... }` и сделайте
+   `sudo nginx -t && sudo systemctl reload nginx`. TLS-сертификат у вашего nginx уже есть.
 4. На машине, с которой запускаете Ansible: `ansible` и SSH-доступ на сервер.
 
 ## Деплой одной командой
@@ -64,18 +74,23 @@ make deploy
 cd deploy/ansible && ansible-playbook site.yml
 ```
 
-Параметры на командной строке не нужны — всё в `inventory.yml` и `group_vars/all.yml`.
+Если в `/opt/satellite/docker-compose.yml` остался старый стек с Traefik —
+playbook сам сделает `docker compose down` и удалит `traefik/` перед накатом нового.
+Подробнее: [operations.md — миграция](../docs/operations.md#миграция-со-стека-traefik).
+
+Если раньше бот работал через **systemd** (`satellite-bot.service` из
+`install-server.sh`), playbook **останавливает и отключает** этот unit, чтобы
+освободить `127.0.0.1:8080` для Docker. Иначе `docker compose up` падает с
+`bind: address already in use`.
 
 ## Что поднимается на сервере
 
 | Сервис | Назначение |
 |--------|------------|
-| `traefik` | HTTPS: `/connect`, `/api/calendar/*` → Web App бота |
-| `nginx-acme` | Webroot для ACME challenge |
-| `certbot` | Выпуск и продление Let's Encrypt |
-| `satellite` | Бот; данные в volume `satellite-logs` |
+| `satellite` | Бот; данные в volume `satellite-logs`; порт `127.0.0.1:8080` на хосте |
 
 Каталог на сервере: `/opt/satellite` (меняется через `deploy_dir` в `group_vars`).
+TLS, домен и проксирование — на вашем хостовом nginx, playbook их не трогает.
 
 ## Обновление образа после первичного деплоя
 
@@ -93,32 +108,26 @@ SATELLITE_IMAGE=ghcr.io/ksandrpetrov/satellite:sha-abc1234 \
   bash scripts/ci-deploy-remote.sh
 ```
 
-**Полный playbook (Ansible)** нужен только когда меняется стек: домен, Traefik,
-секреты в `.env`, версия Certbot. Тогда: правим `group_vars/all.yml` (при необходимости
-`image_tag` на конкретный semver) и снова `make deploy`.
+**Полный playbook** нужен только когда меняются переменные `.env`
+(токены, `WEBAPP_BASE_URL`, погода и т.п.) или `docker-compose.yml` бота.
 
 ## Переменные Ansible (`group_vars/all.yml`)
 
 | Переменная | Назначение |
 |------------|------------|
 | `domain` | Публичный хост; `WEBAPP_BASE_URL` = `https://<domain>/connect` |
-| `certbot_email` | Email для Let's Encrypt |
-| `certbot_staging` | `true` — staging-сертификаты (отладка) |
-| `image_tag` | Тег образа GHCR для **первичного** `make deploy` (`latest` или semver); дальше Actions пишет `SATELLITE_IMAGE` в `.env` |
+| `satellite_host_port` | Порт на хосте (`127.0.0.1:<port>:8080`); сюда проксирует ваш nginx |
+| `satellite_image_source` | `build` (собрать на сервере) или `ghcr` (тянуть из GHCR) |
+| `image_tag` | Тег образа GHCR для первичного `make deploy` |
 | `telegram_bot_token`, `admin_telegram_ids` | Секреты бота |
-| `token_encryption_key` | Пусто при первом деплое — ключ сгенерируется; при повторном сохранится с сервера |
+| `token_encryption_key` | Пусто при первом деплое — ключ сгенерируется; при повторном сохранится |
 | `deploy_dir` | Каталог на сервере (default `/opt/satellite`) |
+| `ghcr_pull_user`, `ghcr_pull_token` | Опционально: PAT для приватного пакета GHCR |
 
 Полный список env приложения после деплоя — в сгенерированном `.env` на сервере;
 шаблон: [`ansible/templates/env.j2`](ansible/templates/env.j2).
 
-## Локальный compose (без Ansible)
-
-Для отладки на сервере вручную — см. серверный [`docker-compose.yml`](docker-compose.yml)
-и `.env` по образцу [`.env.example`](.env.example) (`WEBAPP_HOST=0.0.0.0`).
-
-Локальный запуск на ноутбуке (один контейнер бота, без Traefik) — в
-корневом репо: `docker-compose.yml`. Шаги:
+## Локальный запуск на ноутбуке
 
 ```bash
 make env          # создаст .env и сгенерирует TOKEN_ENCRYPTION_KEY
@@ -127,8 +136,8 @@ make docker-logs  # docker compose logs -f satellite
 ```
 
 Health: `curl http://127.0.0.1:8080/healthz`. Чтобы Telegram WebApp работал
-снаружи, поверх 8080 нужен HTTPS-туннель (`ngrok http 8080` или Cloudflare
-Tunnel) и `WEBAPP_BASE_URL=https://<публичный-домен>/connect` в `.env`.
+снаружи, поверх 8080 нужен HTTPS-туннель (`ngrok http 8080` или Cloudflare Tunnel)
+и `WEBAPP_BASE_URL=https://<публичный-домен>/connect` в `.env`.
 
 Диагностика: [docs/troubleshooting.md](../docs/troubleshooting.md),
-эксплуатация: [docs/operations.md](../docs/operations.md#docker-ghcr--traefik--certbot).
+эксплуатация: [docs/operations.md](../docs/operations.md).

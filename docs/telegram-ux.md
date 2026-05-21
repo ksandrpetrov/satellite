@@ -76,7 +76,7 @@ dat
    (`send_message_draft` + `upload_photo`), затем PNG с подписью отдельным
    `sendPhoto` (в личке — message effect ✨). Повторный «Построить отчёт», пока
    идёт сборка или в течение 45 с после успешной отправки, не запускает второй
-   отчёт — toast «Уже строю отчёт — подожди немного» (`_AnalyticsRunGuard` в
+   отчёт — toast «Уже строю отчёт — подожди немного» (`ActionGuard` в
    `handlers/analytics.py`). Один запрос CalDAV (~13 недель), сравнение с прошлой
    неделей, тренд по кварталу. Системные события (🍕 обед, «день без встреч»,
    all-day) и неподтверждённые приглашения в метрики не входят.
@@ -120,7 +120,9 @@ Legacy-тексты старой клавиатуры тоже распозна�
 («Сегодня», «Завтра», далее «Пт, 22.05» и т.д.). Отменённые события скрываются.
 Встречи внутри дня нумеруются так же, как в дайджесте: `1️⃣`…`🔟`, далее
 `11.` и т.д. (`event_index_marker` в `calendar/events.py`). Сценарий:
-loading message → `UserCalendarService.list_events` → edit.
+`open_streaming_reply` → `UserCalendarService.list_events` → финальный список;
+см. [Streaming delivery](#streaming-delivery-план-upcoming-аналитика). Повтор
+`/upcoming` в cooldown — молча (`ActionGuard`, 15 с).
 
 ## Invitations (PARTSTAT)
 
@@ -251,25 +253,24 @@ Callback data хаба: `CB_SETTINGS_*` / `CB_ANALYTICS_*` в [`messages_ru/_cor
 
 FSM создания события (`calendar_state`) не пересекается с digest time state.
 
-## Loading Message
+## Streaming delivery (план, upcoming, аналитика)
 
-Для плана дня и списка upcoming используется сценарий:
+План дня (`/today`, `/tomorrow`, …), `/upcoming` и недельная аналитика используют
+`streaming_delivery.open_streaming_reply`: черновик через draft API
+(`sendMessageDraft` + промежуточные `push`), финал — `finish` (текст плана/upcoming)
+или отдельный `sendPhoto` (аналитика). При ошибке CalDAV/сборки черновик
+заменяется безопасным текстом (`ERR_*` из `messages_ru`).
 
-```text
-sendMessage("Чайка ищет встречи..." / "Чайка собирает ближайшие события…")
-build digest / list events
-editMessageText(final text)
-```
+Повтор команды или кнопки, пока первый запрос ещё идёт или сразу после успеха,
+блокируется `ActionGuard` в [`action_guard.py`](../satellite/telegram_bot/handlers/action_guard.py)
+(см. cooldown'ы в architecture.md). План и upcoming — молча; аналитика — toast
+«Уже строю отчёт…».
 
-Недельная аналитика — другой паттерн (`streaming_delivery.open_streaming_reply`):
-черновик через draft API, итог — отдельное фото; при ошибке сборки или
-`sendPhoto` черновик заменяется безопасным текстом (`ERR_*` из `messages_ru`).
+## Loading Message (приглашения, manage, legacy)
 
-Если edit не удался, `edit_or_send_message` отправляет новое сообщение и пишет
-warning в лог.
-
-Если построение дайджеста упало, loading-сообщение заменяется безопасным текстом
-ошибки.
+`/invitations` и `/manage` по-прежнему: loading message → CalDAV →
+`editMessageText` (см. разделы выше). Если edit не удался,
+`edit_or_send_message` отправляет новое сообщение и пишет warning в лог.
 
 ## Authorization (кратко)
 

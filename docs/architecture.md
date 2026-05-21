@@ -119,8 +119,14 @@ telegram_test_command.py
     connect); кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` только здесь.
   - `settings.py` — экран настроек дайджеста и callbacks `CB_DIGEST_*`.
   - `analytics.py` — недельная аналитика (PNG + подпись) из хаба;
-    `_AnalyticsRunGuard` — один активный прогон на `chat_id` + cooldown 45 с
-    после успешной отправки (защита от двойного PNG при повторном callback).
+    `ActionGuard` (45 с cooldown) — один прогон на `chat_id` + защита от
+    двойного PNG при повторном callback.
+  - `action_guard.py` — общий `ActionGuard`: per `(chat_id, action_key)` блокирует
+    параллельный запуск и повтор сразу после успеха. Используют `plan.py` (30 с),
+    `calendar_list.py` (15 с), `analytics.py` (45 с), `calendar_invitations.py` /
+    `calendar_manage.py` (10 с на открытие списка), `partstat_flow.py` (5 с на ответ
+    по событию). Дополняет `ChatLockManager` (сериализация по чату), но не заменяет
+    `DigestStateStore.claim_callback` (дедуп одного и того же `callback_query_id`).
   - `calendar_setup.py` — connect / check / disconnect (Web App; check/disconnect
     также из хаба настроек).
   - `calendar_view.py` — общие хелперы списка CalDAV-календарей (fetch, screen lines).
@@ -132,7 +138,7 @@ telegram_test_command.py
     60 дней вперёд, 14 назад; недавно завершённые без ответа не скрываются) и
     ответы ACCEPTED / DECLINED / TENTATIVE через CalDAV.
   - `calendar_manage.py` — `/manage`, смена PARTSTAT по любой встрече на 7 дней.
-  - `plan.py` — command → plan → reply.
+  - `plan.py` — command → plan → streaming reply (`ActionGuard`, 30 с).
   - `subscription.py` — subscribe/unsubscribe.
 - `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing,
   fallback при отказе Telegram в `<tg-emoji>` / `<blockquote>`.
@@ -140,7 +146,7 @@ telegram_test_command.py
   хендлеры не вставляют разметку напрямую.
 - `satellite/telegram_bot/visual.py` — typing indicator, message effects, menu button.
 - `satellite/telegram_bot/streaming_delivery.py` — потоковый ответ (черновик → финал);
-  используется аналитикой и другими долгими сценариями.
+  plan, `/upcoming`, недельная аналитика.
 - `satellite/telegram_bot/message_editing.py` — edit loading message, fallback.
 - `satellite/telegram_bot/handlers/digest_state.py` — in-memory state for digest
   time input (canonical путь; `telegram_bot/digest_state.py` оставлен как
@@ -303,8 +309,8 @@ resolve_target_date(DIGEST_MODE, today in user timezone)
 `POST /api/calendar/connect` принимает `provider=mailru` (production);
 `yandex` в API возвращает `PROVIDER_NOT_IMPLEMENTED` (backend готов, UI disabled).
 
-HTTPS — задача reverse proxy (Traefik в Docker, nginx/Caddy при systemd).
-Проксируйте `/connect` и префикс `/api/calendar/`.
+HTTPS — задача reverse proxy на хосте (nginx/Caddy одинаково для Docker и systemd).
+Проксируйте `/connect` и префикс `/api/calendar/` на `127.0.0.1:<satellite_host_port>`.
 
 ## Logging
 
@@ -321,8 +327,9 @@ The bot logs operational failures but sends users only safe, non-technical messa
   `logs/` на диске хоста, Web App за внешним nginx/Caddy
   (`WEBAPP_HOST=127.0.0.1`).
 - **Docker** — образ `ghcr.io/ksandrpetrov/satellite`, Ansible playbook
-  (`make deploy`), Traefik терминирует TLS и проксирует `/connect` и
-  `/api/*` в контейнер (`WEBAPP_HOST=0.0.0.0`, volume `satellite-logs` → `/app/logs`).
+  (`make deploy`); внешний nginx на хосте терминирует TLS и проксирует
+  `/connect`, `/api/calendar/*` на `127.0.0.1:<satellite_host_port>` (внутри
+  контейнера `WEBAPP_HOST=0.0.0.0`, volume `satellite-logs` → `/app/logs`).
 
 **CI/CD (Docker):** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на
 push в `main` или тег `v*` — test, сборка в GHCR (`:sha-<short>`; `:latest` на main;

@@ -1,5 +1,8 @@
-# Фрагмент для существующего HTTPS server {} cassinilab.ru (systemd-бот на 127.0.0.1:8080).
-# Скопируйте location-блоки внутрь server { listen 443 ssl; server_name cassinilab.ru; ... }
+# Фрагмент для существующего HTTPS server {} (cassinilab.ru и др.).
+# systemd: бот на 127.0.0.1:WEBAPP_PORT (обычно 8080).
+# Docker: бот на 127.0.0.1:<satellite_host_port> (Ansible group_vars, default 8080).
+# Скопируйте location-блоки внутрь server { listen 443 ssl; server_name <domain>; ... }
+# Замените :8080 в proxy_pass, если satellite_host_port другой.
 # Затем: sudo nginx -t && sudo systemctl reload nginx
 
     location /connect {
