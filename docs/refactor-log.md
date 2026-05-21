@@ -105,6 +105,10 @@ callback_data, HTTP-ответы) не менялся; baseline pytest-набо�
   semver на теге `v*`) → SSH rolling deploy (`scripts/ci-deploy-remote.sh`) только для
   `main` и `workflow_dispatch`. Workflow целиком также триггерится тегом `v*`, но job deploy
   на теге не запускается.
+- Job deploy: явная проверка секретов `DEPLOY_HOST` / `DEPLOY_USER` / `SSH_PRIVATE_KEY`;
+  lowercase имени образа в GHCR (`tr` вместо `${var,,}`).
+- `ci-deploy-remote.sh`: stop/disable legacy `satellite-bot.service` перед `compose up`
+  (как в Ansible playbook).
 - Compose с `image: ${SATELLITE_IMAGE}`; шаблон `env.j2` пишет `SATELLITE_IMAGE` в `.env` при
   первичном `make deploy`, дальше Actions сам перезаписывает значение.
 - Старый `release-docker.yml` удалён (заменён `deploy.yml`).
@@ -134,3 +138,10 @@ callback_data, HTTP-ответы) не менялся; baseline pytest-набо�
   `open_streaming_reply`; guard'ы 30 с / 15 с — без второго дайджеста/списка.
 - Документация: AGENTS.md, architecture.md, telegram-ux.md, testing.md,
   troubleshooting.md.
+
+## Streaming: `/invitations` и `/manage` (2026-05-21)
+
+- Открытие списка — `open_streaming_reply` (как plan/upcoming), не отдельное
+  loading-сообщение + `editMessageText`.
+- `ActionGuard` 10 с на open; refresh и ответ PARTSTAT — `edit_callback_message`.
+- Документация: README.md, architecture.md, telegram-ux.md, testing.md, troubleshooting.md.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
@@ -66,12 +66,12 @@ def test_foreign_day_keyboard_offers_today_tomorrow_and_day_after():
 
 
 def test_format_single_day_events_lines():
-    ref = date(2026, 5, 20)
+    ref = datetime.now(TZ).date()
     events = [
         {
             "summary": "Созвон",
-            "dtstart": datetime(2026, 5, 20, 10, 0, tzinfo=TZ).isoformat(),
-            "dtend": datetime(2026, 5, 20, 11, 0, tzinfo=TZ).isoformat(),
+            "dtstart": datetime(ref.year, ref.month, ref.day, 10, 0, tzinfo=TZ).isoformat(),
+            "dtend": datetime(ref.year, ref.month, ref.day, 11, 0, tzinfo=TZ).isoformat(),
         },
     ]
     lines = format_single_day_events_lines(events, TZ, ref, ref)
@@ -116,11 +116,12 @@ def test_foreign_calendars_callback_flow(users: UserStore) -> None:
         CalendarListEntry(name="Мой", url="https://cal/primary"),
         CalendarListEntry(name="Александра Качина", url="https://cal/shared"),
     ]
+    today = datetime.now(TZ).date()
     ctx.calendar_service.list_events.return_value = [
         {
             "summary": "Встреча",
-            "dtstart": datetime(2026, 5, 20, 14, 0, tzinfo=TZ).isoformat(),
-            "dtend": datetime(2026, 5, 20, 15, 0, tzinfo=TZ).isoformat(),
+            "dtstart": datetime(today.year, today.month, today.day, 14, 0, tzinfo=TZ).isoformat(),
+            "dtend": datetime(today.year, today.month, today.day, 15, 0, tzinfo=TZ).isoformat(),
         },
     ]
     ctx.telegram = MagicMock()

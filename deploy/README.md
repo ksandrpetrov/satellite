@@ -16,8 +16,11 @@ Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на 
 1. **test** — ruff (lint + format check), py_compile, pytest.
 2. **build** — Docker-образ в GHCR: `:sha-<short>` (всегда), `:latest` (только `main`),
    semver-теги (только `v*`).
-3. **deploy** — SSH на сервер: обновить `SATELLITE_IMAGE` в `.env`, `docker compose pull satellite`,
+3. **deploy** — SSH на сервер (`scripts/ci-deploy-remote.sh`): при наличии legacy
+   `satellite-bot.service` — остановить и отключить unit (освободить порт на хосте);
+   обновить `SATELLITE_IMAGE` в `.env`, `docker compose pull satellite`,
    `docker compose up -d satellite`. Только для push в `main` и ручного `workflow_dispatch`.
+   Перед SSH job проверяет, что заданы секреты `DEPLOY_HOST`, `DEPLOY_USER`, `SSH_PRIVATE_KEY`.
 
 Пакет в GHCR после первой сборки сделайте **public** (или задайте `GHCR_PULL_TOKEN`, см. ниже):
 `Settings → Packages → satellite → Package settings → Change visibility`.

@@ -257,9 +257,12 @@ Push в `main`, ручной запуск workflow `deploy` (`Actions → deploy
 на сервер **не** выполняется — для выката semver-образа на prod используйте
 **Run workflow** на ветке `main` или дождитесь push в `main`.
 
-Workflow перезаписывает `SATELLITE_IMAGE`
+Скрипт [`ci-deploy-remote.sh`](../scripts/ci-deploy-remote.sh) (тот же, что в Actions):
+при наличии legacy `satellite-bot.service` останавливает и отключает unit, чтобы
+освободить `127.0.0.1:<satellite_host_port>`; затем перезаписывает `SATELLITE_IMAGE`
 в `/opt/satellite/.env` на сборку `:sha-<short>`, выполняет `docker compose pull satellite`
-и `docker compose up -d satellite`.
+и `docker compose up -d satellite`. Job **deploy** перед SSH проверяет наличие
+секретов `DEPLOY_HOST`, `DEPLOY_USER`, `SSH_PRIVATE_KEY` (без GitHub Environment).
 
 Секреты репозитория (`Settings → Secrets and variables → Actions`):
 
@@ -525,11 +528,6 @@ active=… key_fingerprint=…` — по `key_fingerprint` (sha256[0:8]) вид�
 `TOKEN_ENCRYPTION_KEY` не сменился. Резервное копирование `users.json`, `.env`
 (включая `TOKEN_ENCRYPTION_KEY`) и при необходимости `logs/backups/` обязательно
 при переносе сервера.
-
-## Runtime State (legacy)
-
-Ранее использовались `user-calendar-map.json` и глобальные Mail.ru-credentials
-в `.env` — они удалены из конфигурации.
 
 ## Scheduler Lifecycle
 

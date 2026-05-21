@@ -36,9 +36,10 @@ Production Telegram-бот для календарных дайджестов и
 - Расчет занятости, свободного времени, пересечений и обеда; неподтверждённые
   приглашения не в метриках, в дайджесте помечаются ⚠️.
 - Open-Meteo погода с кэшем и безопасным fallback.
-- Потоковая доставка плана и `/upcoming` (`sendMessageDraft` → финал); приглашения
-  и manage — `loading message` → `editMessageText`. Повторные тапы ограничивает
-  `ActionGuard` (см. [architecture.md](docs/architecture.md)).
+- Потоковая доставка плана, `/upcoming`, `/invitations`, `/manage` и недельной
+  аналитики (`sendMessageDraft` → финал; аналитика — отдельный `sendPhoto`).
+  Повторные тапы ограничивает `ActionGuard` (см. [architecture.md](docs/architecture.md),
+  [telegram-ux.md](docs/telegram-ux.md#streaming-delivery)).
 - Компактная reply-клавиатура для одобренных (план, upcoming, чужие календари, настройки).
 - Thread-safe JSON storage настроек и пользователей.
 

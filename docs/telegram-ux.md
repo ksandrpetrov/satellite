@@ -121,7 +121,7 @@ Legacy-тексты старой клавиатуры тоже распозна�
 Встречи внутри дня нумеруются так же, как в дайджесте: `1️⃣`…`🔟`, далее
 `11.` и т.д. (`event_index_marker` в `calendar/events.py`). Сценарий:
 `open_streaming_reply` → `UserCalendarService.list_events` → финальный список;
-см. [Streaming delivery](#streaming-delivery-план-upcoming-аналитика). Повтор
+см. [Streaming delivery](#streaming-delivery). Повтор
 `/upcoming` в cooldown — молча (`ActionGuard`, 15 с).
 
 ## Invitations (PARTSTAT)
@@ -132,13 +132,10 @@ Legacy-тексты старой клавиатуры тоже распозна�
 скрываются; недавно завершённые, но без ответа, остаются в списке
 (`collect_pending_invitations` в `calendar/events.py`).
 
-Сценарий:
-
-```text
-sendMessage("📨 Чайка собирает приглашения…")
-UserCalendarService.list_events_for_invitations → filter NEEDS-ACTION
-editMessageText(список + inline-кнопки)
-```
+Сценарий открытия — `open_streaming_reply` → статус «📨 Чайка собирает приглашения…»
+→ `UserCalendarService.list_events_for_invitations` → `collect_pending_invitations`
+→ `stream.finish` (список + inline-кнопки). Повтор `/invitations` в cooldown — молча
+(`ActionGuard`, 10 с). См. [Streaming delivery](#streaming-delivery).
 
 Под каждым событием — **Принять** / **Отклонить** / **Может быть**; ответ пишется
 в CalDAV через `set_attendee_partstat` (Mail.ru — `CalDAVClient.update_attendee_partstat`).
@@ -150,8 +147,9 @@ Callback data: префикс `inv:` (`CB_INV_*` в [`messages_ru/_core.py`](../
 ## Manage events (PARTSTAT)
 
 `/manage` (кнопка «🛠 Изменить статус», алиасы `/edit`, `/status`) — список встреч
-на 7 дней, где можно сменить свой `PARTSTAT` (не только NEEDS-ACTION). Детальный
-экран по встрече, те же CalDAV-операции, что в `/invitations`
+на 7 дней, где можно сменить свой `PARTSTAT` (не только NEEDS-ACTION). Открытие
+списка — streaming (`MANAGE_FETCH_STATUS` → финал с кнопками); cooldown 10 с.
+Детальный экран по встрече, те же CalDAV-операции, что в `/invitations`
 (`set_attendee_partstat`). Callback data: префикс `mng:` (`CB_MANAGE_*`).
 
 ## Digest and analytics metrics
@@ -253,23 +251,22 @@ Callback data хаба: `CB_SETTINGS_*` / `CB_ANALYTICS_*` в [`messages_ru/_cor
 
 FSM создания события (`calendar_state`) не пересекается с digest time state.
 
-## Streaming delivery (план, upcoming, аналитика)
+## Streaming delivery
 
-План дня (`/today`, `/tomorrow`, …), `/upcoming` и недельная аналитика используют
-`streaming_delivery.open_streaming_reply`: черновик через draft API
-(`sendMessageDraft` + промежуточные `push`), финал — `finish` (текст плана/upcoming)
-или отдельный `sendPhoto` (аналитика). При ошибке CalDAV/сборки черновик
-заменяется безопасным текстом (`ERR_*` из `messages_ru`).
+План дня (`/today`, `/tomorrow`, …), `/upcoming`, `/invitations`, `/manage` и
+недельная аналитика используют `streaming_delivery.open_streaming_reply`: черновик
+через draft API (`sendMessageDraft` + промежуточные `push`), финал — `finish`
+(текст + inline-клавиатура) или отдельный `sendPhoto` (аналитика). При ошибке
+CalDAV/сборки черновик заменяется безопасным текстом (`ERR_*` из `messages_ru`).
 
-Повтор команды или кнопки, пока первый запрос ещё идёт или сразу после успеха,
-блокируется `ActionGuard` в [`action_guard.py`](../satellite/telegram_bot/handlers/action_guard.py)
-(см. cooldown'ы в architecture.md). План и upcoming — молча; аналитика — toast
-«Уже строю отчёт…».
+Повтор команды или кнопки открытия, пока первый запрос ещё идёт или сразу после
+успеха, блокируется `ActionGuard` в
+[`action_guard.py`](../satellite/telegram_bot/handlers/action_guard.py)
+(cooldown'ы — в [architecture.md](architecture.md)). План, upcoming, invitations и
+manage — молча; аналитика — toast «Уже строю отчёт…».
 
-## Loading Message (приглашения, manage, legacy)
-
-`/invitations` и `/manage` по-прежнему: loading message → CalDAV →
-`editMessageText` (см. разделы выше). Если edit не удался,
+**Callback refresh** (обновить список, ответ PARTSTAT, «Назад» в manage): тот же
+экран через `edit_callback_message` (`message_editing.py`). Если edit не удался,
 `edit_or_send_message` отправляет новое сообщение и пишет warning в лог.
 
 ## Authorization (кратко)

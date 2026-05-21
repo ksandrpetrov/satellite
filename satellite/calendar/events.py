@@ -523,9 +523,7 @@ def collect_pending_invitations(
         if (ev.get("url") or "").strip()
         and not is_cancelled_event(ev)
         and is_pending_invitation_for_user(ev, login_norm)
-        and event_relevant_for_invitations(
-            ev, tz, moment=now, lookback_days=lookback_days
-        )
+        and event_relevant_for_invitations(ev, tz, moment=now, lookback_days=lookback_days)
     ]
     pending.sort(key=lambda ev: sort_key(ev, tz))
     return pending[: max(0, max_events)]

@@ -135,7 +135,8 @@ python -m pytest tests/test_weather.py
 
 - `is_pending_invitation_for_user`, `event_relevant_for_invitations`,
   `collect_pending_invitations` (в т.ч. lookback 14 дней для завершённых без ответа);
-- роутинг `/invitations` и CalDAV `set_attendee_partstat` (mock provider).
+- роутинг `/invitations`, streaming open (`open_streaming_reply`) и CalDAV
+  `set_attendee_partstat` (mock provider).
 
 **Calendar selection** (`test_calendar_selection.py`):
 
@@ -195,8 +196,8 @@ python -m pytest tests/test_weather.py
 `test_settings_hub.py`, `test_calendar_manage.py`, `test_user_access.py`):
 
 - снапшоты `users.json` / `subscriptions.json` при старте;
-- потоковый ответ (черновик → финал);
-- навигация хаба настроек и manage PARTSTAT.
+- потоковый ответ (черновик → финал) для plan, upcoming, invitations, manage;
+- навигация хаба настроек и manage PARTSTAT (streaming open + callback refresh).
 
 ## Static Checks
 

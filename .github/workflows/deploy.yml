@@ -100,16 +100,30 @@ jobs:
         id: image
         run: |
           SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
-          echo "ref=${REGISTRY}/${IMAGE_NAME,,}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          IMAGE_LC="$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
+          echo "ref=${REGISTRY}/${IMAGE_LC}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
   deploy:
     needs: build
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    environment:
-      name: production
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check deploy secrets are configured
+        run: |
+          missing=0
+          for name in DEPLOY_HOST DEPLOY_USER SSH_PRIVATE_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing Actions secret: ${name}. Settings → Secrets and variables → Actions" >&2
+              missing=1
+            fi
+          done
+          exit "${missing}"
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Rolling deploy via SSH
         env:

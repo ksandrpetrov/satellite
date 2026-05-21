@@ -135,9 +135,10 @@ telegram_test_command.py
   - `calendar_list.py` — `/upcoming`, ближайшие 7 дней.
   - `calendar_create.py` — `/create`, пошаговый FSM создания события.
   - `calendar_invitations.py` — `/invitations`, список NEEDS-ACTION (горизонт
-    60 дней вперёд, 14 назад; недавно завершённые без ответа не скрываются) и
-    ответы ACCEPTED / DECLINED / TENTATIVE через CalDAV.
-  - `calendar_manage.py` — `/manage`, смена PARTSTAT по любой встрече на 7 дней.
+    60 дней вперёд, 14 назад; недавно завершённые без ответа не скрываются),
+    streaming open + ответы ACCEPTED / DECLINED / TENTATIVE через CalDAV.
+  - `calendar_manage.py` — `/manage`, смена PARTSTAT по любой встрече на 7 дней
+    (streaming open списка).
   - `plan.py` — command → plan → streaming reply (`ActionGuard`, 30 с).
   - `subscription.py` — subscribe/unsubscribe.
 - `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing,
@@ -145,9 +146,10 @@ telegram_test_command.py
 - `satellite/telegram_bot/html_format.py` — HTML-обёртки (`blockquote`, custom emoji);
   хендлеры не вставляют разметку напрямую.
 - `satellite/telegram_bot/visual.py` — typing indicator, message effects, menu button.
-- `satellite/telegram_bot/streaming_delivery.py` — потоковый ответ (черновик → финал);
-  plan, `/upcoming`, недельная аналитика.
-- `satellite/telegram_bot/message_editing.py` — edit loading message, fallback.
+- `satellite/telegram_bot/streaming_delivery.py` — потоковый ответ (черновик → финал):
+  plan, `/upcoming`, `/invitations`, `/manage`, недельная аналитика.
+- `satellite/telegram_bot/message_editing.py` — `edit_callback_message`, fallback
+  при неудачном edit (refresh PARTSTAT, хаб настроек).
 - `satellite/telegram_bot/handlers/digest_state.py` — in-memory state for digest
   time input (canonical путь; `telegram_bot/digest_state.py` оставлен как
   back-compat shim).

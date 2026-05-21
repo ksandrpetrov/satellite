@@ -105,7 +105,7 @@ satellite/
 | Список CalDAV-календарей в UI | [`handlers/calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py) — `fetch_calendars` (→ `CalendarListResult`) и `build_calendar_sources_screen` |
 | Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users.py`](satellite/users.py) |
 | URL Web App connect | [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `webapp_connect_url(ctx)` |
-| Потоковый ответ (черновик + финал) | [`streaming_delivery.py`](satellite/telegram_bot/streaming_delivery.py), [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `open_streaming_reply` |
+| Потоковый ответ (черновик + финал) | [`streaming_delivery.py`](satellite/telegram_bot/streaming_delivery.py), [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `open_streaming_reply` (plan, upcoming, invitations, manage, analytics) |
 | Визуал Telegram (typing, effects, меню) | [`visual.py`](satellite/telegram_bot/visual.py) — `TypingIndicator`, `pick_plan_message_effect`, `set_default_menu_button_for_chat`; HTML — [`html_format.py`](satellite/telegram_bot/html_format.py); профиль бота на старте — [`commands.py`](satellite/telegram_bot/commands.py) `setup_bot_identity` |
 | Расписание дайджеста | [`scheduler.py`](satellite/scheduler.py) + [`subscriptions.py`](satellite/subscriptions.py) |
 | Доступ, заявки, календарь пользователя | [`users.py`](satellite/users.py), шифрование — [`security/token_vault.py`](satellite/security/token_vault.py) |
@@ -146,7 +146,34 @@ satellite/
 11. **Подписка на дайджест** — `DigestSettings.telegram_user_id` в [`subscriptions.py`](satellite/subscriptions.py); scheduler резолвит пользователя через `UserStore.get`, не через `username`.
 12. **Навигация настроек** — кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` обрабатывает только [`settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py); `settings.py` и `analytics.py` не импортируют друг друга и не имеют lazy-back-импортов в хаб.
 13. **Сбой `UserStore._save_locked`** — поднимает [`UserStorePersistenceError`](satellite/users.py); caller (handler / Web App) ловит на границе и показывает безопасный текст.
-14. **Перед коммитом** — `make check` (ruff lint + mypy + py_compile + pytest). Стиль/форматирование — только [`ruff`](pyproject.toml) (lint + format); blackd/isort не используем.
+14. **Перед коммитом** — `make check` (ruff lint + mypy + py_compile + pytest). Стиль/форматирование — только [`ruff`](pyproject.toml) (lint + format); blackd/isort не используем. Поведение при падении тестов — см. раздел **«Тесты и регрессии»** ниже.
+
+## Тесты и регрессии (для агентов)
+
+После правок кода **всегда запускай тесты** (`make test` или `make check`; при точечной
+правке — хотя бы затронутые модули: `pytest tests/test_foo.py -q`). Не сдавай задачу
+с красным pytest/ruff без явного объяснения.
+
+**Тесты — страж регрессий, а не способ сделать CI зелёным.** Никогда не «чинить» тест
+вслепую под новый код, если не уверен, что изменение поведения **намеренное и верное**.
+
+| Ситуация | Действие |
+|----------|----------|
+| Упали тесты, которые **прямо покрывают** твои изменения, и новое поведение **ожидаемо** (контракт, текст, API) | Обнови тест под новый контракт; в ответе пользователю кратко зафиксируй, *что* изменилось и *почему* тест легитимен. |
+| Упали тесты **вне** зоны задачи или поведение выглядит **сломанным** | Считай это багом: разберись в продуктовой логике, **чинь код**, не ослабляй/assert не выкидывай проверки ради зелёного прогона. |
+| Непонятно — баг это, устаревший тест или намеренное изменение контракта | **Спроси пользователя явно**, не угадывай. Не коммить «на авось». |
+
+Запрещено без согласования с пользователем:
+
+- ослаблять assertions, удалять проверки, ставить `pytest.mark.skip`, `xfail`, `continue-on-error` «чтобы прошло»;
+- подменять жёсткие даты/моки на «что угодно», если это скрывает реальный баг (пример антипаттерна: зафиксировать вчерашнюю дату в тесте «сегодня», когда сломался расчёт `day_offset`);
+- менять ожидаемые тексты/числа в тесте, не прочитав, **что** должен делать сценарий по [`messages_ru/`](satellite/messages_ru/) и доменной логике.
+
+Допустимо обновлять тест, когда ты **осознанно** меняешь контракт (новая фича, рефакторинг
+без смены смысла для пользователя, переименование). В сомнительных случаях — сначала
+воспроизведи падение, потом код или вопрос пользователю.
+
+Подробнее про написание тестов: [docs/testing.md](docs/testing.md).
 
 ## Антипаттерны
 
@@ -175,6 +202,7 @@ satellite/
 - `_msg_from_cb` или фабрикация `IncomingMessage` ради `ensure_calendar_connected` — функция принимает `chat_id` / `user_id` напрямую.
 - `do_create()` или подобные обёртки в хендлерах ради единственного `try/except` — снимать без потери поведения.
 - Импорт `from satellite.analytics_service import ...` — canonical путь теперь [`satellite.analytics.service`](satellite/analytics/service.py); shim оставлен только для back-compat.
+- Подгонять тест под код «чтобы pytest прошёл», не разобравшись в ожидаемом поведении — см. **«Тесты и регрессии»**; тесты для ловли багов, не для зелёного CI.
 
 ## Не трогать без необходимости
 
@@ -229,7 +257,7 @@ TLS и reverse proxy на 443 — ваш существующий nginx на х�
 | [`scripts/bootstrap-server.sh`](scripts/bootstrap-server.sh) | apt + clone + `install-server.sh` на чистом хосте |
 | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) | CalDAV с сервера без Telegram (см. troubleshooting) |
 | [`scripts/diagnose_invitation.py`](scripts/diagnose_invitation.py) | PARTSTAT / pending без Telegram (`--user-id`, `--summary`, опц. `--accept`; lookback 14 д — как в боте) |
-| [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy: `SATELLITE_IMAGE` в `.env` на сервере → `compose pull/up satellite` (Actions и локально) |
+| [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy: stop/disable legacy `satellite-bot.service` при наличии → `SATELLITE_IMAGE` в `.env` → `compose pull/up satellite` (Actions и локально) |
 
 ## Web App
 

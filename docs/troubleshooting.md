@@ -266,9 +266,21 @@ Cooldown после успеха — 45 с (`ActionGuard` в `handlers/analytics
 `plan.py` — 30 с, `calendar_list.py` — 15 с). В логе: `Plan run skipped
 (duplicate within cooldown)` или `Upcoming skipped (duplicate within cooldown)`.
 
-## Loading-сообщение не отредактировалось
+## Два списка приглашений или manage подряд
 
-Штатный fallback: бот отправит итог новым сообщением и запишет warning в лог.
+Повтор `/invitations` или `/manage` (и кнопки «📨 Приглашения» / «🛠 Изменить статус»),
+пока первый CalDAV-запрос ещё идёт или в течение 10 с после успешного открытия,
+молча игнорируется (`ActionGuard` в `calendar_invitations.py` /
+`calendar_manage.py`). В логе: `Invitations open skipped` или `Manage open skipped`.
+
+Ответ на встречу (PARTSTAT) и «Обновить» на том же экране — через
+`edit_callback_message`, не второй streaming-open.
+
+## Черновик не обновился / callback-edit не сработал
+
+При streaming-open финал — `stream.finish`. Если Telegram не принял edit
+callback-экрана, штатный fallback: бот отправит итог новым сообщением и запишет
+warning в лог (`message_editing.py`).
 
 Для аналитики зависший черновик «Чайка сводит неделю…» при падении сборки
 (PIL, CalDAV, `sendPhoto`) должен заменяться на `ERR_GENERIC_HANDLER_TEXT` или

@@ -61,6 +61,15 @@ set -euo pipefail
 
 cd "${DEPLOY_DIR}"
 
+# Освободить 127.0.0.1:8080, если бот ещё крутится через systemd (install-server.sh).
+if command -v systemctl >/dev/null 2>&1 && systemctl cat satellite-bot.service >/dev/null 2>&1; then
+    if systemctl is-active --quiet satellite-bot.service; then
+        echo "Stopping legacy satellite-bot.service (frees host port for Docker)…" >&2
+        systemctl stop satellite-bot.service
+    fi
+    systemctl disable satellite-bot.service 2>/dev/null || true
+fi
+
 if [[ ! -f docker-compose.yml ]]; then
     echo "docker-compose.yml not found in ${DEPLOY_DIR}" >&2
     echo "Сначала выполните первичный деплой с ноутбука: make deploy (Ansible)." >&2
