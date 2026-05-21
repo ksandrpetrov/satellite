@@ -466,14 +466,30 @@ class CalDAVService:
         moment: datetime,
         lookback_days: int = 14,
     ) -> tuple:
-        """Порядок GET для /invitations: сначала текущие/будущие, потом lookback."""
-        if event_ends_after(ev, tz, moment=moment):
+        """Порядок GET для /invitations.
+
+        Tier-0: события без ATTENDEE — без GET вообще ничего не знаем (Mail.ru в
+        REPORT с expand=true иногда не отдаёт ATTENDEE), их refresh обязателен.
+        Tier-1: будущие события с ATTENDEE (возможный ложный ACCEPTED).
+        Tier-2: события в lookback окне.
+        Tier-3: остальное.
+        Внутри tier — по dtstart asc.
+        """
+        has_attendees = bool(ev.get("attendees"))
+        future = event_ends_after(ev, tz, moment=moment)
+        if not has_attendees and future:
             return (0, sort_key(ev, tz))
+        if not has_attendees and event_relevant_for_invitations(
+            ev, tz, moment=moment, lookback_days=lookback_days
+        ):
+            return (1, sort_key(ev, tz))
+        if future:
+            return (2, sort_key(ev, tz))
         if event_relevant_for_invitations(ev, tz, moment=moment, lookback_days=lookback_days):
             day = event_local_start_date(ev, tz)
             inv = -(day.toordinal()) if day is not None else 0
-            return (1, inv, sort_key(ev, tz))
-        return (2, sort_key(ev, tz))
+            return (3, inv, sort_key(ev, tz))
+        return (4, sort_key(ev, tz))
 
     def _enrich_events_partstat(
         self,
@@ -532,11 +548,14 @@ class CalDAVService:
                 ev["status"] = status
         # #region agent log
         if invitation_verify and moment is not None:
+            no_attendees_count = sum(1 for ev in events if not ev.get("attendees"))
             log.warning(
-                "DEBUG_2d45ee PARTSTAT_REFRESH_DONE refreshed=%d/%d total_events=%d budget_left=%.2fs",
+                "DEBUG_2d45ee PARTSTAT_REFRESH_DONE refreshed=%d/%d total_events=%d "
+                "no_attendees_in_report=%d budget_left=%.2fs",
                 refresh_count,
                 self._partstat_refresh_limit,
                 len(events),
+                no_attendees_count,
                 max(
                     0.0,
                     self._partstat_refresh_budget_sec - (time.monotonic() - refresh_started),

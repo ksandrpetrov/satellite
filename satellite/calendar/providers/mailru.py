@@ -285,6 +285,7 @@ class MailruCalendarProvider:
             login=credentials.login.strip(),
             app_password=credentials.secret,
             cache_ttl_sec=self._cache_ttl_sec,
-            partstat_refresh_limit=32,
-            partstat_refresh_budget_sec=8.0,
+            partstat_refresh_limit=120,
+            partstat_refresh_timeout_sec=3.0,
+            partstat_refresh_budget_sec=25.0,
         )
