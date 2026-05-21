@@ -656,6 +656,7 @@ CB_ANALYTICS_BACK = "analytics:back"
 
 CALENDAR_DISCONNECT_TOAST = "Отключено"
 ANALYTICS_SAVED_TOAST = "Сохранено"
+ANALYTICS_BUSY_TOAST = "Уже строю отчёт — подожди немного"
 FOREIGN_CALENDARS_LOADING_TOAST = "Загружаю…"
 
 BUTTON_ANALYTICS = "📊 Аналитика недели"

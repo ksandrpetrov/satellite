@@ -14,42 +14,57 @@ from ...messages_ru import (
 )
 from ..visual import is_private_chat, pick_upcoming_message_effect
 from .access import ensure_calendar_connected
+from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingMessage
 from .delivery import open_streaming_reply
 
 log = logging.getLogger(__name__)
 
 _UPCOMING_DAYS = 7
+_UPCOMING_ACTION = "upcoming"
+
+# Двойной /upcoming пока CalDAV ещё идёт даёт два одинаковых списка.
+# Guard ограничивает повтор пока строим И ~15 с после успешной отправки.
+_upcoming_guard = ActionGuard(cooldown_sec=15.0)
 
 
 def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_connected(ctx, msg) or msg.chat_id is None or msg.user_id is None:
         return
-    stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
-    stream.push(UPCOMING_FETCH_STATUS)
-
+    if not _upcoming_guard.try_acquire(msg.chat_id, _UPCOMING_ACTION):
+        log.info("Upcoming skipped (duplicate within cooldown): user_id=%s", msg.user_id)
+        return
+    sent = False
     try:
-        today = datetime.now(tz=ctx.tz).date()
-        end = today + timedelta(days=_UPCOMING_DAYS)
-        events = ctx.calendar_service.list_events(
-            msg.user_id,
-            start_date=today,
-            end_date=end,
-            tz=ctx.tz,
-        )
-        day_sections = upcoming_events_day_sections(events, ctx.tz, today, days=_UPCOMING_DAYS)
-        if not day_sections:
-            stream.finish(UPCOMING_EMPTY_HTML)
-            return
-        parts = ["🗓 <b>Ближайшие события</b>"]
-        for section in day_sections:
-            parts.append(section)
-            stream.push("\n\n".join(parts))
-        text = "\n\n".join(parts)
-    except CalendarNotConnectedError:
-        text = ERR_CALDAV_UNAVAILABLE_TEXT
-    except CalendarProviderError as exc:
-        log.error("Upcoming list failed user_id=%s: %s", msg.user_id, exc.error_code)
-        text = ERR_CALDAV_UNAVAILABLE_TEXT
-    effect = pick_upcoming_message_effect(text) if is_private_chat(msg.chat_id) else None
-    stream.finish(text, message_effect_id=effect)
+        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
+        stream.push(UPCOMING_FETCH_STATUS)
+
+        try:
+            today = datetime.now(tz=ctx.tz).date()
+            end = today + timedelta(days=_UPCOMING_DAYS)
+            events = ctx.calendar_service.list_events(
+                msg.user_id,
+                start_date=today,
+                end_date=end,
+                tz=ctx.tz,
+            )
+            day_sections = upcoming_events_day_sections(events, ctx.tz, today, days=_UPCOMING_DAYS)
+            if not day_sections:
+                stream.finish(UPCOMING_EMPTY_HTML)
+                sent = True
+                return
+            parts = ["🗓 <b>Ближайшие события</b>"]
+            for section in day_sections:
+                parts.append(section)
+                stream.push("\n\n".join(parts))
+            text = "\n\n".join(parts)
+        except CalendarNotConnectedError:
+            text = ERR_CALDAV_UNAVAILABLE_TEXT
+        except CalendarProviderError as exc:
+            log.error("Upcoming list failed user_id=%s: %s", msg.user_id, exc.error_code)
+            text = ERR_CALDAV_UNAVAILABLE_TEXT
+        effect = pick_upcoming_message_effect(text) if is_private_chat(msg.chat_id) else None
+        stream.finish(text, message_effect_id=effect)
+        sent = True
+    finally:
+        _upcoming_guard.release(msg.chat_id, _UPCOMING_ACTION, sent=sent)

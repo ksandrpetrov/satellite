@@ -68,6 +68,11 @@ callback_data, HTTP-ответы) не менялся; baseline pytest-набо�
     single mutator, data-driven routing, `messages_ru/`, `analytics/service`,
     `make check`, `logs/backups/`). Этот файл — чек-лист для будущих
     рефакторингов.
+11. **Guard недельной аналитики** — `_AnalyticsRunGuard` в
+    `handlers/analytics.py`: повторный `CB_ANALYTICS_RUN` во время сборки или
+    в течение 45 с после успешного `sendPhoto` → toast
+    `ANALYTICS_BUSY_TOAST`, без второго PNG. Регрессия —
+    `tests/test_analytics_handler.py::test_duplicate_run_within_cooldown_skips_second_photo`.
 
 ## Что НЕ менялось
 

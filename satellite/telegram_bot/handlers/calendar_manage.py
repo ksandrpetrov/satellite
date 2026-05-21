@@ -55,6 +55,7 @@ from ...messages_ru import (
 )
 from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .access import ensure_calendar_connected
+from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import edit_callback_message, open_streaming_reply, safe_answer_callback
 from .partstat_flow import PartstatFlow, find_event_by_token, respond_partstat
@@ -63,6 +64,10 @@ log = logging.getLogger(__name__)
 
 _HORIZON_DAYS = 7
 _MAX_EVENTS = 12
+_MANAGE_OPEN_ACTION = "manage:open"
+
+# Двойной /manage пока CalDAV ещё идёт — два одинаковых экрана.
+_manage_open_guard = ActionGuard(cooldown_sec=10.0)
 
 
 def _fetch_manageable(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
@@ -161,18 +166,26 @@ def _detail_screen_for(ctx: HandlerContext, event, login: str) -> tuple[str, dic
 def handle_open_manage_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_connected(ctx, msg) or msg.chat_id is None or msg.user_id is None:
         return
-    stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
-    stream.push(MANAGE_FETCH_STATUS)
-
+    if not _manage_open_guard.try_acquire(msg.chat_id, _MANAGE_OPEN_ACTION):
+        log.info("Manage open skipped (duplicate within cooldown): user_id=%s", msg.user_id)
+        return
+    sent = False
     try:
-        text, keyboard = _load_list_screen(ctx, msg.user_id)
-    except CalendarNotConnectedError:
-        text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
-    except CalendarProviderError as exc:
-        log.error("Manage list failed user_id=%s: %s", msg.user_id, exc.error_code)
-        text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
-    stream.finish(text, reply_markup=keyboard)
-    log.info("Opened manage events: user_id=%s", msg.user_id)
+        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
+        stream.push(MANAGE_FETCH_STATUS)
+
+        try:
+            text, keyboard = _load_list_screen(ctx, msg.user_id)
+        except CalendarNotConnectedError:
+            text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
+        except CalendarProviderError as exc:
+            log.error("Manage list failed user_id=%s: %s", msg.user_id, exc.error_code)
+            text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
+        stream.finish(text, reply_markup=keyboard)
+        sent = True
+        log.info("Opened manage events: user_id=%s", msg.user_id)
+    finally:
+        _manage_open_guard.release(msg.chat_id, _MANAGE_OPEN_ACTION, sent=sent)
 
 
 def _refresh_list(ctx: HandlerContext, cb: IncomingCallback, toast: str | None = None) -> None:

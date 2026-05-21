@@ -37,6 +37,7 @@ from ...messages_ru import (
 )
 from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .access import ensure_calendar_connected
+from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
     edit_callback_message,
@@ -62,6 +63,10 @@ log = logging.getLogger(__name__)
 
 _INVITATION_HORIZON_DAYS = 60
 _MAX_INVITATIONS = 12
+_INVITATIONS_OPEN_ACTION = "invitations:open"
+
+# Двойной /invitations пока CalDAV ещё идёт — два одинаковых экрана.
+_invitations_open_guard = ActionGuard(cooldown_sec=10.0)
 
 
 def _screen_from_pending(
@@ -127,18 +132,26 @@ def _fetch_all_for_token_lookup(ctx: HandlerContext, user_id: int) -> list:
 def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_connected(ctx, msg) or msg.chat_id is None or msg.user_id is None:
         return
-    stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
-    stream.push(INVITATIONS_FETCH_STATUS)
-
+    if not _invitations_open_guard.try_acquire(msg.chat_id, _INVITATIONS_OPEN_ACTION):
+        log.info("Invitations open skipped (duplicate within cooldown): user_id=%s", msg.user_id)
+        return
+    sent = False
     try:
-        text, keyboard = _load_screen(ctx, msg.user_id)
-    except CalendarNotConnectedError:
-        text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
-    except CalendarProviderError as exc:
-        log.error("Invitations list failed user_id=%s: %s", msg.user_id, exc.error_code)
-        text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
-    stream.finish(text, reply_markup=keyboard)
-    log.info("Opened invitations: user_id=%s", msg.user_id)
+        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
+        stream.push(INVITATIONS_FETCH_STATUS)
+
+        try:
+            text, keyboard = _load_screen(ctx, msg.user_id)
+        except CalendarNotConnectedError:
+            text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
+        except CalendarProviderError as exc:
+            log.error("Invitations list failed user_id=%s: %s", msg.user_id, exc.error_code)
+            text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
+        stream.finish(text, reply_markup=keyboard)
+        sent = True
+        log.info("Opened invitations: user_id=%s", msg.user_id)
+    finally:
+        _invitations_open_guard.release(msg.chat_id, _INVITATIONS_OPEN_ACTION, sent=sent)
 
 
 def _edit_invitations_screen(

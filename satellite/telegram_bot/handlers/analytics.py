@@ -9,6 +9,7 @@ from ...analytics.service import build_week_analytics
 from ...calendar.constants import ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_19
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...messages_ru import (
+    ANALYTICS_BUSY_TOAST,
     ANALYTICS_FETCH_STATUS,
     ANALYTICS_SAVED_TOAST,
     ANALYTICS_WORKDAY_APPLIED_TEXT,
@@ -24,6 +25,7 @@ from ...messages_ru import (
 from ..api import TelegramError
 from ..visual import EFFECT_SPARKLES, is_private_chat
 from .access import ensure_calendar_connected
+from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback
 from .delivery import (
     edit_callback_message,
@@ -32,6 +34,13 @@ from .delivery import (
 )
 
 log = logging.getLogger(__name__)
+
+# Повтор «Построить отчёт» пока идёт сборка или сразу после отправки: второй
+# callback ждёт chat lock и стартует только когда первый уже закончил — без
+# debounce пользователь получает два PNG подряд (см. prod log 2026-05-21
+# 12:49:50/57 UTC). 45 c — заметно длиннее средней сборки PNG (~10 c).
+_ANALYTICS_ACTION = "analytics:run"
+_analytics_run_guard = ActionGuard(cooldown_sec=45.0)
 
 
 def handle_open_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
@@ -60,64 +69,68 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if not ensure_calendar_connected(ctx, chat_id=cb.chat_id, user_id=cb.user_id):
         safe_answer_callback(ctx, cb)
         return
-
-    stream = open_streaming_reply(
-        ctx,
-        cb.chat_id,
-        draft_id=cb.update_id,
-        chat_action="upload_photo",
-    )
-    stream.push(ANALYTICS_FETCH_STATUS)
-
-    def build() -> tuple[bytes, str]:
-        today = datetime.now(tz=ctx.tz).date()
-        return build_week_analytics(
-            telegram_user_id=cb.user_id,
-            reference_date=today,
-            tz=ctx.tz,
-            calendar_service=ctx.calendar_service,
-            users=ctx.users,
-        )
-
-    try:
-        png, caption = build()
-    except CalendarNotConnectedError:
-        stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
-        safe_answer_callback(ctx, cb)
-        return
-    except CalendarProviderError as exc:
-        log.error("Analytics failed user_id=%s: %s", cb.user_id, exc.error_code)
-        stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
-        safe_answer_callback(ctx, cb)
-        return
-    except Exception:  # noqa: BLE001 - не оставляем «сводит неделю…» висеть в чате
-        log.exception("Analytics build failed user_id=%s", cb.user_id)
-        stream.finish(ERR_GENERIC_HANDLER_TEXT)
-        safe_answer_callback(ctx, cb)
+    if not _analytics_run_guard.try_acquire(cb.chat_id, _ANALYTICS_ACTION):
+        safe_answer_callback(ctx, cb, text=ANALYTICS_BUSY_TOAST)
         return
 
-    effect = EFFECT_SPARKLES if is_private_chat(cb.chat_id) else None
-    try:
-        ctx.telegram.send_photo(
-            cb.chat_id,
-            png,
-            caption=caption,
-            message_effect_id=effect,
-        )
-    except TelegramError as exc:
-        log.error(
-            "Analytics sendPhoto failed user_id=%s chat_id=%s: %s",
-            cb.user_id,
-            cb.chat_id,
-            exc,
-        )
-        stream.finish(ERR_GENERIC_HANDLER_TEXT)
-        safe_answer_callback(ctx, cb)
-        return
-
-    stream.dismiss()
     safe_answer_callback(ctx, cb)
-    log.info("Sent weekly analytics user_id=%s chat_id=%s", cb.user_id, cb.chat_id)
+    sent = False
+    try:
+        stream = open_streaming_reply(
+            ctx,
+            cb.chat_id,
+            draft_id=cb.update_id,
+            chat_action="upload_photo",
+        )
+        stream.push(ANALYTICS_FETCH_STATUS)
+
+        def build() -> tuple[bytes, str]:
+            today = datetime.now(tz=ctx.tz).date()
+            return build_week_analytics(
+                telegram_user_id=cb.user_id,
+                reference_date=today,
+                tz=ctx.tz,
+                calendar_service=ctx.calendar_service,
+                users=ctx.users,
+            )
+
+        try:
+            png, caption = build()
+        except CalendarNotConnectedError:
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            return
+        except CalendarProviderError as exc:
+            log.error("Analytics failed user_id=%s: %s", cb.user_id, exc.error_code)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            return
+        except Exception:  # noqa: BLE001 - не оставляем «сводит неделю…» висеть в чате
+            log.exception("Analytics build failed user_id=%s", cb.user_id)
+            stream.finish(ERR_GENERIC_HANDLER_TEXT)
+            return
+
+        effect = EFFECT_SPARKLES if is_private_chat(cb.chat_id) else None
+        try:
+            ctx.telegram.send_photo(
+                cb.chat_id,
+                png,
+                caption=caption,
+                message_effect_id=effect,
+            )
+        except TelegramError as exc:
+            log.error(
+                "Analytics sendPhoto failed user_id=%s chat_id=%s: %s",
+                cb.user_id,
+                cb.chat_id,
+                exc,
+            )
+            stream.finish(ERR_GENERIC_HANDLER_TEXT)
+            return
+
+        stream.dismiss()
+        sent = True
+        log.info("Sent weekly analytics user_id=%s chat_id=%s", cb.user_id, cb.chat_id)
+    finally:
+        _analytics_run_guard.release(cb.chat_id, _ANALYTICS_ACTION, sent=sent)
 
 
 def handle_set_analytics_workday(ctx: HandlerContext, cb: IncomingCallback, preset: str) -> None:

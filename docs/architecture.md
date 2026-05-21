@@ -118,7 +118,9 @@ telegram_test_command.py
   - `settings_hub.py` — inline-хаб «Настройки» (дайджест, аналитика, календари,
     connect); кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` только здесь.
   - `settings.py` — экран настроек дайджеста и callbacks `CB_DIGEST_*`.
-  - `analytics.py` — недельная аналитика (PNG + подпись) из хаба.
+  - `analytics.py` — недельная аналитика (PNG + подпись) из хаба;
+    `_AnalyticsRunGuard` — один активный прогон на `chat_id` + cooldown 45 с
+    после успешной отправки (защита от двойного PNG при повторном callback).
   - `calendar_setup.py` — connect / check / disconnect (Web App; check/disconnect
     также из хаба настроек).
   - `calendar_view.py` — общие хелперы списка CalDAV-календарей (fetch, screen lines).
@@ -131,8 +133,13 @@ telegram_test_command.py
   - `calendar_manage.py` — `/manage`, смена PARTSTAT по любой встрече на 7 дней.
   - `plan.py` — command → plan → reply.
   - `subscription.py` — subscribe/unsubscribe.
-- `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing.
-- `satellite/telegram_bot/streaming_delivery.py` — потоковый ответ (черновик → финал).
+- `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing,
+  fallback при отказе Telegram в `<tg-emoji>` / `<blockquote>`.
+- `satellite/telegram_bot/html_format.py` — HTML-обёртки (`blockquote`, custom emoji);
+  хендлеры не вставляют разметку напрямую.
+- `satellite/telegram_bot/visual.py` — typing indicator, message effects, menu button.
+- `satellite/telegram_bot/streaming_delivery.py` — потоковый ответ (черновик → финал);
+  используется аналитикой и другими долгими сценариями.
 - `satellite/telegram_bot/message_editing.py` — edit loading message, fallback.
 - `satellite/telegram_bot/handlers/digest_state.py` — in-memory state for digest
   time input (canonical путь; `telegram_bot/digest_state.py` оставлен как

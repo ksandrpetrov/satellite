@@ -406,6 +406,33 @@ def test_plan_uses_send_message_draft_when_supported():
     ctx.telegram.edit_message_text.assert_not_called()
 
 
+def test_plan_dedup_blocks_second_call_within_cooldown():
+    """Двойной /td в один чат шлёт план один раз: cooldown отбивает повтор.
+
+    Реальный кейс: пользователь нажал кнопку «Сегодня» два раза подряд (или
+    Telegram переотдал тот же текст другим update_id из-за гонки между
+    инстансами). Без guard'а оба вызова доходили до ``stream.finish`` и
+    в чате появлялось два одинаковых плана.
+    """
+    ctx = _plan_handler_context()
+    msg1 = IncomingMessage(
+        update_id=2, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td"
+    )
+    msg2 = IncomingMessage(
+        update_id=3, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td"
+    )
+    handle_message(ctx, msg1)
+    handle_message(ctx, msg2)
+
+    final_sends = [
+        call
+        for call in ctx.telegram.send_message.call_args_list
+        if call[0][1] == "<b>Plan HTML</b>"
+    ]
+    assert len(final_sends) == 1
+    ctx.plan_builder.return_value.build_text.assert_called_once()
+
+
 def test_plan_legacy_loading_then_edit_when_draft_unavailable():
     """Без ``sendMessageDraft`` — прежний паттерн loading → edit."""
     ctx = _plan_handler_context()

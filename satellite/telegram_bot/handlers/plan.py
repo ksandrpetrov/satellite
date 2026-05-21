@@ -18,10 +18,21 @@ from ...messages_ru import (
     PLAN_FETCH_STATUS_TEXT,
 )
 from ..visual import is_private_chat, pick_plan_message_effect
+from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingMessage, PlanMode
 from .delivery import open_streaming_reply
 
 log = logging.getLogger(__name__)
+
+# Двойной ``/today`` / ``/tomorrow`` (или повторный тап по кнопке плана в
+# меню Telegram) пока сборка идёт — сериализуется ``ChatLockManager``, но
+# второй handler всё равно отрабатывает и пользователь видит дубль плана.
+# Guard блокирует повтор пока строим И ~30 с после успешной отправки.
+_plan_run_guard = ActionGuard(cooldown_sec=30.0)
+
+
+def _plan_action_key(mode: PlanMode) -> str:
+    return f"plan:{mode}"
 
 
 def handle_plan(ctx: HandlerContext, msg: IncomingMessage, mode: PlanMode) -> None:
@@ -29,33 +40,49 @@ def handle_plan(ctx: HandlerContext, msg: IncomingMessage, mode: PlanMode) -> No
     if msg.user_id is None or msg.chat_id is None:
         return
 
-    stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
-    stream.push(PLAN_FETCH_STATUS_TEXT[mode])
-
-    try:
-        plan_text = build_plan_for_user(
-            ctx,
-            telegram_user_id=msg.user_id,
-            mode=mode,
-            on_progress=stream.push,
+    action = _plan_action_key(mode)
+    if not _plan_run_guard.try_acquire(msg.chat_id, action):
+        # Пользователь повторил команду пока первая ещё идёт — молча
+        # игнорируем; новый «уже строю»-ответ сам по себе был бы дублем.
+        log.info(
+            "Plan run skipped (duplicate within cooldown): user_id=%s mode=%s",
+            msg.user_id,
+            mode,
         )
-    except (CalendarNotConnectedError, CalendarProviderError) as exc:
-        log.error("Calendar failure for user_id=%s: %s", msg.user_id, exc)
-        stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
-        return
-    except Exception:  # noqa: BLE001 - пользователю стек не показываем
-        log.exception("Failed to build %s plan for user_id=%s", mode, msg.user_id)
-        stream.finish(ERR_DIGEST_BUILD_FAILED_TEXT)
         return
 
-    effect = pick_plan_message_effect(plan_text) if is_private_chat(msg.chat_id) else None
-    stream.finish(plan_text, message_effect_id=effect)
-    log.info(
-        "Sent %s plan to user_id=%s (update_id=%s)",
-        mode,
-        msg.user_id,
-        msg.update_id,
-    )
+    sent = False
+    try:
+        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
+        stream.push(PLAN_FETCH_STATUS_TEXT[mode])
+
+        try:
+            plan_text = build_plan_for_user(
+                ctx,
+                telegram_user_id=msg.user_id,
+                mode=mode,
+                on_progress=stream.push,
+            )
+        except (CalendarNotConnectedError, CalendarProviderError) as exc:
+            log.error("Calendar failure for user_id=%s: %s", msg.user_id, exc)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            return
+        except Exception:  # noqa: BLE001 - пользователю стек не показываем
+            log.exception("Failed to build %s plan for user_id=%s", mode, msg.user_id)
+            stream.finish(ERR_DIGEST_BUILD_FAILED_TEXT)
+            return
+
+        effect = pick_plan_message_effect(plan_text) if is_private_chat(msg.chat_id) else None
+        stream.finish(plan_text, message_effect_id=effect)
+        sent = True
+        log.info(
+            "Sent %s plan to user_id=%s (update_id=%s)",
+            mode,
+            msg.user_id,
+            msg.update_id,
+        )
+    finally:
+        _plan_run_guard.release(msg.chat_id, action, sent=sent)
 
 
 def build_plan_for_user(

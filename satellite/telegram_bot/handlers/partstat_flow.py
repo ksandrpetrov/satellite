@@ -21,10 +21,18 @@ from ...calendar.providers.base import (
     CalendarNotConnectedError,
     CalendarProviderError,
 )
+from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback
 from .delivery import safe_answer_callback
 
 log = logging.getLogger(__name__)
+
+# Двойной клик по «Принять / Отклонить» одного приглашения: второй callback
+# ждёт chat lock, потом делает повторный CalDAV PUT и шлёт повторный toast +
+# эффект. Guard блокирует повтор пока CalDAV ещё идёт И ~5 с после успеха
+# (отдельный ключ на каждое событие — другой токен значит другая встреча).
+_PARTSTAT_RESPOND_COOLDOWN_SEC = 5.0
+_partstat_respond_guard = ActionGuard(cooldown_sec=_PARTSTAT_RESPOND_COOLDOWN_SEC)
 
 PARTSTAT_BY_CODE: Mapping[str, str] = {
     "a": "ACCEPTED",
@@ -98,7 +106,7 @@ def respond_partstat(
     ctx: HandlerContext, cb: IncomingCallback, data: str, flow: PartstatFlow
 ) -> None:
     """Распарсить callback, найти event, выставить PARTSTAT, обновить экран."""
-    if cb.user_id is None:
+    if cb.user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
     parsed = parse_respond_data(data, flow.prefix)
@@ -106,35 +114,46 @@ def respond_partstat(
         safe_answer_callback(ctx, cb)
         return
     token, code, partstat = parsed
+    action_key = f"{flow.prefix}{token}"
+    if not _partstat_respond_guard.try_acquire(cb.chat_id, action_key):
+        # Дубль того же ответа на ту же встречу: молча ack-аем callback,
+        # чтобы Telegram-кнопка не «вращалась», но никаких send/effect/toast.
+        safe_answer_callback(ctx, cb)
+        return
+    sent = False
     try:
-        events = flow.fetch_events(ctx, cb.user_id)
-        event = find_event_by_token(events, token)
-        if event is None:
-            log.warning(
-                "%s respond: event not found by token user_id=%s token=%s",
+        try:
+            events = flow.fetch_events(ctx, cb.user_id)
+            event = find_event_by_token(events, token)
+            if event is None:
+                log.warning(
+                    "%s respond: event not found by token user_id=%s token=%s",
+                    flow.log_name,
+                    cb.user_id,
+                    token,
+                )
+                flow.on_not_found(ctx, cb)
+                return
+            event_url = str(event.get("url") or "")
+            uid = str(event.get("uid") or "")
+            ctx.calendar_service.set_attendee_partstat(
+                cb.user_id,
+                CalendarEventRef(uid=uid, url=event_url),
+                partstat,
+            )
+        except (CalendarNotConnectedError, CalendarProviderError) as exc:
+            log.error(
+                "%s respond failed user_id=%s: %s",
                 flow.log_name,
                 cb.user_id,
-                token,
+                getattr(exc, "error_code", exc.__class__.__name__),
             )
-            flow.on_not_found(ctx, cb)
+            safe_answer_callback(ctx, cb, text=flow.fail_text)
             return
-        event_url = str(event.get("url") or "")
-        uid = str(event.get("uid") or "")
-        ctx.calendar_service.set_attendee_partstat(
-            cb.user_id,
-            CalendarEventRef(uid=uid, url=event_url),
-            partstat,
-        )
-    except (CalendarNotConnectedError, CalendarProviderError) as exc:
-        log.error(
-            "%s respond failed user_id=%s: %s",
-            flow.log_name,
-            cb.user_id,
-            getattr(exc, "error_code", exc.__class__.__name__),
-        )
-        safe_answer_callback(ctx, cb, text=flow.fail_text)
-        return
-    fallback_toast = next(iter(flow.toast_by_code.values()))
-    toast = flow.toast_by_code.get(code, fallback_toast)
-    flow.on_success(ctx, cb, code, toast)
-    flow.refresh_view(ctx, cb, toast)
+        fallback_toast = next(iter(flow.toast_by_code.values()))
+        toast = flow.toast_by_code.get(code, fallback_toast)
+        flow.on_success(ctx, cb, code, toast)
+        flow.refresh_view(ctx, cb, toast)
+        sent = True
+    finally:
+        _partstat_respond_guard.release(cb.chat_id, action_key, sent=sent)

@@ -165,8 +165,21 @@ python -m pytest tests/test_weather.py
 `test_analytics_handler.py`, `test_period_stats.py`, `test_event_kinds.py`):
 
 - PNG недельной аналитики;
-- подпись и хендлер аналитики из хаба настроек;
+- подпись и хендлер аналитики из хаба настроек (ошибки сборки/`sendPhoto`,
+  `_AnalyticsRunGuard` — второй callback в cooldown → toast, один `sendPhoto`);
 - `period_stats` / `event_kinds` — фильтры для недельного отчёта.
+
+**Telegram presentation** (`test_visual.py`, `test_html_format.py`,
+`test_chat_menu_button.py`):
+
+- message effects, typing, menu button;
+- HTML-хелперы и fallback в `api.py`.
+
+**Calendar service / Web App tokens** (`test_user_calendar_service.py`,
+`test_connect_token.py`, `test_calendar_view_helpers.py`, `test_mailru_create.py`):
+
+- фасад `UserCalendarService`, connect-токены, хелперы списка календарей,
+  создание события Mail.ru (mock).
 
 **Infrastructure** (`test_backup.py`, `test_streaming_delivery.py`,
 `test_settings_hub.py`, `test_calendar_manage.py`, `test_user_access.py`):

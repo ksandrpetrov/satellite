@@ -20,6 +20,7 @@ from satellite.calendar.providers.base import (
     CalendarProviderError,
 )
 from satellite.messages_ru import (
+    ANALYTICS_BUSY_TOAST,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_GENERIC_HANDLER_TEXT,
 )
@@ -141,3 +142,41 @@ def test_send_photo_failure_replaces_loading_message(tmp_path: Path, monkeypatch
 
     ctx.telegram.send_message.assert_called_once()
     assert ctx.telegram.send_message.call_args[0][1] == ERR_GENERIC_HANDLER_TEXT
+
+
+def test_duplicate_run_within_cooldown_skips_second_photo(tmp_path: Path, monkeypatch):
+    ctx, _users = _ctx(tmp_path, build_side_effect=(b"\x89PNG\x00", "caption"))
+    payload = (b"\x89PNG\x00", "caption")
+
+    def fake_build(**_kwargs):
+        return payload
+
+    monkeypatch.setattr(
+        "satellite.telegram_bot.handlers.analytics.build_week_analytics",
+        fake_build,
+    )
+
+    first = IncomingCallback(
+        update_id=42,
+        callback_query_id="cb-analytics-1",
+        chat_id=900,
+        message_id=55,
+        user_id=1,
+        username="alice",
+        data=CB_ANALYTICS_RUN,
+    )
+    second = IncomingCallback(
+        update_id=43,
+        callback_query_id="cb-analytics-2",
+        chat_id=900,
+        message_id=55,
+        user_id=1,
+        username="alice",
+        data=CB_ANALYTICS_RUN,
+    )
+
+    handle_callback_query(ctx, first)
+    handle_callback_query(ctx, second)
+
+    assert ctx.telegram.send_photo.call_count == 1
+    ctx.telegram.answer_callback_query.assert_any_call("cb-analytics-2", text=ANALYTICS_BUSY_TOAST)
