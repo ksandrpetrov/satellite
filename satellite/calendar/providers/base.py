@@ -87,9 +87,7 @@ class CalendarProvider(Protocol):
     ) -> tuple[bool, str | None, str | None]:
         """Проверяет credentials. Возвращает (ok, primary_calendar_url, error_code)."""
 
-    def get_connection_status(
-        self, context: UserCalendarContext
-    ) -> CalendarConnectionStatus: ...
+    def get_connection_status(self, context: UserCalendarContext) -> CalendarConnectionStatus: ...
 
     def list_calendars(self, context: UserCalendarContext) -> list[CalendarListEntry]: ...
 

@@ -6,8 +6,8 @@ import hashlib
 import hmac
 import json
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 from urllib.parse import parse_qsl
 
 
@@ -53,12 +53,8 @@ def validate_init_data(
             code="no_init_data",
         )
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
-    secret_key = hmac.new(
-        b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256
-    ).digest()
-    expected = hmac.new(
-        secret_key, data_check_string.encode("utf-8"), hashlib.sha256
-    ).hexdigest()
+    secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
+    expected = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, received_hash):
         raise InitDataError(
             "Invalid initData signature (TELEGRAM_BOT_TOKEN mismatch?)",

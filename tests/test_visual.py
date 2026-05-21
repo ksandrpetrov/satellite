@@ -41,4 +41,3 @@ def test_typing_indicator_sends_chat_action() -> None:
     indicator.stop()
     assert tg.send_chat_action.call_count >= 1
     tg.send_chat_action.assert_called_with(42, "typing", message_thread_id=None)
-

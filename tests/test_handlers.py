@@ -1,13 +1,32 @@
 import logging
+from datetime import date
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from satellite.calendar.providers.base import CalendarProviderError
-from satellite.telegram_bot.api import TelegramError
-from satellite.users import USER_STATUS_APPROVED, USER_STATUS_PENDING
 from satellite.digest_utils import resolve_target_date
+from satellite.messages_ru import (
+    ACCESS_REQUEST_SENT_HTML,
+    BOT_HELP_HTML,
+    BUTTON_DAY_AFTER,
+    BUTTON_SUBSCRIBE,
+    BUTTON_TODAY,
+    BUTTON_TOMORROW,
+    BUTTON_UNSUBSCRIBE,
+    BUTTON_UNSUBSCRIBE_LEGACY,
+    ERR_CALDAV_UNAVAILABLE_TEXT,
+    ERR_DIGEST_BUILD_FAILED_TEXT,
+    ERR_GENERIC_HANDLER_TEXT,
+    PLAN_FETCH_STATUS_TEXT,
+    REPLY_KEYBOARD_REMOVE,
+)
+from satellite.telegram_bot.api import TelegramError
+from satellite.telegram_bot.calendar_state import (
+    STATE_CREATE_TITLE,
+    CalendarFlowState,
+)
 from satellite.telegram_bot.handlers import (
     HandlerContext,
     IncomingMessage,
@@ -27,35 +46,15 @@ from satellite.telegram_bot.handlers.routing import (
     CreateCommand,
     DisconnectCommand,
     ForeignCalendarsCommand,
+    InvitationsCommand,
     PendingCommand,
     PlanCommand,
     SettingsCommand,
     StartOrHelpCommand,
     SubscriptionCommand,
     UpcomingCommand,
-    InvitationsCommand,
 )
-from satellite.telegram_bot.calendar_state import (
-    CalendarFlowState,
-    STATE_CREATE_TITLE,
-)
-from satellite.messages_ru import (
-    ACCESS_REQUEST_SENT_HTML,
-    BOT_HELP_HTML,
-    BOT_WELCOME_HTML,
-    BUTTON_DAY_AFTER,
-    BUTTON_SUBSCRIBE,
-    BUTTON_TODAY,
-    BUTTON_TOMORROW,
-    BUTTON_UNSUBSCRIBE,
-    BUTTON_UNSUBSCRIBE_LEGACY,
-    ERR_CALDAV_UNAVAILABLE_TEXT,
-    ERR_DIGEST_BUILD_FAILED_TEXT,
-    ERR_GENERIC_HANDLER_TEXT,
-    PLAN_FETCH_STATUS_TEXT,
-    REPLY_KEYBOARD_REMOVE,
-)
-from datetime import date
+from satellite.users import USER_STATUS_APPROVED, USER_STATUS_PENDING
 
 
 def _access_ctx(*, approved: bool = True, has_calendar: bool = True) -> MagicMock:
@@ -119,7 +118,7 @@ def test_parse_command_mode_buttons():
 
 def test_parse_command_mode_buttons_with_variation_selectors():
     # Telegram иногда добавляет/убирает невидимые U+FE0F селекторы вариаций
-    tampered = BUTTON_TODAY.replace("📅", "📅\uFE0F")
+    tampered = BUTTON_TODAY.replace("📅", "📅\ufe0f")
     assert parse_command_mode(tampered) == "today"
 
 
@@ -167,9 +166,9 @@ def test_recognize_message_covers_dispatch_commands(text, expected_type):
 def test_recognize_message_foreign_and_calendar_sources():
     from satellite.messages_ru import (
         BUTTON_CALENDAR_SOURCES,
-        BUTTON_FOREIGN_CALENDARS,
         BUTTON_CHECK_CALENDAR,
         BUTTON_DISCONNECT_CALENDAR,
+        BUTTON_FOREIGN_CALENDARS,
     )
 
     assert isinstance(recognize_message(BUTTON_FOREIGN_CALENDARS), ForeignCalendarsCommand)
@@ -230,12 +229,10 @@ def test_connect_command_sends_intro_with_webapp_keyboard():
 
 
 def test_settings_command_clears_create_fsm_and_opens_hub():
-    from satellite.messages_ru import BUTTON_SETTINGS, SETTINGS_HUB_TEXT
+    from satellite.messages_ru import BUTTON_SETTINGS
 
     ctx = _access_ctx(approved=True, has_calendar=True)
-    ctx.calendar_state.get = MagicMock(
-        return_value=CalendarFlowState(state=STATE_CREATE_TITLE)
-    )
+    ctx.calendar_state.get = MagicMock(return_value=CalendarFlowState(state=STATE_CREATE_TITLE))
     msg = IncomingMessage(
         update_id=301,
         chat_id=9001,
@@ -364,7 +361,7 @@ def test_parse_subscription_action_buttons():
 
 
 def test_parse_subscription_action_buttons_with_variation_selectors():
-    tampered = BUTTON_SUBSCRIBE.replace("🔔", "🔔\uFE0F")
+    tampered = BUTTON_SUBSCRIBE.replace("🔔", "🔔\ufe0f")
     assert parse_subscription_action(tampered) == "subscribe"
 
 
@@ -398,7 +395,9 @@ def test_plan_uses_send_message_draft_when_supported():
     """При поддержке API — черновик + финальный sendMessage, без edit."""
     ctx = _plan_handler_context()
     ctx.telegram.send_message_draft = MagicMock(return_value=True)
-    msg = IncomingMessage(update_id=2, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td")
+    msg = IncomingMessage(
+        update_id=2, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td"
+    )
     handle_message(ctx, msg)
 
     ctx.telegram.send_message_draft.assert_called()
@@ -411,7 +410,9 @@ def test_plan_legacy_loading_then_edit_when_draft_unavailable():
     """Без ``sendMessageDraft`` — прежний паттерн loading → edit."""
     ctx = _plan_handler_context()
     ctx.telegram.send_message_draft = MagicMock(return_value=False)
-    msg = IncomingMessage(update_id=2, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td")
+    msg = IncomingMessage(
+        update_id=2, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td"
+    )
     handle_message(ctx, msg)
 
     assert ctx.telegram.send_message.call_count == 1
@@ -423,14 +424,13 @@ def test_plan_legacy_loading_then_edit_when_draft_unavailable():
 
 def test_plan_legacy_falls_back_to_new_message_when_edit_fails():
     """Legacy (без draft): если edit не удался — дайджест новым сообщением."""
-    from satellite.telegram_bot.api import TelegramError
 
     ctx = _plan_handler_context()
     ctx.telegram.send_message_draft = MagicMock(return_value=False)
-    ctx.telegram.edit_message_text = MagicMock(
-        side_effect=TelegramError("message is not modified")
+    ctx.telegram.edit_message_text = MagicMock(side_effect=TelegramError("message is not modified"))
+    msg = IncomingMessage(
+        update_id=10, chat_id=9100, user_id=1, username="alice", display_name=None, text="/td"
     )
-    msg = IncomingMessage(update_id=10, chat_id=9100, user_id=1, username="alice", display_name=None, text="/td")
 
     handle_message(ctx, msg)
 
@@ -449,7 +449,9 @@ def test_plan_replaces_loading_with_caldav_error_text(
     ctx.plan_builder.return_value.build_text = MagicMock(
         side_effect=CalendarProviderError("boom", error_code="caldav_failed")
     )
-    msg = IncomingMessage(update_id=4, chat_id=9003, user_id=1, username="alice", display_name=None, text="/td")
+    msg = IncomingMessage(
+        update_id=4, chat_id=9003, user_id=1, username="alice", display_name=None, text="/td"
+    )
 
     with caplog.at_level(logging.ERROR, logger="satellite.telegram_bot.handlers"):
         handle_message(ctx, msg)
@@ -469,7 +471,9 @@ def test_plan_replaces_loading_with_generic_error_on_unexpected_exception(
     ctx.plan_builder.return_value.build_text = MagicMock(
         side_effect=RuntimeError("token expired: secret123")
     )
-    msg = IncomingMessage(update_id=5, chat_id=9004, user_id=1, username="alice", display_name=None, text="/td")
+    msg = IncomingMessage(
+        update_id=5, chat_id=9004, user_id=1, username="alice", display_name=None, text="/td"
+    )
 
     with caplog.at_level(logging.ERROR, logger="satellite.telegram_bot.handlers"):
         handle_message(ctx, msg)
@@ -485,10 +489,15 @@ def test_plan_replaces_loading_with_generic_error_on_unexpected_exception(
 def test_plan_button_uses_error_text_when_build_fails():
     """Для кнопок поведение симметричное: loading заменяется ошибкой, спама нет."""
     ctx = _plan_handler_context()
-    ctx.plan_builder.return_value.build_text = MagicMock(
-        side_effect=RuntimeError("kaboom")
+    ctx.plan_builder.return_value.build_text = MagicMock(side_effect=RuntimeError("kaboom"))
+    msg = IncomingMessage(
+        update_id=6,
+        chat_id=9005,
+        user_id=1,
+        username="alice",
+        display_name=None,
+        text=BUTTON_TOMORROW,
     )
-    msg = IncomingMessage(update_id=6, chat_id=9005, user_id=1, username="alice", display_name=None, text=BUTTON_TOMORROW)
 
     handle_message(ctx, msg)
 
@@ -499,7 +508,6 @@ def test_plan_button_uses_error_text_when_build_fails():
 
 def test_plan_legacy_skips_edit_when_loading_send_failed():
     """Legacy: если loading не ушёл — дайджест только ``sendMessage``."""
-    from satellite.telegram_bot.api import TelegramError
 
     ctx = _plan_handler_context()
     ctx.telegram.send_message_draft = MagicMock(return_value=False)
@@ -511,7 +519,9 @@ def test_plan_legacy_skips_edit_when_loading_send_failed():
         return final_send_response
 
     ctx.telegram.send_message = MagicMock(side_effect=_send_message_side_effect)
-    msg = IncomingMessage(update_id=7, chat_id=9006, user_id=1, username="alice", display_name=None, text="/td")
+    msg = IncomingMessage(
+        update_id=7, chat_id=9006, user_id=1, username="alice", display_name=None, text="/td"
+    )
 
     handle_message(ctx, msg)
 

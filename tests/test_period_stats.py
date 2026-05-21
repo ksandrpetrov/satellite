@@ -12,8 +12,6 @@ from satellite.calendar.period_stats import (
 )
 from satellite.calendar.stats import WorkdayOptions
 
-from .conftest import make_event
-
 TZ = timezone.utc
 LOGIN = "user@test.ru"
 
@@ -56,9 +54,7 @@ def test_weekend_meetings_excluded_from_summary():
         _caldav_ev("Saturday", sat, 10, 14),
         _caldav_ev("Sunday", sun, 10, 14),
     ]
-    summary = build_week_summary(
-        events, mon, tz=TZ, login=LOGIN, options=WorkdayOptions()
-    )
+    summary = build_week_summary(events, mon, tz=TZ, login=LOGIN, options=WorkdayOptions())
     assert summary.total_busy == 120
     assert summary.days[0].busy_minutes == 120
     assert summary.days[4].busy_minutes == 0

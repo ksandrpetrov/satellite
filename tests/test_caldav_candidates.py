@@ -6,8 +6,8 @@ from caldav.lib.error import PutError
 
 from satellite.calendar.caldav_client import (
     CalDAVError,
-    CalendarHandle,
     CalDAVService,
+    CalendarHandle,
     build_candidate_urls,
     calendar_matches,
     login_variants_for_caldav,
@@ -68,9 +68,7 @@ class _CalendarSearchStub:
 
 
 def test_search_events_logs_missing_target_calendar(caplog):
-    handles = [
-        CalendarHandle(name="Жуков Костя", obj=_CalendarSearchStub(), url="https://fake/")
-    ]
+    handles = [CalendarHandle(name="Жуков Костя", obj=_CalendarSearchStub(), url="https://fake/")]
     service = CalDAVService(
         caldav_url="https://fake/",
         login="x@y",
@@ -135,8 +133,9 @@ def test_search_events_enriches_missing_partstat_via_get(monkeypatch):
         app_password="pw",
         cache_ttl_sec=300,
     )
-    from satellite.calendar.caldav_client import _DiscoveryResult
     import time as _time
+
+    from satellite.calendar.caldav_client import _DiscoveryResult
 
     service._cache = _DiscoveryResult(
         endpoint="https://fake/",
@@ -156,13 +155,9 @@ def test_search_events_enriches_missing_partstat_via_get(monkeypatch):
         captured["auth"] = kwargs.get("auth")
         return _Response()
 
-    monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.get", fake_get
-    )
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
 
-    events = service._search_events(
-        handles, date(2026, 5, 12), ZoneInfo("Europe/Moscow"), None
-    )
+    events = service._search_events(handles, date(2026, 5, 12), ZoneInfo("Europe/Moscow"), None)
 
     assert captured["url"] == "https://fake/calendars/cal/abc.ics"
     assert captured["auth"] == ("me", "pw")
@@ -194,8 +189,9 @@ def _service_with_handle(url: str, stub: _StubCalendarObj) -> CalDAVService:
     )
     handle = CalendarHandle(name="primary", obj=stub, url=url)
     # подменяем discovery: cache hit без сетевого вызова
-    from satellite.calendar.caldav_client import _DiscoveryResult
     import time as _time
+
+    from satellite.calendar.caldav_client import _DiscoveryResult
 
     service._cache = _DiscoveryResult(
         endpoint=url,
@@ -251,9 +247,7 @@ def test_create_event_treats_naive_datetime_as_utc():
 
 def test_find_handle_matches_url_with_trailing_slash():
     stub = _StubCalendarObj()
-    service = _service_with_handle(
-        "https://fake/calendars/primary/", stub
-    )
+    service = _service_with_handle("https://fake/calendars/primary/", stub)
     handle = service._find_handle("https://fake/calendars/primary")
     assert handle is not None
     assert handle.url.endswith("primary/")
@@ -266,8 +260,9 @@ def test_require_handle_invalidates_cache_on_miss():
         app_password="pw",
         cache_ttl_sec=300,
     )
-    from satellite.calendar.caldav_client import CalendarHandle, _DiscoveryResult
     import time as _time
+
+    from satellite.calendar.caldav_client import CalendarHandle, _DiscoveryResult
 
     stale = CalendarHandle(name="old", obj=_StubCalendarObj(), url="https://fake/old/")
     service._cache = _DiscoveryResult(
@@ -325,8 +320,9 @@ def test_partstat_refresh_does_not_cache_failed_get(monkeypatch):
         app_password="pw",
         cache_ttl_sec=300,
     )
-    from satellite.calendar.caldav_client import _DiscoveryResult
     import time as _time
+
+    from satellite.calendar.caldav_client import _DiscoveryResult
 
     service._cache = _DiscoveryResult(
         endpoint="https://fake/",
@@ -343,9 +339,7 @@ def test_partstat_refresh_does_not_cache_failed_get(monkeypatch):
 
     import requests
 
-    monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.get", fail_get
-    )
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fail_get)
 
     url = "https://fake/calendars/cal/abc.ics"
     assert service._refresh_attendees_via_get(url) is None
@@ -369,11 +363,7 @@ def test_search_events_skips_get_when_partstat_already_present(monkeypatch):
     def fail_get(*_args, **_kwargs):
         raise AssertionError("GET should not be issued when PARTSTAT is already present")
 
-    monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.get", fail_get
-    )
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fail_get)
 
-    events = service._search_events(
-        handles, date(2026, 5, 12), ZoneInfo("Europe/Moscow"), None
-    )
+    events = service._search_events(handles, date(2026, 5, 12), ZoneInfo("Europe/Moscow"), None)
     assert len(events) == 1

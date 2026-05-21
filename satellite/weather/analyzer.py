@@ -185,17 +185,13 @@ def collect_warnings(metrics: Mapping[str, float | int | None]) -> list[str]:
         found.append(WARNING_SNOW)
 
     rain_high = False
-    if max_prob is not None and int(max_prob) >= 70:
-        rain_high = True
-    elif total_rain >= 1.0:
+    if max_prob is not None and int(max_prob) >= 70 or total_rain >= 1.0:
         rain_high = True
     if rain_high:
         found.append(WARNING_RAIN_HIGH)
     else:
         rain_possible = False
-        if max_prob is not None and int(max_prob) >= 40:
-            rain_possible = True
-        elif total_rain > 0:
+        if max_prob is not None and int(max_prob) >= 40 or total_rain > 0:
             rain_possible = True
         if rain_possible:
             found.append(WARNING_RAIN_POSSIBLE)

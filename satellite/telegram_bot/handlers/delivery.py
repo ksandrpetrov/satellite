@@ -11,10 +11,10 @@ import logging
 from urllib.parse import quote, urlencode
 
 from ...config import WebAppConfig
-from ...messages_ru import build_share_keyboard
-from ...messages_ru import ERR_GENERIC_HANDLER_TEXT
+from ...messages_ru import ERR_GENERIC_HANDLER_TEXT, build_share_keyboard
 from ..api import TelegramError
-from ..streaming_delivery import StreamingReply, open_streaming_reply as _open_streaming_reply
+from ..streaming_delivery import StreamingReply
+from ..streaming_delivery import open_streaming_reply as _open_streaming_reply
 from .context import HandlerContext, IncomingCallback
 
 log = logging.getLogger(__name__)

@@ -257,30 +257,16 @@ def test_format_upcoming_day_header_relative_and_plain():
 def test_format_upcoming_day_header_with_busy_minutes_declension():
     ref = date(2026, 5, 20)
     fri = date(2026, 5, 29)  # пятница > +2 → fallback на «Пт, ...»
+    assert format_upcoming_day_header(fri, ref, busy_minutes=60) == "Пт, 29.05 (занято 1 час)"
+    assert format_upcoming_day_header(fri, ref, busy_minutes=120) == "Пт, 29.05 (занято 2 часа)"
+    assert format_upcoming_day_header(fri, ref, busy_minutes=300) == "Пт, 29.05 (занято 5 часов)"
     assert (
-        format_upcoming_day_header(fri, ref, busy_minutes=60)
-        == "Пт, 29.05 (занято 1 час)"
+        format_upcoming_day_header(fri, ref, busy_minutes=90) == "Пт, 29.05 (занято 1 час 30 минут)"
     )
-    assert (
-        format_upcoming_day_header(fri, ref, busy_minutes=120)
-        == "Пт, 29.05 (занято 2 часа)"
-    )
-    assert (
-        format_upcoming_day_header(fri, ref, busy_minutes=300)
-        == "Пт, 29.05 (занято 5 часов)"
-    )
-    assert (
-        format_upcoming_day_header(fri, ref, busy_minutes=90)
-        == "Пт, 29.05 (занято 1 час 30 минут)"
-    )
-    assert (
-        format_upcoming_day_header(fri, ref, busy_minutes=42)
-        == "Пт, 29.05 (занято 42 минуты)"
-    )
+    assert format_upcoming_day_header(fri, ref, busy_minutes=42) == "Пт, 29.05 (занято 42 минуты)"
     assert format_upcoming_day_header(fri, ref, busy_minutes=0) == "Пт, 29.05"
     assert (
-        format_upcoming_day_header(ref, ref, busy_minutes=60)
-        == "Сегодня, ср 20.05 (занято 1 час)"
+        format_upcoming_day_header(ref, ref, busy_minutes=60) == "Сегодня, ср 20.05 (занято 1 час)"
     )
 
 

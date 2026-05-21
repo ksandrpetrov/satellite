@@ -49,6 +49,7 @@ from ...messages_ru import (
     settings_hub_text,
 )
 from ..visual import set_default_menu_button_for_chat
+from .analytics import CB_ANALYTICS_BACK, handle_open_analytics
 from .calendar_view import (
     CalendarSourcesScreenStatus,
     build_calendar_sources_screen,
@@ -60,7 +61,6 @@ from .delivery import (
     send,
     webapp_connect_url,
 )
-from .analytics import CB_ANALYTICS_BACK, handle_open_analytics
 from .settings import show_digest_settings_screen
 
 log = logging.getLogger(__name__)
@@ -142,16 +142,12 @@ def show_settings_calendar_menu(ctx: HandlerContext, cb: IncomingCallback) -> No
         show_settings_hub_screen(ctx, cb)
         safe_answer_callback(ctx, cb)
         return
-    keyboard = build_settings_calendar_menu_keyboard(
-        webapp_url=webapp_connect_url(ctx, cb.user_id)
-    )
+    keyboard = build_settings_calendar_menu_keyboard(webapp_url=webapp_connect_url(ctx, cb.user_id))
     edit_callback_message(ctx, cb, SETTINGS_CALENDAR_MENU_TEXT, keyboard)
     safe_answer_callback(ctx, cb)
 
 
-def show_settings_disconnect_confirm(
-    ctx: HandlerContext, cb: IncomingCallback
-) -> None:
+def show_settings_disconnect_confirm(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.chat_id is None or cb.user_id is None:
         safe_answer_callback(ctx, cb)
         return

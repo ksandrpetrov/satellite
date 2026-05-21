@@ -7,8 +7,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime, tzinfo
-from typing import Mapping, Sequence
 
 from ..calendar.stats import (
     DayCalendarStats,
@@ -57,9 +57,7 @@ def prepare_seagull_stats(
             continue
         meal_footer.append(ne)
 
-    stats = calculate_day_stats(
-        normalized, date_label=label, plan_date=plan_date, options=opts
-    )
+    stats = calculate_day_stats(normalized, date_label=label, plan_date=plan_date, options=opts)
     return stats, tuple(meal_footer)
 
 

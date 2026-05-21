@@ -10,6 +10,7 @@ from .providers.base import CalendarListEntry
 if TYPE_CHECKING:
     from ..users import UserRecord
 
+
 def normalize_calendar_url(url: str | None) -> str:
     return (url or "").strip().rstrip("/")
 
@@ -75,8 +76,4 @@ def foreign_calendar_entries(
     primary = _normalize_url(primary_calendar_url)
     if not primary:
         return list(calendars)
-    return [
-        entry
-        for entry in calendars
-        if _normalize_url(entry.url) != primary
-    ]
+    return [entry for entry in calendars if _normalize_url(entry.url) != primary]

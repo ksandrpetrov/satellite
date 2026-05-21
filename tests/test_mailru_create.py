@@ -7,15 +7,20 @@ from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from satellite.calendar.caldav_client import CalDAVError
-from satellite.calendar.providers.base import CalendarEventPayload, UserCalendarContext
+from satellite.calendar.providers.base import (
+    CalendarEventPayload,
+    CalendarProviderError,
+    UserCalendarContext,
+)
 from satellite.calendar.providers.mailru import MailruCalendarProvider
+from satellite.messages_ru import CREATE_EVENT_FAILED_HTML, ERR_CALDAV_UNAVAILABLE_TEXT
 from satellite.security.token_vault import ProviderCredentials
 from satellite.telegram_bot.handlers.calendar_create import _create_failure_text
-from satellite.calendar.providers.base import CalendarProviderError
-from satellite.messages_ru import CREATE_EVENT_FAILED_HTML, ERR_CALDAV_UNAVAILABLE_TEXT
 
 
-def _context(*, enabled: tuple[str, ...] = (), primary: str = "https://cal/a") -> UserCalendarContext:
+def _context(
+    *, enabled: tuple[str, ...] = (), primary: str = "https://cal/a"
+) -> UserCalendarContext:
     return UserCalendarContext(
         user_id=1,
         provider_id="mailru",

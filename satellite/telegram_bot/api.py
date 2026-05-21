@@ -44,11 +44,7 @@ def is_custom_emoji_rejected(exc: BaseException) -> bool:
       кастомного эмодзи — безопасно трактовать как сигнал «снять теги».
     """
     text = str(exc).lower()
-    return (
-        "custom_emoji" in text
-        or "tg-emoji" in text
-        or "document_invalid" in text
-    )
+    return "custom_emoji" in text or "tg-emoji" in text or "document_invalid" in text
 
 
 def is_html_entities_rejected(exc: BaseException) -> bool:
@@ -109,9 +105,7 @@ class TelegramClient:
         self._token = bot_token
         self._base_url = f"{TELEGRAM_API}/bot{bot_token}"
         self._session = self._build_session(pool_connections=4, pool_maxsize=16)
-        self._long_poll_session = self._build_session(
-            pool_connections=1, pool_maxsize=2
-        )
+        self._long_poll_session = self._build_session(pool_connections=1, pool_maxsize=2)
         self._max_retries = max_retries
         self._backoff_base_sec = backoff_base_sec
         self._backoff_cap_sec = backoff_cap_sec
@@ -148,13 +142,9 @@ class TelegramClient:
         disable_web_page_preview: bool,
     ) -> None:
         if link_preview_options is not None:
-            data["link_preview_options"] = json.dumps(
-                link_preview_options, ensure_ascii=False
-            )
+            data["link_preview_options"] = json.dumps(link_preview_options, ensure_ascii=False)
         elif disable_web_page_preview:
-            data["link_preview_options"] = json.dumps(
-                {"is_disabled": True}, ensure_ascii=False
-            )
+            data["link_preview_options"] = json.dumps({"is_disabled": True}, ensure_ascii=False)
 
     @staticmethod
     def _strip_rich_html(text: str) -> str:
@@ -276,9 +266,7 @@ class TelegramClient:
                     return self._call("sendPhoto", data=data, **call_kw)
                 except TelegramError as exc2:
                     exc = exc2
-            if caption and (
-                is_custom_emoji_rejected(exc) or is_html_entities_rejected(exc)
-            ):
+            if caption and (is_custom_emoji_rejected(exc) or is_html_entities_rejected(exc)):
                 return self._retry_html_text(data, method="sendPhoto", **call_kw)
             raise
 
@@ -489,6 +477,31 @@ class TelegramClient:
             max_retries=1,
         )
 
+    def _set_my(
+        self,
+        method_name: str,
+        *,
+        language_code: str | None = None,
+        **fields: Any,
+    ) -> Any:
+        """Общий low-level вызов ``setMy<X>`` методов Bot API.
+
+        Все ``setMyName``/``setMyDescription``/``setMyShortDescription`` имеют
+        одинаковый контракт: одно текстовое поле + опциональный
+        ``language_code``. Хендлер просто передаёт ``{"name": ...}`` или
+        ``{"description": ...}`` через ``**fields``; пустые значения не
+        прокидываются (Telegram считает пустую строку «сбросить»).
+        """
+        data: dict[str, Any] = {key: value for key, value in fields.items() if value is not None}
+        if language_code:
+            data["language_code"] = language_code
+        return self._call(
+            method_name,
+            data=data,
+            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+            max_retries=1,
+        )
+
     def set_my_name(
         self,
         name: str,
@@ -496,15 +509,7 @@ class TelegramClient:
         language_code: str | None = None,
     ) -> Any:
         """``setMyName``: отображаемое имя бота в профиле."""
-        data: dict[str, Any] = {"name": name}
-        if language_code:
-            data["language_code"] = language_code
-        return self._call(
-            "setMyName",
-            data=data,
-            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
-            max_retries=1,
-        )
+        return self._set_my("setMyName", name=name, language_code=language_code)
 
     def set_my_description(
         self,
@@ -513,14 +518,10 @@ class TelegramClient:
         language_code: str | None = None,
     ) -> Any:
         """``setMyDescription``: текст «Описание» в профиле бота."""
-        data: dict[str, Any] = {"description": description}
-        if language_code:
-            data["language_code"] = language_code
-        return self._call(
+        return self._set_my(
             "setMyDescription",
-            data=data,
-            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
-            max_retries=1,
+            description=description,
+            language_code=language_code,
         )
 
     def set_my_short_description(
@@ -530,14 +531,10 @@ class TelegramClient:
         language_code: str | None = None,
     ) -> Any:
         """``setMyShortDescription``: краткое описание в списке чатов."""
-        data: dict[str, Any] = {"short_description": short_description}
-        if language_code:
-            data["language_code"] = language_code
-        return self._call(
+        return self._set_my(
             "setMyShortDescription",
-            data=data,
-            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
-            max_retries=1,
+            short_description=short_description,
+            language_code=language_code,
         )
 
     def get_updates(
@@ -583,11 +580,7 @@ class TelegramClient:
         # Long-poll держит коннект до 30 с и не должен делить пул с исходящими
         # запросами — иначе sendMessage/editMessageText из воркеров встают в
         # очередь за getUpdates и общий p99 ответа уезжает на десятки секунд.
-        session = (
-            self._long_poll_session
-            if method_name == _LONG_POLL_METHOD
-            else self._session
-        )
+        session = self._long_poll_session if method_name == _LONG_POLL_METHOD else self._session
         attempt = 0
         while True:
             attempt += 1
@@ -634,9 +627,7 @@ class TelegramClient:
             except TelegramError:
                 raise
 
-    def _parse_response(
-        self, response: requests.Response, method_name: str
-    ) -> Any | None:
+    def _parse_response(self, response: requests.Response, method_name: str) -> Any | None:
         status = response.status_code
         if status == 200:
             try:
@@ -653,9 +644,7 @@ class TelegramClient:
             return None  # сигнал к retry
 
         if status in _RETRYABLE_STATUS:
-            raise requests.RequestException(
-                f"{method_name}: HTTP {status}"
-            )
+            raise requests.RequestException(f"{method_name}: HTTP {status}")
 
         text = self._sanitize_error_text((response.text or "")[:500])
         raise TelegramError(f"{method_name}: HTTP {status}: {text}")

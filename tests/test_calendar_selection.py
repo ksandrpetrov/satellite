@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from satellite.calendar.caldav_client import CalendarHandle, CalDAVService
+from satellite.calendar.caldav_client import CalDAVService, CalendarHandle
 from satellite.calendar.providers.base import CalendarListEntry
 from satellite.calendar.selection import (
     calendar_callback_token,
     effective_enabled_calendar_urls,
-    effective_enabled_calendar_urls_from_parts,
     find_calendar_entry_by_token,
     sort_calendar_entries,
 )
@@ -34,10 +32,10 @@ from satellite.telegram_bot.handlers import (
 )
 from satellite.telegram_bot.handlers.routing import is_calendar_sources_request
 from satellite.users import (
+    CALENDAR_CONNECTED,
     USER_STATUS_APPROVED,
     UserRecord,
     UserStore,
-    CALENDAR_CONNECTED,
 )
 
 
@@ -176,9 +174,7 @@ def test_toggle_disables_secondary_calendar(tmp_path: Path):
     ]
     ctx = _ctx(tmp_path, calendars=calendars)
     users = ctx.users
-    users.set_enabled_calendar_urls(
-        1, calendar_urls=["https://cal/work", "https://cal/home"]
-    )
+    users.set_enabled_calendar_urls(1, calendar_urls=["https://cal/work", "https://cal/home"])
     cb = IncomingCallback(
         update_id=2,
         callback_query_id="cb1",
@@ -254,9 +250,7 @@ def test_toggle_uses_url_token_when_list_order_changes(tmp_path: Path):
     ]
     ctx = _ctx(tmp_path, calendars=calendars)
     users = ctx.users
-    users.set_enabled_calendar_urls(
-        1, calendar_urls=["https://cal/work", "https://cal/home"]
-    )
+    users.set_enabled_calendar_urls(1, calendar_urls=["https://cal/work", "https://cal/home"])
     # Пользователь нажал кнопку «Работа», когда она была второй; CalDAV вернул её первой.
     ctx.calendar_service.list_calendars.return_value = [
         CalendarListEntry(name="Работа", url="https://cal/work"),
@@ -327,9 +321,7 @@ def test_toggle_updates_inline_keyboard_without_generic_error(tmp_path: Path):
         CalendarListEntry(name="Личное", url="https://cal/home"),
     ]
     ctx = _ctx(tmp_path, calendars=calendars)
-    ctx.users.set_enabled_calendar_urls(
-        1, calendar_urls=["https://cal/work", "https://cal/home"]
-    )
+    ctx.users.set_enabled_calendar_urls(1, calendar_urls=["https://cal/work", "https://cal/home"])
     cb = IncomingCallback(
         update_id=10,
         callback_query_id="cb-toggle",

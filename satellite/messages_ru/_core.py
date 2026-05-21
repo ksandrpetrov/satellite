@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Пользовательские тексты на русском.
 
 Меняй формулировки здесь — логика скриптов не требует правок.
@@ -11,11 +10,6 @@ import unicodedata
 
 # Реэкспорт доменных констант календаря: сами строки теперь живут в
 # ``satellite.calendar.constants``, чтобы календарь не зависел от слоя UI.
-from .calendar.constants import (
-    LUNCH_EMOJI_MARKER,
-    LUNCH_TEXT_MARKER,
-    PLAN_ALL_DAY_LABEL,
-)
 
 # --- Telegram: подписи кнопок ---
 BUTTON_TODAY = "📅 Сегодня"
@@ -194,15 +188,13 @@ BOT_DESCRIPTION_RU = (
 
 
 def _build_bot_welcome_html() -> str:
-    from .telegram_bot.html_format import blockquote, replace_first_char_with_tg_emoji
+    from ..telegram_bot.html_format import blockquote, replace_first_char_with_tg_emoji
 
     tip = blockquote(
         "Подсказка: добавь в встречу эмоджи 🍕 и слово «обед» — чайка засчитает её "
         "обедом и подскажет окно."
     )
-    head = replace_first_char_with_tg_emoji(
-        "🪶 С возвращением. Чайка на связи.\n\n", "🪶"
-    )
+    head = replace_first_char_with_tg_emoji("🪶 С возвращением. Чайка на связи.\n\n", "🪶")
     return (
         f"{head}"
         "Нижние кнопки — это твой штурвал:\n"
@@ -218,7 +210,7 @@ def _build_bot_welcome_html() -> str:
 
 
 def _build_bot_help_html() -> str:
-    from .telegram_bot.html_format import expandable_blockquote, replace_first_char_with_tg_emoji
+    from ..telegram_bot.html_format import expandable_blockquote, replace_first_char_with_tg_emoji
 
     commands_block = expandable_blockquote(
         "/today, /tomorrow, /aftertomorrow — план дня\n"
@@ -259,8 +251,7 @@ REPLY_KEYBOARD_REMOVE: dict = {"remove_keyboard": True}
 
 
 BOT_KEYBOARD_HINT = (
-    "🪶 Чайка не узнала команду.\n"
-    "Жми кнопку внизу или открой меню — там все основные действия."
+    "🪶 Чайка не узнала команду.\nЖми кнопку внизу или открой меню — там все основные действия."
 )
 
 # --- Access control ---
@@ -273,8 +264,7 @@ ACCESS_PENDING_HTML = (
     "Как только одобрит, Чайка постучится первой."
 )
 ACCESS_REJECTED_HTML = (
-    "🚫 Доступ закрыт.\n"
-    "Если это недоразумение — напиши администратору, Чайка подождёт."
+    "🚫 Доступ закрыт.\nЕсли это недоразумение — напиши администратору, Чайка подождёт."
 )
 ACCESS_BLOCKED_HTML = "🚫 Доступ заблокирован. Чайка пока на берегу."
 ACCESS_APPROVED_HTML = (
@@ -312,6 +302,7 @@ ERR_CALENDAR_TOKEN_INVALID = (
 CB_ADMIN_APPROVE_PREFIX = "admin:approve:"
 CB_ADMIN_REJECT_PREFIX = "admin:reject:"
 CMD_PENDING = "/pending"
+
 
 def admin_access_request_html(
     *, display_name: str | None, username: str | None, telegram_user_id: int
@@ -355,8 +346,7 @@ ADMIN_ACTION_FORBIDDEN_HTML = "⛔️ Эта команда доступна т�
 # --- Calendar list / create ---
 UPCOMING_FETCH_STATUS = "🗓 Чайка обходит ближайшую неделю…"
 UPCOMING_EMPTY_HTML = (
-    "🗓 На ближайшие дни встреч нет.\n"
-    "Небо чистое — самое время для глубокой работы."
+    "🗓 На ближайшие дни встреч нет.\nНебо чистое — самое время для глубокой работы."
 )
 # Минимум строк событий в дне, чтобы обернуть их в blockquote.
 # Блок всегда показывается развёрнутым (без атрибута ``expandable``):
@@ -376,8 +366,8 @@ def upcoming_events_day_sections(
     """Секции «Ближайшие события» по одному дню (заголовок + события)."""
     from html import escape
 
-    from .calendar.events import build_upcoming_events_groups
-    from .telegram_bot.html_format import expandable_blockquote
+    from ..calendar.events import build_upcoming_events_groups
+    from ..telegram_bot.html_format import expandable_blockquote
 
     sections: list[str] = []
     for group in build_upcoming_events_groups(
@@ -392,9 +382,7 @@ def upcoming_events_day_sections(
             sections.append(header)
             continue
         body = "\n".join(event_lines)
-        wrapped = expandable_blockquote(
-            body, threshold=UPCOMING_DAY_EXPANDABLE_MIN_LINES
-        )
+        wrapped = expandable_blockquote(body, threshold=UPCOMING_DAY_EXPANDABLE_MIN_LINES)
         sections.append(f"{header}\n{wrapped}")
     return sections
 
@@ -409,10 +397,10 @@ def upcoming_events_html(
 ) -> str:
     """HTML тела «Ближайшие события» со сворачиванием по дням."""
     return "\n\n".join(
-        upcoming_events_day_sections(
-            events, tz, reference_date, days=days, max_events=max_events
-        )
+        upcoming_events_day_sections(events, tz, reference_date, days=days, max_events=max_events)
     )
+
+
 CREATE_EVENT_ASK_TITLE = "➕ Как назвать встречу? Напиши одной строкой."
 CREATE_EVENT_ASK_DATE = (
     "📅 На какой день? Жми кнопку ниже или напиши:\n"
@@ -425,22 +413,16 @@ CREATE_EVENT_ASK_DURATION = (
     "⏱ Сколько минут? Жми пресет ниже или напиши число — например, <i>45</i>."
 )
 CREATE_EVENT_CONFIRM_HTML = (
-    "🪶 Чайка готова занести в календарь:\n"
-    "<b>{title}</b>\n"
-    "{date} · {start}–{end}\n\n"
-    "Всё верно?"
+    "🪶 Чайка готова занести в календарь:\n<b>{title}</b>\n{date} · {start}–{end}\n\nВсё верно?"
 )
 CREATE_EVENT_INVALID_DATE = (
     "⚠️ Чайка не разобрала дату.\n"
     "Попробуй ещё раз: <i>20.05.2026</i>, <i>«сегодня»</i> или <i>«завтра»</i>."
 )
 CREATE_EVENT_INVALID_TIME = (
-    "⚠️ Чайка не разобрала время.\n"
-    "Формат: <i>09:30</i>, <i>9:30</i> или <i>9 30</i>."
+    "⚠️ Чайка не разобрала время.\nФормат: <i>09:30</i>, <i>9:30</i> или <i>9 30</i>."
 )
-CREATE_EVENT_INVALID_DURATION = (
-    "⚠️ Длительность — числом минут. Например, <i>30</i> или <i>60</i>."
-)
+CREATE_EVENT_INVALID_DURATION = "⚠️ Длительность — числом минут. Например, <i>30</i> или <i>60</i>."
 CREATE_EVENT_CREATING_HTML = "⏳ Чайка заносит событие в календарь…"
 CREATE_EVENT_SUCCESS_HTML = "✅ Чайка занесла встречу в календарь. Готово."
 CREATE_EVENT_FAILED_HTML = (
@@ -491,19 +473,19 @@ def build_create_duration_keyboard() -> dict:
     ]
     return {"inline_keyboard": [row]}
 
+
 # --- выбор календарей для плана --------------------------------------------
 
 CB_CAL_SOURCES = "cal_sources"
 CB_CAL_TOGGLE_PREFIX = "cal:t:"
 CB_CAL_CLOSE = "cal:close"
 
-CALENDAR_SOURCES_SINGLE_HTML = (
-    "📚 В аккаунте всего один календарь — выбирать тут пока нечего."
+CALENDAR_SOURCES_SINGLE_HTML = "📚 В аккаунте всего один календарь — выбирать тут пока нечего."
+CALENDAR_SOURCES_LAST_ENABLED_TEXT = (
+    "Нужен хотя бы один календарь — иначе плану неоткуда брать встречи."
 )
-CALENDAR_SOURCES_LAST_ENABLED_TEXT = "Нужен хотя бы один календарь — иначе плану неоткуда брать встречи."
 CALENDAR_SOURCES_LOAD_FAIL_HTML = (
-    "⚠️ Чайка не смогла принести список календарей.\n"
-    "Попробуй ещё раз через минуту."
+    "⚠️ Чайка не смогла принести список календарей.\nПопробуй ещё раз через минуту."
 )
 CALENDAR_SOURCES_UNAVAILABLE_TEXT = "Календари не отвечают"
 CALENDAR_SOURCES_UPDATE_FAIL_TEXT = "Не удалось обновить список"
@@ -532,7 +514,7 @@ def build_calendar_sources_keyboard(
     enabled_urls: set[str],
     url_tokens: list[str],
 ) -> dict:
-    from .calendar.selection import normalize_calendar_url
+    from ..calendar.selection import normalize_calendar_url
 
     rows: list[list[dict[str, str]]] = []
     for (name, url), token in zip(calendars, url_tokens):
@@ -563,8 +545,7 @@ FOREIGN_CALENDARS_EMPTY_HTML = (
     "(в настройках Mail.ru или Яндекс Календаря) — после этого он появится в этом списке."
 )
 FOREIGN_CALENDARS_LOAD_FAIL_HTML = (
-    "⚠️ Чайка не смогла принести список чужих календарей.\n"
-    "Попробуй ещё раз через минуту."
+    "⚠️ Чайка не смогла принести список чужих календарей.\nПопробуй ещё раз через минуту."
 )
 FOREIGN_CALENDARS_REFRESH_FAIL_TEXT = "Не удалось обновить список"
 FOREIGN_CALENDARS_CLOSED_TEXT = "👥 Закрыли чужие календари. Возвращайся, когда понадобится."
@@ -573,15 +554,10 @@ FOREIGN_CALENDARS_DAY_EMPTY_HTML = "🪶 В этот день встреч у к
 
 
 def foreign_calendars_pick_day_text(*, calendar_name: str) -> str:
-    return (
-        f"👥 <b>{calendar_name}</b>\n\n"
-        "Какой день посмотреть?"
-    )
+    return f"👥 <b>{calendar_name}</b>\n\nКакой день посмотреть?"
 
 
-def foreign_calendars_day_result_text(
-    *, calendar_name: str, body_lines: list[str]
-) -> str:
+def foreign_calendars_day_result_text(*, calendar_name: str, body_lines: list[str]) -> str:
     body = "\n".join(body_lines)
     return f"👥 <b>{calendar_name}</b>\n\n{body}"
 
@@ -594,9 +570,7 @@ def build_foreign_calendars_keyboard(
     rows: list[list[dict[str, str]]] = []
     for (name, _url), token in zip(calendars, url_tokens):
         label = name if len(name) <= 60 else name[:57] + "…"
-        rows.append(
-            [{"text": label, "callback_data": f"{CB_FOREIGN_PICK_PREFIX}{token}"}]
-        )
+        rows.append([{"text": label, "callback_data": f"{CB_FOREIGN_PICK_PREFIX}{token}"}])
     rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_FOREIGN_CLOSE}])
     return {"inline_keyboard": rows}
 
@@ -702,14 +676,13 @@ FOREIGN_CALENDARS_LOADING_TOAST = "Загружаю…"
 BUTTON_ANALYTICS = "📊 Аналитика недели"
 BUTTON_CALENDAR_MENU = "📅 Календарь"
 
+
 def settings_hub_text(*, digest_enabled: bool | None = None, has_calendar: bool = True) -> str:
-    from .telegram_bot.html_format import blockquote
+    from ..telegram_bot.html_format import blockquote
 
     status_bits: list[str] = []
     if digest_enabled is not None:
-        status_bits.append(
-            "🔔 Дайджест включён" if digest_enabled else "🔕 Дайджест выключен"
-        )
+        status_bits.append("🔔 Дайджест включён" if digest_enabled else "🔕 Дайджест выключен")
     if has_calendar:
         status_bits.append("📅 Календарь подключён")
     else:
@@ -761,6 +734,7 @@ def build_analytics_options_keyboard(*, workday_preset: str) -> dict:
         ]
     }
 
+
 SETTINGS_HUB_CLOSED_TEXT = (
     "🪶 Чайка свернула настройки. Кнопка «Настройки» всегда рядом — на главной клавиатуре."
 )
@@ -779,18 +753,14 @@ def build_settings_hub_keyboard(
     «Календарь» — это уменьшает число кнопок на главном экране и убирает
     деструктивный «Отключить» из зоны случайного нажатия.
     """
-    from .telegram_bot.html_format import build_copy_text_button
+    from ..telegram_bot.html_format import build_copy_text_button
 
     rows: list[list[dict[str, str | dict[str, str]]]] = [
         [{"text": "🔔 Дайджест", "callback_data": CB_SETTINGS_DIGEST}],
     ]
     if has_calendar:
-        rows.append(
-            [{"text": BUTTON_ANALYTICS, "callback_data": CB_SETTINGS_ANALYTICS}]
-        )
-        rows.append(
-            [{"text": BUTTON_CALENDAR_MENU, "callback_data": CB_SETTINGS_CALENDAR_MENU}]
-        )
+        rows.append([{"text": BUTTON_ANALYTICS, "callback_data": CB_SETTINGS_ANALYTICS}])
+        rows.append([{"text": BUTTON_CALENDAR_MENU, "callback_data": CB_SETTINGS_CALENDAR_MENU}])
         if calendar_login:
             rows.append(
                 [
@@ -809,8 +779,7 @@ def build_settings_hub_keyboard(
 # --- подэкран «Календарь» ---------------------------------------------------
 
 SETTINGS_CALENDAR_MENU_TEXT = (
-    "📅 <b>Календарь</b>\n\n"
-    "Управление подключением, приглашения и выбор календарей для плана."
+    "📅 <b>Календарь</b>\n\nУправление подключением, приглашения и выбор календарей для плана."
 )
 
 # --- приглашения (PARTSTAT) --------------------------------------------------
@@ -822,8 +791,7 @@ CB_INV_RESPOND_PREFIX = "inv:r:"
 
 INVITATIONS_FETCH_STATUS = "📨 Чайка собирает приглашения…"
 INVITATIONS_EMPTY_HTML = (
-    "📨 <b>Приглашения</b>\n\n"
-    "Всё разобрано — встреч, где нужно принять решение, сейчас нет."
+    "📨 <b>Приглашения</b>\n\nВсё разобрано — встреч, где нужно принять решение, сейчас нет."
 )
 INVITATIONS_INTRO_HTML = (
     "📨 <b>Приглашения</b>\n\n"
@@ -878,7 +846,7 @@ def build_invitations_keyboard(
 
 
 def invitations_list_html(*, body_lines: list[str], truncated: bool) -> str:
-    from .telegram_bot.html_format import expandable_blockquote
+    from ..telegram_bot.html_format import expandable_blockquote
 
     parts = [INVITATIONS_INTRO_HTML]
     if body_lines:
@@ -887,9 +855,7 @@ def invitations_list_html(*, body_lines: list[str], truncated: bool) -> str:
         parts.append(expandable_blockquote(body, threshold=4))
     if truncated:
         parts.append("")
-        parts.append(
-            "<i>Показаны первые встречи — обновите список после ответов.</i>"
-        )
+        parts.append("<i>Показаны первые встречи — обновите список после ответов.</i>")
     return "\n".join(parts)
 
 
@@ -937,11 +903,11 @@ def manage_partstat_label(partstat: str | None) -> str | None:
 def manage_detail_html(*, title: str, when: str, partstat: str | None) -> str:
     label = manage_partstat_label(partstat) or "—"
     return (
-        "🛠 <b>{title}</b>\n"
-        "{when}\n\n"
-        "📌 Сейчас: <b>{label}</b>\n\n"
+        f"🛠 <b>{title}</b>\n"
+        f"{when}\n\n"
+        f"📌 Сейчас: <b>{label}</b>\n\n"
         "<i>Поменять решение можно сколько угодно — Чайка пошлёт ответ в календарь.</i>"
-    ).format(title=title, when=when, label=label)
+    )
 
 
 def build_manage_list_keyboard(rows: list[tuple[str, str]]) -> dict:
@@ -949,9 +915,7 @@ def build_manage_list_keyboard(rows: list[tuple[str, str]]) -> dict:
     inline: list[list[dict[str, str]]] = []
     for token, label in rows:
         clipped = label if len(label) <= 60 else label[:57] + "…"
-        inline.append(
-            [{"text": clipped, "callback_data": f"{CB_MANAGE_PICK_PREFIX}{token}"}]
-        )
+        inline.append([{"text": clipped, "callback_data": f"{CB_MANAGE_PICK_PREFIX}{token}"}])
     inline.append([{"text": "🔄 Обновить", "callback_data": CB_MANAGE_REFRESH}])
     inline.append([{"text": "⬅️ Закрыть", "callback_data": CB_MANAGE_CLOSE}])
     return {"inline_keyboard": inline}
@@ -984,7 +948,7 @@ def build_manage_detail_keyboard(token: str, *, partstat: str | None) -> dict:
 
 
 def manage_list_html(*, body_lines: list[str], truncated: bool) -> str:
-    from .telegram_bot.html_format import expandable_blockquote
+    from ..telegram_bot.html_format import expandable_blockquote
 
     parts = [MANAGE_INTRO_HTML]
     if body_lines:
@@ -993,9 +957,7 @@ def manage_list_html(*, body_lines: list[str], truncated: bool) -> str:
         parts.append(expandable_blockquote(body, threshold=4))
     if truncated:
         parts.append("")
-        parts.append(
-            "<i>Показаны первые встречи — обновите список после изменений.</i>"
-        )
+        parts.append("<i>Показаны первые встречи — обновите список после изменений.</i>")
     return "\n".join(parts)
 
 
@@ -1006,12 +968,8 @@ def build_settings_calendar_menu_keyboard(*, webapp_url: str) -> dict:
         [{"text": BUTTON_CHECK_CALENDAR, "callback_data": CB_SETTINGS_CHECK}],
     ]
     if webapp_url:
-        rows.append(
-            [{"text": BUTTON_RECONNECT_CALENDAR, "web_app": {"url": webapp_url}}]
-        )
-    rows.append(
-        [{"text": BUTTON_DISCONNECT_CALENDAR, "callback_data": CB_SETTINGS_DISCONNECT}]
-    )
+        rows.append([{"text": BUTTON_RECONNECT_CALENDAR, "web_app": {"url": webapp_url}}])
+    rows.append([{"text": BUTTON_DISCONNECT_CALENDAR, "callback_data": CB_SETTINGS_DISCONNECT}])
     rows.append([{"text": "⬅️ В настройки", "callback_data": CB_SETTINGS_BACK}])
     return {"inline_keyboard": rows}
 
@@ -1052,16 +1010,13 @@ def subscribe_confirmation_text(time_str: str, weekdays_only: bool) -> str:
 
 
 SUBSCRIBE_ALREADY_TEXT = (
-    "🔔 Дайджест уже включён.\n"
-    "Чтобы выключить — /stopdigest, изменить время — /settings."
+    "🔔 Дайджест уже включён.\nЧтобы выключить — /stopdigest, изменить время — /settings."
 )
 UNSUBSCRIBE_CONFIRMATION_TEXT = (
     "🔕 Чайка сложила крылья.\n"
     "Утренний дайджест больше не будет прилетать. Включить обратно — /digest или /settings."
 )
-UNSUBSCRIBE_NOT_SUBSCRIBED_TEXT = (
-    "🔕 Дайджест и так был выключен — Чайка просто кивнула."
-)
+UNSUBSCRIBE_NOT_SUBSCRIBED_TEXT = "🔕 Дайджест и так был выключен — Чайка просто кивнула."
 
 
 # --- настройки дайджеста ---------------------------------------------------
@@ -1082,9 +1037,7 @@ DIGEST_DAYS_LABEL = {
 }
 
 
-def digest_settings_screen_text(
-    *, digest_enabled: bool, digest_days: str, digest_time: str
-) -> str:
+def digest_settings_screen_text(*, digest_enabled: bool, digest_days: str, digest_time: str) -> str:
     status_emoji = "🔔" if digest_enabled else "🔕"
     status_text = "включён" if digest_enabled else "отключён"
     days_label = DIGEST_DAYS_LABEL.get(digest_days, digest_days)
@@ -1124,10 +1077,7 @@ DIGEST_DAYS_ALL_APPLIED_TEXT = (
 
 
 def digest_time_applied_text(digest_time: str) -> str:
-    return (
-        "🕘 Готово.\n"
-        f"Утренний дайджест будет прилетать в <b>{digest_time} МСК</b>."
-    )
+    return f"🕘 Готово.\nУтренний дайджест будет прилетать в <b>{digest_time} МСК</b>."
 
 
 DIGEST_TIME_INVALID_TEXT = (
@@ -1173,23 +1123,15 @@ def build_digest_time_keyboard() -> dict:
 
 
 PLAN_FETCH_STATUS_TEXT = {
-    "today": (
-        "📅 Чайка делает облёт сегодняшнего дня.\n\n"
-        "Сейчас принесу сводку."
-    ),
-    "tomorrow": (
-        "➡️ Чайка летит на завтрашний день.\n\n"
-        "Сейчас принесу сводку."
-    ),
+    "today": ("📅 Чайка делает облёт сегодняшнего дня.\n\nСейчас принесу сводку."),
+    "tomorrow": ("➡️ Чайка летит на завтрашний день.\n\nСейчас принесу сводку."),
     "day_after_tomorrow": (
-        "⏭ Чайка ушла в дальний облёт — послезавтра.\n\n"
-        "Скоро вернусь со сводкой."
+        "⏭ Чайка ушла в дальний облёт — послезавтра.\n\nСкоро вернусь со сводкой."
     ),
 }
 
 ERR_CALDAV_UNAVAILABLE_TEXT = (
-    "⚠️ Календарь не отвечает.\n"
-    "Чайка попробует снова через минуту — попытайся ещё раз."
+    "⚠️ Календарь не отвечает.\nЧайка попробует снова через минуту — попытайся ещё раз."
 )
 
 ERR_DIGEST_BUILD_FAILED_TEXT = (
@@ -1198,8 +1140,7 @@ ERR_DIGEST_BUILD_FAILED_TEXT = (
 )
 
 ERR_USERS_SAVE_FAILED_TEXT = (
-    "⚠️ Не удалось сохранить настройки.\n"
-    "Чайка попробует снова при следующем действии."
+    "⚠️ Не удалось сохранить настройки.\nЧайка попробует снова при следующем действии."
 )
 
 # Универсальный текст для непредвиденных ошибок в диспетчере: пользователь

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
-from typing import Any, Sequence
+from typing import Any
 
 from ..calendar.events import event_index_marker
 from ..calendar.stats import DayCalendarStats, NormalizedEvent
@@ -71,9 +72,7 @@ def render_plan_share_card(
     )
     quote_h = max(56, len(quote_lines) * (font_quote.size + 10) + 40)
     hero_h = 280
-    schedule_h = _schedule_block_height(
-        events, line_h=font_event.size + 6, header_h=48, pad=36
-    )
+    schedule_h = _schedule_block_height(events, line_h=font_event.size + 6, header_h=48, pad=36)
     total_h = (
         vc.MARGIN
         + 32
@@ -142,8 +141,7 @@ def render_plan_share_card(
         label="Свободно",
         value=vc.hours_label(stats.free_minutes),
         sub=(
-            f"Первая {stats.first_meeting_start or '—'} · "
-            f"последняя {stats.last_meeting_end or '—'}"
+            f"Первая {stats.first_meeting_start or '—'} · последняя {stats.last_meeting_end or '—'}"
         ),
         font_label=font_stat_label,
         font_value=font_stat_value,
@@ -226,22 +224,11 @@ def render_upcoming_share_card(
     line_h = font_event.size + 10
     day_header_h = font_day.size + 16
     pad = 36
-    inner_w = CONTENT_WIDTH - pad * 2
     events_total = sum(len(g.get("events") or []) for g in groups)
-    list_h = sum(
-        day_header_h + len(g.get("events") or []) * line_h + 24 for g in groups
-    )
+    list_h = sum(day_header_h + len(g.get("events") or []) * line_h + 24 for g in groups)
     list_h = max(list_h, 120)
     total_h = (
-        vc.MARGIN
-        + 32
-        + font_title.size
-        + font_sub.size
-        + 40
-        + list_h
-        + pad * 2
-        + 56
-        + vc.MARGIN
+        vc.MARGIN + 32 + font_title.size + font_sub.size + 40 + list_h + pad * 2 + 56 + vc.MARGIN
     )
     height = max(CARD_MIN_HEIGHT, min(CARD_MAX_HEIGHT, total_h))
 

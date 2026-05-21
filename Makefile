@@ -6,7 +6,7 @@ VENV_PIP := $(VENV)/bin/pip
 ENTRY := telegram_test_command.py
 DOCKER_IMAGE ?= satellite:dev
 
-.PHONY: help install install-dev install-server deploy venv env fernet-key run test compile lint clean update docker-build docker-up docker-down docker-logs
+.PHONY: help install install-dev install-server deploy venv env fernet-key run test compile lint format typecheck check clean update docker-build docker-up docker-down docker-logs
 
 help:
 	@echo "Targets:"
@@ -17,6 +17,10 @@ help:
 	@echo "  make run            запустить бота через venv (long-polling)"
 	@echo "  make test           pytest"
 	@echo "  make compile        py_compile всех модулей (как в CI)"
+	@echo "  make lint           ruff (lint)"
+	@echo "  make format         ruff format"
+	@echo "  make typecheck      mypy на satellite/ (см. pyproject.toml)"
+	@echo "  make check          lint + typecheck + compile + test"
 	@echo "  make env            создать .env из шаблона и сгенерировать TOKEN_ENCRYPTION_KEY"
 	@echo "  make fernet-key     напечатать новый Fernet-ключ"
 	@echo "  make docker-build   собрать локальный Docker-образ ($(DOCKER_IMAGE))"
@@ -61,6 +65,17 @@ test:
 
 compile:
 	find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 $(VENV_PY) -m py_compile
+
+lint:
+	$(VENV_PY) -m ruff check satellite tests
+
+format:
+	$(VENV_PY) -m ruff format satellite tests
+
+typecheck:
+	$(VENV_PY) -m mypy satellite
+
+check: lint typecheck compile test
 
 docker-build:
 	docker build -t $(DOCKER_IMAGE) .

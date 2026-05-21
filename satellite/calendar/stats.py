@@ -6,9 +6,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, tzinfo
-from typing import Mapping, Sequence
 
 from .time_utils import (
     Interval,
@@ -35,7 +35,7 @@ class WorkdayOptions:
     lunch_start: str = DEFAULT_LUNCH_START
     lunch_end: str = DEFAULT_LUNCH_END
 
-    def to_minutes(self) -> "_WorkdayMinutes":
+    def to_minutes(self) -> _WorkdayMinutes:
         ws = parse_hhmm(self.workday_start)
         we = parse_hhmm(self.workday_end)
         ls = parse_hhmm(self.lunch_start)
@@ -180,9 +180,7 @@ def normalize_caldav_event(
     )
 
 
-def _partstat_flags(
-    event: Mapping[str, object], login: str | None
-) -> tuple[bool, bool]:
+def _partstat_flags(event: Mapping[str, object], login: str | None) -> tuple[bool, bool]:
     """Возвращает ``(is_pending, is_tentative)`` для пользователя в событии.
 
     Состояния взаимоисключающие: TENTATIVE → tentative, NEEDS-ACTION/DELEGATED
@@ -219,17 +217,16 @@ def calculate_day_stats(
     opts = options or WorkdayOptions()
     win = opts.to_minutes()
 
-    normalized = [
-        ev for ev in events
-        if not ev.is_cancelled and ev.end_minutes > ev.start_minutes
-    ]
+    normalized = [ev for ev in events if not ev.is_cancelled and ev.end_minutes > ev.start_minutes]
     normalized.sort(key=lambda e: (e.start_minutes, e.end_minutes))
 
     raw_intervals: list[Interval] = [e.interval for e in normalized]
 
     # Занятое время: мерджим интервалы, клипим к рабочему дню.
     clipped_workday = [
-        c for c in (clip_interval(iv, win.workday_start, win.workday_end) for iv in raw_intervals) if c
+        c
+        for c in (clip_interval(iv, win.workday_start, win.workday_end) for iv in raw_intervals)
+        if c
     ]
     merged_workday = merge_intervals(clipped_workday)
     busy_minutes = sum_minutes(merged_workday)
@@ -241,9 +238,7 @@ def calculate_day_stats(
     overlaps_count = count_overlap_pairs(raw_intervals)
 
     first_start = normalized[0].start_hhmm if normalized else None
-    last_end = (
-        format_hhmm(max(e.end_minutes for e in normalized)) if normalized else None
-    )
+    last_end = format_hhmm(max(e.end_minutes for e in normalized)) if normalized else None
 
     return DayCalendarStats(
         date_label=date_label,

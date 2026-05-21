@@ -172,8 +172,8 @@ sudo SATELLITE_DIR=/srv/satellite SATELLITE_BRANCH=stable \
 
 ### Docker (GHCR + Traefik + Certbot)
 
-Альтернатива systemd: стек из четырёх контейнеров на сервере, HTTPS и маршрут
-`/connect` → Web App без ручного nginx.
+Альтернатива systemd: стек из четырёх контейнеров на сервере, HTTPS и маршруты
+`/connect`, `/share` и `/api/*` → Web App без ручного nginx.
 
 #### Образ
 
@@ -217,7 +217,7 @@ Playbook ставит Docker Engine, кладёт конфиги в `deploy_dir`
 
 | Сервис | Назначение |
 |--------|------------|
-| `traefik` | HTTPS, маршрут `/connect` и `/api/calendar/*` → бот:8080 |
+| `traefik` | HTTPS: `/connect`, `/share`, `/api/calendar/*`, `/api/share/*` → бот:8080 |
 | `nginx-acme` | Webroot для ACME challenge |
 | `certbot` | Выпуск и продление Let's Encrypt |
 | `satellite` | Бот; `logs/` в volume `satellite-logs` |
@@ -388,8 +388,9 @@ curl -sS http://127.0.0.1:8080/healthz
 `WEBAPP_PORT=8080`, сервис запущен: `systemctl status satellite-bot.service`.
 
 **nginx (systemd, домен cassinilab.ru):** внутрь существующего `server { listen 443 ssl; ... }`
-добавьте прокси и на `/connect`, и на API (без `/api/calendar/` форма подключения
-откроется, но сохранение пароля вернёт 404):
+добавьте прокси на `/connect`, `/share` и API (без `/api/calendar/` форма
+подключения откроется, но сохранение пароля вернёт 404; без `/share` и
+`/api/share/` кнопка «Поделиться» не загрузит PNG):
 
 ```nginx
 location /connect {
@@ -401,7 +402,25 @@ location /connect {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
 }
+location /share {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
+}
 location /api/calendar/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
+}
+location /api/share/ {
     proxy_pass http://127.0.0.1:8080;
     proxy_http_version 1.1;
     proxy_set_header Host $host;

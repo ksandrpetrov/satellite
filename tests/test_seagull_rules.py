@@ -27,6 +27,7 @@ def _stats(**overrides) -> DayCalendarStats:
 
 # --- main по busyMinutes (5.1) ----------------------------------------------
 
+
 def test_main_empty_when_no_busy():
     texts = build_seagull_texts(_stats(busy_minutes=0))
     assert texts.main == t.MAIN_EMPTY
@@ -34,7 +35,12 @@ def test_main_empty_when_no_busy():
 
 def test_main_light_for_120_minutes():
     texts = build_seagull_texts(
-        _stats(busy_minutes=120, meetings_count=2, first_meeting_start="10:00", last_meeting_end="12:00")
+        _stats(
+            busy_minutes=120,
+            meetings_count=2,
+            first_meeting_start="10:00",
+            last_meeting_end="12:00",
+        )
     )
     assert texts.main == t.MAIN_LIGHT
 
@@ -56,9 +62,12 @@ def test_main_storm_above_six_hours():
 
 # --- overlaps (5.4) ---------------------------------------------------------
 
+
 def test_overlaps_none_with_meetings():
     texts = build_seagull_texts(
-        _stats(busy_minutes=60, meetings_count=1, first_meeting_start="11:00", last_meeting_end="12:00")
+        _stats(
+            busy_minutes=60, meetings_count=1, first_meeting_start="11:00", last_meeting_end="12:00"
+        )
     )
     assert texts.overlaps == t.OVERLAP_NONE
 
@@ -95,6 +104,7 @@ def test_overlaps_omitted_when_no_meetings():
 
 
 # --- контракт SeagullTexts: только main + overlaps ---------------------------
+
 
 def test_seagull_texts_contract_is_minimal():
     """Удалены поля 5.2–5.7; остаются только main и overlaps."""

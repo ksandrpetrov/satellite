@@ -1,20 +1,23 @@
-"""Список приглашений (NEEDS-ACTION) и ответы ACCEPTED / DECLINED / TENTATIVE."""
+"""Список приглашений (NEEDS-ACTION) и ответы ACCEPTED / DECLINED / TENTATIVE.
+
+Тонкий адаптер: фетчим события, рендерим экран, общий респонс PARTSTAT
+делегируем :mod:`.partstat_flow`.
+"""
 
 from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
 
+from ...calendar.callback_tokens import event_callback_token
 from ...calendar.events import (
     collect_pending_invitations,
     format_invitation_list_lines,
 )
 from ...calendar.providers.base import (
-    CalendarEventRef,
     CalendarNotConnectedError,
     CalendarProviderError,
 )
-from ...calendar.callback_tokens import event_callback_token
 from ...messages_ru import (
     CB_INV_BACK,
     CB_INV_CLOSE,
@@ -32,32 +35,33 @@ from ...messages_ru import (
     build_invitations_keyboard,
     invitations_list_html,
 )
+from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .delivery import (
     edit_callback_message,
     open_streaming_reply,
     safe_answer_callback,
 )
+from .partstat_flow import (
+    PartstatFlow,
+    respond_partstat,
+)
+from .partstat_flow import (
+    find_event_by_token as _find_event_by_token,
+)
 from .settings_hub import show_settings_calendar_menu
+
+__all__ = [
+    "handle_open_invitations",
+    "route_invitations_callback",
+    "_find_event_by_token",
+]
 
 log = logging.getLogger(__name__)
 
 _INVITATION_HORIZON_DAYS = 60
 _MAX_INVITATIONS = 12
-
-_PARTSTAT_BY_CODE = {
-    "a": "ACCEPTED",
-    "d": "DECLINED",
-    "t": "TENTATIVE",
-}
-
-_TOAST_BY_CODE = {
-    "a": INVITATIONS_RESPOND_ACCEPTED,
-    "d": INVITATIONS_RESPOND_DECLINED,
-    "t": INVITATIONS_RESPOND_TENTATIVE,
-}
 
 
 def _screen_from_pending(
@@ -81,12 +85,10 @@ def _screen_from_pending(
 def _load_screen(ctx: HandlerContext, user_id: int) -> tuple[str, dict]:
     pending, _login, truncated = _fetch_pending(ctx, user_id)
     today = datetime.now(tz=ctx.tz).date()
-    return _screen_from_pending(
-        pending, ctx.tz, reference_date=today, truncated=truncated
-    )
+    return _screen_from_pending(pending, ctx.tz, reference_date=today, truncated=truncated)
 
 
-def _fetch_invitation_events(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
+def _fetch_invitation_events(ctx: HandlerContext, user_id: int) -> tuple[list, str, datetime]:
     """Все события на горизонте приглашений (до фильтра NEEDS-ACTION)."""
     now = datetime.now(tz=ctx.tz)
     today = now.date()
@@ -117,20 +119,9 @@ def _fetch_pending(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
     return pending, login, truncated
 
 
-def _find_event_by_token(events: list, token: str):
-    """Ищет событие по токену кнопки среди полной выдачи, не только pending.
-
-    При повторном CalDAV REPORT Mail.ru часто не отдаёт PARTSTAT в ATTENDEE,
-    и событие выпадает из ``pending``, хотя URL тот же — ответ на приглашение
-    всё равно нужно отправить по этому URL.
-    """
-    needle = (token or "").strip()
-    if not needle:
-        return None
-    for ev in events:
-        if event_callback_token(str(ev.get("url") or "")) == needle:
-            return ev
-    return None
+def _fetch_all_for_token_lookup(ctx: HandlerContext, user_id: int) -> list:
+    events, _login, _now = _fetch_invitation_events(ctx, user_id)
+    return events
 
 
 def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
@@ -153,7 +144,6 @@ def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
 def _edit_invitations_screen(
     ctx: HandlerContext,
     cb: IncomingCallback,
-    *,
     toast: str | None = None,
 ) -> None:
     if cb.user_id is None or cb.chat_id is None:
@@ -165,6 +155,38 @@ def _edit_invitations_screen(
         text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
     edit_callback_message(ctx, cb, text, keyboard)
     safe_answer_callback(ctx, cb, text=toast)
+
+
+def _on_success(ctx: HandlerContext, cb: IncomingCallback, code: str, _toast: str) -> None:
+    """Приглашения: эффект и фиксированный текст шлём только для ACCEPTED."""
+    if code != "a" or cb.chat_id is None:
+        return
+    send_with_effect(
+        ctx.telegram,
+        cb.chat_id,
+        INVITATIONS_RESPOND_ACCEPTED,
+        message_effect_id=private_message_effect(EFFECT_SPARKLES, cb.chat_id),
+    )
+
+
+def _on_not_found(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    _edit_invitations_screen(ctx, cb, toast=INVITATIONS_RESPOND_FAIL_TEXT)
+
+
+_FLOW = PartstatFlow(
+    prefix=CB_INV_RESPOND_PREFIX,
+    fail_text=INVITATIONS_RESPOND_FAIL_TEXT,
+    toast_by_code={
+        "a": INVITATIONS_RESPOND_ACCEPTED,
+        "d": INVITATIONS_RESPOND_DECLINED,
+        "t": INVITATIONS_RESPOND_TENTATIVE,
+    },
+    log_name="Invitation",
+    fetch_events=_fetch_all_for_token_lookup,
+    refresh_view=_edit_invitations_screen,
+    on_not_found=_on_not_found,
+    on_success=_on_success,
+)
 
 
 def route_invitations_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
@@ -187,56 +209,6 @@ def route_invitations_callback(ctx: HandlerContext, cb: IncomingCallback) -> boo
         _edit_invitations_screen(ctx, cb)
         return True
     if data.startswith(CB_INV_RESPOND_PREFIX):
-        _handle_respond(ctx, cb, data)
+        respond_partstat(ctx, cb, data, _FLOW)
         return True
     return False
-
-
-def _handle_respond(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
-    if cb.user_id is None or cb.chat_id is None:
-        safe_answer_callback(ctx, cb)
-        return
-    suffix = data[len(CB_INV_RESPOND_PREFIX) :]
-    if ":" not in suffix:
-        safe_answer_callback(ctx, cb)
-        return
-    token, code = suffix.rsplit(":", 1)
-    partstat = _PARTSTAT_BY_CODE.get(code.strip().lower())
-    if not partstat:
-        safe_answer_callback(ctx, cb)
-        return
-    try:
-        events, _login, _now = _fetch_invitation_events(ctx, cb.user_id)
-        event = _find_event_by_token(events, token)
-        if event is None:
-            log.warning(
-                "Invitation respond: event not found by token user_id=%s token=%s",
-                cb.user_id,
-                token,
-            )
-            _edit_invitations_screen(ctx, cb, toast=INVITATIONS_RESPOND_FAIL_TEXT)
-            return
-        event_url = str(event.get("url") or "")
-        uid = str(event.get("uid") or "")
-        ctx.calendar_service.set_attendee_partstat(
-            cb.user_id,
-            CalendarEventRef(uid=uid, url=event_url),
-            partstat,
-        )
-    except (CalendarNotConnectedError, CalendarProviderError) as exc:
-        log.error(
-            "Invitation respond failed user_id=%s: %s",
-            cb.user_id,
-            getattr(exc, "error_code", exc.__class__.__name__),
-        )
-        safe_answer_callback(ctx, cb, text=INVITATIONS_RESPOND_FAIL_TEXT)
-        return
-    toast = _TOAST_BY_CODE.get(code.strip().lower(), INVITATIONS_RESPOND_ACCEPTED)
-    if cb.chat_id is not None and partstat == "ACCEPTED":
-        send_with_effect(
-            ctx.telegram,
-            cb.chat_id,
-            INVITATIONS_RESPOND_ACCEPTED,
-            message_effect_id=private_message_effect(EFFECT_SPARKLES, cb.chat_id),
-        )
-    _edit_invitations_screen(ctx, cb, toast=toast)

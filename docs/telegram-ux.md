@@ -23,6 +23,9 @@ dat
 /invitations
 /invites          # алиас /invitations
 /respond          # алиас /invitations
+/manage
+/edit             # алиас /manage
+/status           # алиас /manage
 /create
 /addevent         # алиас /create
 /connect
@@ -72,11 +75,6 @@ dat
    «Построить отчёт». Один запрос CalDAV (~13 недель), сравнение с прошлой неделей,
    тренд по кварталу. Системные события (🍕 обед, «день без встреч», all-day) и
    неподтверждённые приглашения в метрики не входят.
-
-   **Поделиться:** под планом дня (сегодня / завтра / послезавтра), списком
-   «Ближайшие события» (7 дней) и PNG аналитики — кнопка «📤 Поделиться».
-   Открывает Web App `/share`: карточка в стиле Apple Health, затем системный
-   share sheet (``navigator.share`` с файлом PNG) — Instagram, почта, Files и т.д.
 
 `/start` и `/help` отвечают всем остальным пользователям без проверки календаря.
 `/help` снимает старую reply-клавиатуру (`remove_keyboard`).
@@ -140,6 +138,32 @@ Callback data: префикс `inv:` (`CB_INV_*` в `messages_ru.py`).
 
 Тот же экран открывается из хаба настроек → **📚 Календари** → **📨 Приглашения**
 (`CB_SETTINGS_INVITATIONS`). «⬅️ В календарь» возвращает в подменю календаря хаба.
+
+## Manage events (PARTSTAT)
+
+`/manage` (кнопка «🛠 Изменить статус», алиасы `/edit`, `/status`) — список встреч
+на 7 дней, где можно сменить свой `PARTSTAT` (не только NEEDS-ACTION). Детальный
+экран по встрече, те же CalDAV-операции, что в `/invitations`
+(`set_attendee_partstat`). Callback data: префикс `mng:` (`CB_MANAGE_*`).
+
+## Share (PNG-карточки)
+
+Под планом дня (сегодня / завтра / послезавтра), списком «Ближайшие события»
+и PNG недельной аналитики — inline-кнопка **📤 Поделиться** (`share_reply_markup`
+в [`delivery.py`](../satellite/telegram_bot/handlers/delivery.py)).
+
+1. Открывается Web App `https://<domain>/share/{token}#kind=…&mode=…` (параметры
+   в hash — Telegram часто режет query у `web_app`-кнопок).
+2. Страница [`share.html`](../satellite/web/static/share.html) запрашивает
+   `GET /api/share/card?kind=…` с `initData` (тот же connect-token, что у `/connect`).
+3. Сервер собирает PNG через [`share_service.py`](../satellite/share_service.py):
+   `plan` (метрики дня), `upcoming` (7 дней по умолчанию), `analytics` (недельный отчёт).
+4. Пользователь делится файлом через системный share sheet (`navigator.share`).
+
+`WEBAPP_BASE_URL` остаётся `https://<domain>/connect`; URL шаринга выводится
+как `<origin>/share` (см. `webapp_share_base_url`).
+
+## Digest and analytics metrics
 
 **Дайджест и аналитика:** неподтверждённые приглашения не входят в метрики
 занятости; в расписании дня вместо номера встречи — `⚠️` (`is_pending` в
@@ -259,7 +283,8 @@ warning в лог.
 | `/start`, `/help` | всем |
 | `/pending` | `ADMIN_TELEGRAM_IDS` |
 | `/connect` | `approved` |
-| План, upcoming, invitations, create, чужие календари, настройки, подписка | `approved` + `has_calendar` |
+| План, upcoming, invitations, manage, create, чужие календари, настройки, подписка | `approved` + `has_calendar` |
+| Web App «Поделиться» | `approved` + `has_calendar` |
 | Выбор календарей для плана (из хаба) | `approved` + `has_calendar` |
 | Check/disconnect (из хаба) | `approved` + `has_calendar` |
 | Web App connect | `approved` (до первого успешного connect) |

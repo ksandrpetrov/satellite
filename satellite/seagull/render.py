@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from html import escape
-from typing import Sequence
 
 from ..calendar.events import event_index_marker, pizza_meal_kind
 from ..calendar.stats import DayCalendarStats, NormalizedEvent
@@ -104,9 +104,7 @@ def _meal_stats_lines_from_normalized(
         if not group:
             continue
         merged = merge_intervals([(e.start_minutes, e.end_minutes) for e in group])
-        interval = ", ".join(
-            f"{format_hhmm(s)} – {format_hhmm(e)}" for s, e in merged
-        )
+        interval = ", ".join(f"{format_hhmm(s)} – {format_hhmm(e)}" for s, e in merged)
         lines.append(templates[kind].format(interval=interval))
     return lines
 
@@ -147,13 +145,9 @@ def render_daily_digest(
         lines.append(texts.overlaps)
 
     lines.append("")
-    lines.append(
-        _html_b(t.FIRST_LINE.format(value=stats.first_meeting_start or t.NO_VALUE))
-    )
+    lines.append(_html_b(t.FIRST_LINE.format(value=stats.first_meeting_start or t.NO_VALUE)))
     last_template = t.LAST_LINE if stats.last_meeting_end else t.LAST_LINE_EMPTY
-    lines.append(
-        _html_b(last_template.format(value=stats.last_meeting_end or t.NO_VALUE))
-    )
+    lines.append(_html_b(last_template.format(value=stats.last_meeting_end or t.NO_VALUE)))
     lines.append("")
     if stats.meetings_count == 0:
         lines.append(_html_b(t.SCHEDULE_TITLE))

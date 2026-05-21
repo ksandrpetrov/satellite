@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import tzinfo
 from typing import Literal
 
 from .constants import SYSTEM_EVENT_TITLE_PHRASES
@@ -13,7 +14,6 @@ from .events import (
     is_lunch_event,
     user_partstat,
 )
-from datetime import tzinfo
 
 EventKind = Literal["meeting", "system"]
 

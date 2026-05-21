@@ -46,7 +46,7 @@ def setup_logging(
         stderr_handler = logging.StreamHandler(stream=sys.stderr)
         stderr_handler.setFormatter(formatter)
         stderr_handler.addFilter(noise_filter)
-        setattr(stderr_handler, "_satellite_managed", True)
+        stderr_handler._satellite_managed = True
         root.addHandler(stderr_handler)
 
         if log_file:
@@ -55,7 +55,7 @@ def setup_logging(
             file_handler = logging.FileHandler(log_path, encoding="utf-8")
             file_handler.setFormatter(formatter)
             file_handler.addFilter(noise_filter)
-            setattr(file_handler, "_satellite_managed", True)
+            file_handler._satellite_managed = True
             root.addHandler(file_handler)
 
     for name in quiet_loggers:

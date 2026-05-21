@@ -56,7 +56,7 @@ class TokenVault:
         if not key:
             raise InvalidEncryptionKeyError(
                 "TOKEN_ENCRYPTION_KEY is required. Generate it via "
-                "`python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"`."
+                '`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.'
             )
         try:
             self._fernet = Fernet(key.encode("ascii"))

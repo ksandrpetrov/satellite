@@ -15,10 +15,11 @@ from dataclasses import dataclass
 from datetime import date, tzinfo
 
 from .calendar.events import filter_events_for_user
-from .calendar.stats import WorkdayOptions
+from .calendar.stats import DayCalendarStats, WorkdayOptions
 from .calendar.user_calendar_service import UserCalendarService
 from .config import PlanConfig, WeatherConfig
 from .seagull.digest import prepare_seagull_stats, render_digest_from_stats
+from .seagull.rules import SeagullTexts, build_seagull_texts
 from .weather.analyzer import summarize_for_digest_day
 from .weather.client import WeatherForecastClient
 from .weather.templates import build_weather_message
@@ -38,6 +39,41 @@ class PlanBuilder:
     tz: tzinfo
     weather_config: WeatherConfig | None = None
     weather_client: WeatherForecastClient | None = None
+
+    def build_day_stats(
+        self,
+        *,
+        telegram_user_id: int,
+        target_date: date,
+        reference_date: date,
+    ) -> tuple[DayCalendarStats, SeagullTexts]:
+        """Сборка статистики дня (без weather/render).
+
+        Тот же путь сбора, что используется в :meth:`build_text` для дайджеста —
+        чтобы share-карточки и текстовый дайджест видели идентичные данные.
+        """
+        events, login = self.calendar_service.fetch_events_for_day(
+            telegram_user_id,
+            target_date,
+            tz=self.tz,
+        )
+        visible, hidden_meals = filter_events_for_user(
+            events,
+            target_date,
+            tz=self.tz,
+            login=login,
+            hide_all_day=self.plan_config.hide_all_day_events,
+            hide_lunch=self.plan_config.hide_lunch_events,
+        )
+        stats, _meal_footer = prepare_seagull_stats(
+            visible,
+            target_date,
+            tz=self.tz,
+            reference_date=reference_date,
+            login=login,
+            hidden_meal_events=hidden_meals,
+        )
+        return stats, build_seagull_texts(stats)
 
     def build_text(
         self,
@@ -160,9 +196,7 @@ class PlanBuilder:
             if bundle is None or not bundle.hours:
                 return None
             hours = list(bundle.hours)
-            current_for_today = (
-                bundle.current if target_date == reference_date else None
-            )
+            current_for_today = bundle.current if target_date == reference_date else None
             summary = summarize_for_digest_day(
                 hours,
                 stats,

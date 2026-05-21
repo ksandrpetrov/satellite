@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 Interval = tuple[int, int]
 """Полуоткрытый интервал [start, end) в минутах от полуночи."""

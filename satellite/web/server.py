@@ -8,54 +8,50 @@
 
 HTTPS делегируется внешнему reverse proxy (Traefik с Let's Encrypt в
 production-compose). Локально сервер слушает на ``WEBAPP_HOST:WEBAPP_PORT``.
+
+Структура пакета: общий ``routing`` собирает таблицу маршрутов, конкретные
+хендлеры живут в ``web/api/``, статичные страницы — в ``web/static_pages``.
+Этот модуль отвечает только за lifecycle ThreadingHTTPServer и dispatch.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 import threading
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import tzinfo
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
-from ..calendar.events import build_upcoming_events_groups
-from ..calendar.providers.base import (
-    CalendarEventPayload,
-    CalendarEventRef,
-    CalendarNotConnectedError,
-    CalendarProviderError,
-)
-from ..calendar.providers.registry import PROVIDER_IDS, PROVIDER_MAILRU, PROVIDER_YANDEX
 from ..calendar.user_calendar_service import UserCalendarService
 from ..config import PlanConfig
-from ..security.token_vault import ProviderCredentials
-from ..share_service import (
-    SHARE_KIND_ANALYTICS,
-    SHARE_KIND_PLAN,
-    SHARE_KIND_UPCOMING,
-    build_share_png,
+from ..users import UserStore
+from .api import (
+    handle_connect,
+    handle_create_event,
+    handle_delete_event,
+    handle_disconnect,
+    handle_list_events,
+    handle_share_card,
+    handle_status,
 )
-from ..users import USER_STATUS_APPROVED, UserStore, UserStorePersistenceError
 from .connect_token import ConnectTokenStore
-from .init_data import InitDataError, validate_init_data
+from .parsing import connect_token_from_path, request_path, share_token_from_path
+from .responses import json_response
+from .routing import Deps, Route, find_route
+from .static_pages import StaticPage, serve_html
 
 log = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _INDEX_FILE = _STATIC_DIR / "connect.html"
 _SHARE_FILE = _STATIC_DIR / "share.html"
-_MAX_BODY_BYTES = 64 * 1024
-_EVENTS_DEFAULT_DAYS = 14
-_UPCOMING_VIEW_DAYS = 7
-_CONNECT_TOKEN_PATH_RE = re.compile(r"^[A-Za-z0-9_-]{20,128}$")
-_SHARE_KINDS = frozenset({SHARE_KIND_PLAN, SHARE_KIND_UPCOMING, SHARE_KIND_ANALYTICS})
+
+_CONNECT_PAGE = StaticPage(path=_INDEX_FILE, csp_img_src="'self' data:")
+_SHARE_PAGE = StaticPage(path=_SHARE_FILE, csp_img_src="'self' data: blob:")
 
 
 @dataclass(frozen=True)
@@ -66,6 +62,27 @@ class WebAppServerConfig:
     tz_name: str = "Europe/Moscow"
     connect_tokens: ConnectTokenStore | None = None
     plan_config: PlanConfig | None = None
+
+
+# --- routing table ---------------------------------------------------------
+
+API_ROUTES: list[Route] = [
+    Route(method="GET", path="/api/share/card", handler=handle_share_card),
+    Route(method="GET", path="/api/calendar/status", handler=handle_status),
+    Route(method="GET", path="/api/calendar/events", handler=handle_list_events),
+    Route(method="POST", path="/api/calendar/connect", handler=handle_connect),
+    Route(method="POST", path="/api/calendar/events", handler=handle_create_event),
+    Route(
+        method="DELETE",
+        path="/api/calendar/disconnect",
+        handler=handle_disconnect,
+    ),
+    Route(
+        method="DELETE",
+        path_prefix="/api/calendar/events/",
+        handler=handle_delete_event,
+    ),
+]
 
 
 class WebAppServer:
@@ -84,6 +101,14 @@ class WebAppServer:
         self._connect_tokens = config.connect_tokens or ConnectTokenStore()
         self._plan_config = config.plan_config or PlanConfig()
         self._tz: tzinfo = _safe_zone(config.tz_name)
+        self._deps = Deps(
+            calendar=self._calendar,
+            users=self._users,
+            bot_token=self._config.bot_token,
+            connect_tokens=self._connect_tokens,
+            plan_config=self._plan_config,
+            tz=self._tz,
+        )
         self._thread: threading.Thread | None = None
         self._httpd: ThreadingHTTPServer | None = None
 
@@ -91,9 +116,7 @@ class WebAppServer:
         if self._thread is not None and self._thread.is_alive():
             return
         handler = self._make_handler()
-        self._httpd = ThreadingHTTPServer(
-            (self._config.host, self._config.port), handler
-        )
+        self._httpd = ThreadingHTTPServer((self._config.host, self._config.port), handler)
         self._thread = threading.Thread(
             target=self._httpd.serve_forever,
             name="satellite-webapp",
@@ -117,12 +140,7 @@ class WebAppServer:
         self._thread = None
 
     def _make_handler(self):
-        calendar = self._calendar
-        users = self._users
-        connect_tokens = self._connect_tokens
-        plan_config = self._plan_config
-        bot_token = self._config.bot_token
-        tz = self._tz
+        deps = self._deps
 
         class Handler(BaseHTTPRequestHandler):
             server_version = "satellite-webapp/1.0"
@@ -132,71 +150,20 @@ class WebAppServer:
                 log.debug("WebApp %s - %s", self.address_string(), format % args)
 
             def do_GET(self) -> None:  # noqa: N802
-                path = urlparse(self.path).path
-                path_token = _connect_token_from_path(path)
-                share_token = _share_token_from_path(path)
-                if path in {"/", "/connect", "/connect/", "/index.html"} or (
-                    path_token and "/share/" not in path
-                ):
-                    _serve_connect_html(self, _INDEX_FILE, path_token=path_token)
+                if _maybe_serve_html_or_health(self):
                     return
-                if path in {"/share", "/share/"} or share_token:
-                    _serve_share_html(self, _SHARE_FILE, path_token=share_token)
-                    return
-                if path == "/healthz":
-                    _json_response(self, HTTPStatus.OK, {"status": "ok"})
-                    return
-                if path == "/api/share/card":
-                    _handle_share_card(
-                        self,
-                        calendar,
-                        users,
-                        bot_token,
-                        connect_tokens,
-                        plan_config,
-                        tz,
-                    )
-                    return
-                if path == "/api/calendar/status":
-                    _handle_status(self, calendar, users, bot_token, connect_tokens)
-                    return
-                if path == "/api/calendar/events":
-                    _handle_list_events(
-                        self, calendar, users, bot_token, connect_tokens, tz
-                    )
-                    return
-                _json_response(self, HTTPStatus.NOT_FOUND, {"error": "not_found"})
+                _dispatch(self, "GET", deps)
 
             def do_POST(self) -> None:  # noqa: N802
-                path = urlparse(self.path).path
-                if path == "/api/calendar/connect":
-                    _handle_connect(self, calendar, users, bot_token, connect_tokens)
-                    return
-                if path == "/api/calendar/events":
-                    _handle_create_event(
-                        self, calendar, users, bot_token, connect_tokens, tz
-                    )
-                    return
-                _json_response(self, HTTPStatus.NOT_FOUND, {"error": "not_found"})
+                _dispatch(self, "POST", deps)
 
             def do_DELETE(self) -> None:  # noqa: N802
-                path = urlparse(self.path).path
-                if path == "/api/calendar/disconnect":
-                    _handle_disconnect(
-                        self, calendar, users, bot_token, connect_tokens
-                    )
-                    return
-                if path.startswith("/api/calendar/events/"):
-                    _handle_delete_event(
-                        self, calendar, users, bot_token, connect_tokens, path
-                    )
-                    return
-                _json_response(self, HTTPStatus.NOT_FOUND, {"error": "not_found"})
+                _dispatch(self, "DELETE", deps)
 
         return Handler
 
 
-# --- helpers ----------------------------------------------------------------
+# --- helpers ---------------------------------------------------------------
 
 
 def _safe_zone(name: str) -> tzinfo:
@@ -207,711 +174,29 @@ def _safe_zone(name: str) -> tzinfo:
         return ZoneInfo("Europe/Moscow")
 
 
-def _connect_token_from_path(path: str) -> str | None:
-    normalized = (path or "").rstrip("/")
-    if not normalized.startswith("/connect/") or normalized == "/connect":
-        return None
-    token = normalized.split("/connect/", 1)[1].split("/", 1)[0].strip()
-    if not token or not _CONNECT_TOKEN_PATH_RE.fullmatch(token):
-        return None
-    return token
+def _maybe_serve_html_or_health(handler: BaseHTTPRequestHandler) -> bool:
+    """Сначала статические страницы и healthz — они GET и не идут через API-таблицу."""
+    path = request_path(handler)
+    path_token = connect_token_from_path(path)
+    share_token = share_token_from_path(path)
+    if path in {"/", "/connect", "/connect/", "/index.html"} or (
+        path_token and "/share/" not in path
+    ):
+        serve_html(handler, _CONNECT_PAGE, path_token=path_token)
+        return True
+    if path in {"/share", "/share/"} or share_token:
+        serve_html(handler, _SHARE_PAGE, path_token=share_token)
+        return True
+    if path == "/healthz":
+        json_response(handler, HTTPStatus.OK, {"status": "ok"})
+        return True
+    return False
 
 
-def _share_token_from_path(path: str) -> str | None:
-    normalized = (path or "").rstrip("/")
-    if not normalized.startswith("/share/") or normalized == "/share":
-        return None
-    token = normalized.split("/share/", 1)[1].split("/", 1)[0].strip()
-    if not token or not _CONNECT_TOKEN_PATH_RE.fullmatch(token):
-        return None
-    return token
-
-
-def _serve_connect_html(
-    handler: BaseHTTPRequestHandler,
-    path: Path,
-    *,
-    path_token: str | None = None,
-) -> None:
-    if not path.is_file():
-        _json_response(handler, HTTPStatus.NOT_FOUND, {"error": "not_found"})
+def _dispatch(handler: BaseHTTPRequestHandler, method: str, deps: Deps) -> None:
+    path = request_path(handler)
+    route = find_route(API_ROUTES, method, path)
+    if route is None:
+        json_response(handler, HTTPStatus.NOT_FOUND, {"error": "not_found"})
         return
-    body = path.read_bytes()
-    if path_token:
-        inject = (
-            "<script>window.__SATELLITE_CONNECT_TOKEN__="
-            + json.dumps(path_token, ensure_ascii=False)
-            + ";</script>\n  "
-        )
-        marker = b"<script>"
-        if marker in body:
-            body = body.replace(marker, inject.encode("utf-8") + marker, 1)
-        else:
-            body = inject.encode("utf-8") + body
-    handler.send_response(HTTPStatus.OK)
-    handler.send_header("Content-Type", "text/html; charset=utf-8")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Cache-Control", "no-store")
-    handler.send_header("X-Content-Type-Options", "nosniff")
-    handler.send_header("Referrer-Policy", "no-referrer")
-    # Не ставим X-Frame-Options: SAMEORIGIN — ломает WebView Telegram Desktop/Web.
-    handler.send_header(
-        "Content-Security-Policy",
-        "default-src 'self'; "
-        "script-src 'self' https://telegram.org 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:; connect-src 'self'; "
-        "frame-ancestors 'self' https://web.telegram.org https://*.web.telegram.org "
-        "https://telegram.org https://*.telegram.org",
-    )
-    handler.end_headers()
-    handler.wfile.write(body)
-
-
-def _serve_share_html(
-    handler: BaseHTTPRequestHandler,
-    path: Path,
-    *,
-    path_token: str | None = None,
-) -> None:
-    if not path.is_file():
-        _json_response(handler, HTTPStatus.NOT_FOUND, {"error": "not_found"})
-        return
-    body = path.read_bytes()
-    if path_token:
-        inject = (
-            "<script>window.__SATELLITE_CONNECT_TOKEN__="
-            + json.dumps(path_token, ensure_ascii=False)
-            + ";</script>\n  "
-        )
-        marker = b"<script>"
-        if marker in body:
-            body = body.replace(marker, inject.encode("utf-8") + marker, 1)
-        else:
-            body = inject.encode("utf-8") + body
-    handler.send_response(HTTPStatus.OK)
-    handler.send_header("Content-Type", "text/html; charset=utf-8")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Cache-Control", "no-store")
-    handler.send_header("X-Content-Type-Options", "nosniff")
-    handler.send_header("Referrer-Policy", "no-referrer")
-    handler.send_header(
-        "Content-Security-Policy",
-        "default-src 'self'; "
-        "script-src 'self' https://telegram.org 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data: blob:; connect-src 'self'; "
-        "frame-ancestors 'self' https://web.telegram.org https://*.web.telegram.org "
-        "https://telegram.org https://*.telegram.org",
-    )
-    handler.end_headers()
-    handler.wfile.write(body)
-
-
-def _read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
-    try:
-        length = int(handler.headers.get("Content-Length") or "0")
-    except ValueError:
-        return {}
-    if length <= 0 or length > _MAX_BODY_BYTES:
-        return {}
-    raw = handler.rfile.read(length)
-    try:
-        data = json.loads(raw.decode("utf-8") or "{}")
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _extract_init_data(
-    handler: BaseHTTPRequestHandler,
-    body: dict[str, Any] | None = None,
-) -> str:
-    """initData из заголовка, JSON-тела или query (nginx часто не проксирует кастомные headers)."""
-    init_data = (handler.headers.get("X-Telegram-Init-Data") or "").strip()
-    if init_data:
-        return init_data
-    if body is not None:
-        from_body = str(body.get("initData") or "").strip()
-        if from_body:
-            return from_body
-    qs = parse_qs(urlparse(handler.path).query)
-    from_query = (qs.get("initData") or [""])[0].strip()
-    return from_query
-
-
-def _extract_connect_token(
-    handler: BaseHTTPRequestHandler,
-    body: dict[str, Any] | None = None,
-) -> str:
-    token = (handler.headers.get("X-Connect-Token") or "").strip()
-    if token:
-        return token
-    if body is not None:
-        from_body = str(body.get("t") or body.get("connect_token") or "").strip()
-        if from_body and _CONNECT_TOKEN_PATH_RE.fullmatch(from_body):
-            return from_body
-    parsed_path = urlparse(handler.path)
-    from_path = _connect_token_from_path(parsed_path.path) or ""
-    if from_path:
-        return from_path
-    from_share = _share_token_from_path(parsed_path.path) or ""
-    if from_share:
-        return from_share
-    qs = parse_qs(parsed_path.query)
-    from_query = (qs.get("t") or [""])[0].strip()
-    if from_query and _CONNECT_TOKEN_PATH_RE.fullmatch(from_query):
-        return from_query
-    return ""
-
-
-def _user_id_from_connect_token(
-    handler: BaseHTTPRequestHandler,
-    users: UserStore,
-    connect_tokens: ConnectTokenStore,
-    *,
-    body: dict[str, Any] | None = None,
-) -> int | None:
-    token = _extract_connect_token(handler, body)
-    if not token:
-        return None
-    user_id = connect_tokens.resolve(token)
-    if user_id is None:
-        log.info("Reject WebApp request: invalid or expired connect token")
-        _json_response(
-            handler,
-            HTTPStatus.UNAUTHORIZED,
-            {"error": "connect_token_invalid", "message": "Connect link expired"},
-        )
-        raise _AbortRequest()
-    record = users.get(user_id)
-    if record is None or record.status != USER_STATUS_APPROVED:
-        log.info(
-            "Reject WebApp request: connect token user_id=%s not approved (status=%s)",
-            user_id,
-            getattr(record, "status", None),
-        )
-        _json_response(handler, HTTPStatus.FORBIDDEN, {"error": "not_approved"})
-        raise _AbortRequest()
-    return user_id
-
-
-def _validated_user(
-    handler: BaseHTTPRequestHandler,
-    users: UserStore,
-    bot_token: str,
-    connect_tokens: ConnectTokenStore,
-    *,
-    body: dict[str, Any] | None = None,
-) -> int:
-    """Возвращает telegram_user_id, если initData валидна и пользователь approved.
-
-    Без approved-статуса возвращает HTTP 403 и поднимает ``_AbortRequest``,
-    чтобы хендлер сразу завершился. Web App доступен только тем, кому
-    одобрили заявку на доступ через админский флоу.
-    """
-    init_data = _extract_init_data(handler, body)
-    if init_data:
-        try:
-            validated = validate_init_data(init_data, bot_token=bot_token)
-        except InitDataError as exc:
-            log.info("Reject WebApp request: %s", exc)
-            _json_response(
-                handler,
-                HTTPStatus.UNAUTHORIZED,
-                {"error": exc.code, "message": str(exc)},
-            )
-            raise _AbortRequest()
-        record = users.get(validated.user.id)
-        if record is None or record.status != USER_STATUS_APPROVED:
-            log.info(
-                "Reject WebApp request: user_id=%s not approved (status=%s)",
-                validated.user.id,
-                getattr(record, "status", None),
-            )
-            _json_response(handler, HTTPStatus.FORBIDDEN, {"error": "not_approved"})
-            raise _AbortRequest()
-        return validated.user.id
-
-    user_id = _user_id_from_connect_token(
-        handler, users, connect_tokens, body=body
-    )
-    if user_id is not None:
-        return user_id
-
-    log.info("Reject WebApp request: missing initData and connect token")
-    _json_response(
-        handler,
-        HTTPStatus.UNAUTHORIZED,
-        {
-            "error": "no_init_data",
-            "message": "Missing initData (open Web App from Telegram bot button)",
-        },
-    )
-    raise _AbortRequest()
-
-
-class _AbortRequest(Exception):
-    """Сигнал хендлеру: ответ уже отправлен, надо тихо выйти."""
-
-
-def _handle_connect(
-    handler: BaseHTTPRequestHandler,
-    calendar: UserCalendarService,
-    users: UserStore,
-    bot_token: str,
-    connect_tokens: ConnectTokenStore,
-) -> None:
-    body = _read_json(handler)
-    try:
-        user_id = _validated_user(
-            handler, users, bot_token, connect_tokens, body=body
-        )
-    except _AbortRequest:
-        return
-    provider = str(body.get("provider") or PROVIDER_MAILRU).strip().lower()
-    login = str(body.get("login") or "").strip()
-    app_password = str(body.get("app_password") or body.get("token") or "").strip()
-    if provider not in PROVIDER_IDS:
-        _json_response(
-            handler, HTTPStatus.BAD_REQUEST, {"error": "unknown_provider"}
-        )
-        return
-    if provider == PROVIDER_YANDEX:
-        _json_response(
-            handler,
-            HTTPStatus.BAD_REQUEST,
-            {"error": "PROVIDER_NOT_IMPLEMENTED"},
-        )
-        return
-    if not login or not app_password:
-        _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "missing_fields"})
-        return
-    caldav_url = str(body.get("caldav_url") or "").strip() or None
-    try:
-        calendar.connect(
-            user_id,
-            provider_id=provider,
-            credentials=ProviderCredentials(login=login, secret=app_password),
-            caldav_url=caldav_url,
-        )
-    except CalendarProviderError as exc:
-        _json_response(
-            handler,
-            HTTPStatus.BAD_REQUEST,
-            {"error": exc.error_code, "message": str(exc)},
-        )
-        return
-    except UserStorePersistenceError as exc:
-        log.error("Persistence error during connect: %s", exc)
-        _json_response(
-            handler,
-            HTTPStatus.INTERNAL_SERVER_ERROR,
-            {"error": "storage_unavailable"},
-        )
-        return
-    _json_response(
-        handler,
-        HTTPStatus.OK,
-        {"status": "connected", "provider": provider},
-    )
-
-
-def _handle_disconnect(
-    handler: BaseHTTPRequestHandler,
-    calendar: UserCalendarService,
-    users: UserStore,
-    bot_token: str,
-    connect_tokens: ConnectTokenStore,
-) -> None:
-    try:
-        user_id = _validated_user(handler, users, bot_token, connect_tokens)
-    except _AbortRequest:
-        return
-    try:
-        calendar.disconnect(user_id)
-    except KeyError:
-        _json_response(
-            handler, HTTPStatus.OK, {"status": "disconnected"}
-        )
-        return
-    except UserStorePersistenceError as exc:
-        log.error("Persistence error during disconnect: %s", exc)
-        _json_response(
-            handler,
-            HTTPStatus.INTERNAL_SERVER_ERROR,
-            {"error": "storage_unavailable"},
-        )
-        return
-    _json_response(handler, HTTPStatus.OK, {"status": "disconnected"})
-
-
-def _handle_status(
-    handler: BaseHTTPRequestHandler,
-    calendar: UserCalendarService,
-    users: UserStore,
-    bot_token: str,
-    connect_tokens: ConnectTokenStore,
-) -> None:
-    try:
-        user_id = _validated_user(handler, users, bot_token, connect_tokens)
-    except _AbortRequest:
-        return
-    record = users.get(user_id)
-    if record is None or not record.has_calendar:
-        _json_response(
-            handler,
-            HTTPStatus.OK,
-            {"connected": False, "status": "disconnected", "provider": None},
-        )
-        return
-    try:
-        status = calendar.check_connection(user_id)
-        _json_response(
-            handler,
-            HTTPStatus.OK,
-            {
-                "provider": status.provider_id,
-                "status": status.status,
-                "connected": status.connected,
-            },
-        )
-    except CalendarProviderError as exc:
-        _json_response(
-            handler,
-            HTTPStatus.OK,
-            {
-                "connected": False,
-                "status": exc.error_code.lower(),
-                "provider": record.calendar_provider,
-            },
-        )
-
-
-def _handle_list_events(
-    handler: BaseHTTPRequestHandler,
-    calendar: UserCalendarService,
-    users: UserStore,
-    bot_token: str,
-    connect_tokens: ConnectTokenStore,
-    tz: tzinfo,
-) -> None:
-    try:
-        user_id = _validated_user(handler, users, bot_token, connect_tokens)
-    except _AbortRequest:
-        return
-    qs = parse_qs(urlparse(handler.path).query)
-    today = datetime.now(tz=tz).date()
-    view = (qs.get("view", [None])[0] or "").strip().lower()
-    if view == "upcoming":
-        days = _parse_positive_int(qs.get("days", [None])[0], default=_UPCOMING_VIEW_DAYS)
-        if days is None or days > 31:
-            _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_days"})
-            return
-        end_date = today + timedelta(days=days)
-        try:
-            events = calendar.list_events(
-                user_id, start_date=today, end_date=end_date, tz=tz
-            )
-        except CalendarNotConnectedError:
-            _json_response(
-                handler, HTTPStatus.CONFLICT, {"error": "not_connected"}
-            )
-            return
-        except CalendarProviderError as exc:
-            _json_response(
-                handler,
-                HTTPStatus.BAD_GATEWAY,
-                {"error": exc.error_code, "message": str(exc)},
-            )
-            return
-        groups = build_upcoming_events_groups(
-            events, tz, today, days=days
-        )
-        _json_response(
-            handler,
-            HTTPStatus.OK,
-            {
-                "view": "upcoming",
-                "reference_date": today.isoformat(),
-                "days": days,
-                "empty": not groups,
-                "groups": groups,
-            },
-        )
-        return
-
-    start_date = _parse_date(qs.get("from", [None])[0]) or today
-    end_date = _parse_date(qs.get("to", [None])[0]) or (
-        today + timedelta(days=_EVENTS_DEFAULT_DAYS)
-    )
-    if end_date < start_date:
-        _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_range"})
-        return
-    try:
-        events = calendar.list_events(
-            user_id, start_date=start_date, end_date=end_date, tz=tz
-        )
-    except CalendarNotConnectedError:
-        _json_response(
-            handler, HTTPStatus.CONFLICT, {"error": "not_connected"}
-        )
-        return
-    except CalendarProviderError as exc:
-        _json_response(
-            handler,
-            HTTPStatus.BAD_GATEWAY,
-            {"error": exc.error_code, "message": str(exc)},
-        )
-        return
-    serialized = [_serialize_event(ev) for ev in events]
-    _json_response(
-        handler,
-        HTTPStatus.OK,
-        {
-            "from": start_date.isoformat(),
-            "to": end_date.isoformat(),
-            "events": serialized,
-        },
-    )
-
-
-def _handle_create_event(
-    handler: BaseHTTPRequestHandler,
-    calendar: UserCalendarService,
-    users: UserStore,
-    bot_token: str,
-    connect_tokens: ConnectTokenStore,
-    tz: tzinfo,
-) -> None:
-    body = _read_json(handler)
-    try:
-        user_id = _validated_user(
-            handler, users, bot_token, connect_tokens, body=body
-        )
-    except _AbortRequest:
-        return
-    title = str(body.get("title") or "").strip()
-    start_raw = str(body.get("start") or "").strip()
-    end_raw = str(body.get("end") or "").strip()
-    duration_raw = body.get("duration_minutes")
-    location = body.get("location")
-    description = body.get("description")
-    if not title or not start_raw:
-        _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "missing_fields"})
-        return
-    start = _parse_datetime(start_raw, tz)
-    if start is None:
-        _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_dates"})
-        return
-    end: datetime | None = None
-    if end_raw:
-        end = _parse_datetime(end_raw, tz)
-    elif duration_raw is not None:
-        try:
-            minutes = int(duration_raw)
-        except (TypeError, ValueError):
-            minutes = 0
-        if minutes <= 0 or minutes > 24 * 60:
-            _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_duration"})
-            return
-        end = start + timedelta(minutes=minutes)
-    if end is None or end <= start:
-        _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_dates"})
-        return
-    payload = CalendarEventPayload(
-        title=title,
-        start=start,
-        end=end,
-        location=str(location).strip() if isinstance(location, str) and location.strip() else None,
-        description=str(description).strip() if isinstance(description, str) and description.strip() else None,
-    )
-    try:
-        ref = calendar.create_event(user_id, payload, tz=tz)
-    except CalendarNotConnectedError:
-        _json_response(
-            handler, HTTPStatus.CONFLICT, {"error": "not_connected"}
-        )
-        return
-    except CalendarProviderError as exc:
-        _json_response(
-            handler,
-            HTTPStatus.BAD_GATEWAY,
-            {"error": exc.error_code, "message": str(exc)},
-        )
-        return
-    _json_response(
-        handler,
-        HTTPStatus.CREATED,
-        {"uid": ref.uid, "url": ref.url, "status": "created"},
-    )
-
-
-def _handle_delete_event(
-    handler: BaseHTTPRequestHandler,
-    calendar: UserCalendarService,
-    users: UserStore,
-    bot_token: str,
-    connect_tokens: ConnectTokenStore,
-    path: str,
-) -> None:
-    try:
-        user_id = _validated_user(handler, users, bot_token, connect_tokens)
-    except _AbortRequest:
-        return
-    uid = path[len("/api/calendar/events/"):].strip("/")
-    if not uid:
-        _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "missing_uid"})
-        return
-    qs = parse_qs(urlparse(handler.path).query)
-    url = qs.get("url", [None])[0]
-    ref = CalendarEventRef(uid=uid, url=url or None)
-    try:
-        calendar.delete_event(user_id, ref)
-    except CalendarNotConnectedError:
-        _json_response(
-            handler, HTTPStatus.CONFLICT, {"error": "not_connected"}
-        )
-        return
-    except CalendarProviderError as exc:
-        _json_response(
-            handler,
-            HTTPStatus.BAD_GATEWAY,
-            {"error": exc.error_code, "message": str(exc)},
-        )
-        return
-    _json_response(handler, HTTPStatus.OK, {"status": "deleted"})
-
-
-def _parse_positive_int(value: str | None, *, default: int) -> int | None:
-    if value is None or not str(value).strip():
-        return default
-    try:
-        parsed = int(str(value).strip())
-    except ValueError:
-        return None
-    if parsed <= 0:
-        return None
-    return parsed
-
-
-def _parse_date(value: str | None) -> date | None:
-    if not value:
-        return None
-    try:
-        return date.fromisoformat(value)
-    except ValueError:
-        return None
-
-
-def _parse_datetime(value: str, tz: tzinfo) -> datetime | None:
-    if not value:
-        return None
-    try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=tz)
-    return dt
-
-
-def _serialize_event(event: dict) -> dict:
-    return {
-        "uid": event.get("uid") or event.get("id"),
-        "url": event.get("url"),
-        "title": event.get("summary") or event.get("title") or "",
-        "location": event.get("location") or "",
-        "start": event.get("dtstart"),
-        "end": event.get("dtend"),
-        "status": event.get("status"),
-        "all_day": bool(event.get("all_day")),
-    }
-
-
-def _handle_share_card(
-    handler: BaseHTTPRequestHandler,
-    calendar: UserCalendarService,
-    users: UserStore,
-    bot_token: str,
-    connect_tokens: ConnectTokenStore,
-    plan_config: PlanConfig,
-    tz: tzinfo,
-) -> None:
-    try:
-        user_id = _validated_user(handler, users, bot_token, connect_tokens)
-    except _AbortRequest:
-        return
-    record = users.get(user_id)
-    if record is None or not record.has_calendar:
-        _json_response(handler, HTTPStatus.CONFLICT, {"error": "not_connected"})
-        return
-    qs = parse_qs(urlparse(handler.path).query)
-    kind = (qs.get("kind", [SHARE_KIND_PLAN])[0] or "").strip().lower()
-    if kind not in _SHARE_KINDS:
-        _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_kind"})
-        return
-    mode = (qs.get("mode", [""])[0] or "").strip().lower() or None
-    days_raw = (qs.get("days", [""])[0] or "").strip()
-    days = _parse_positive_int(days_raw, default=_UPCOMING_VIEW_DAYS) if days_raw else None
-    try:
-        png = build_share_png(
-            kind=kind,
-            telegram_user_id=user_id,
-            tz=tz,
-            calendar_service=calendar,
-            users=users,
-            plan_config=plan_config,
-            mode=mode,
-            days=days,
-        )
-    except CalendarNotConnectedError:
-        _json_response(handler, HTTPStatus.CONFLICT, {"error": "not_connected"})
-        return
-    except CalendarProviderError as exc:
-        _json_response(
-            handler,
-            HTTPStatus.BAD_GATEWAY,
-            {"error": exc.error_code, "message": str(exc)},
-        )
-        return
-    except ValueError as exc:
-        _json_response(
-            handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_request", "message": str(exc)}
-        )
-        return
-    except Exception:  # noqa: BLE001
-        log.exception("Share card build failed user_id=%s kind=%s", user_id, kind)
-        _json_response(handler, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "build_failed"})
-        return
-    names = {
-        SHARE_KIND_PLAN: "chaika-plan.png",
-        SHARE_KIND_UPCOMING: "chaika-upcoming.png",
-        SHARE_KIND_ANALYTICS: "chaika-analytics.png",
-    }
-    _png_response(handler, png, filename=names.get(kind, "chaika.png"))
-
-
-def _png_response(
-    handler: BaseHTTPRequestHandler, body: bytes, *, filename: str
-) -> None:
-    handler.send_response(HTTPStatus.OK)
-    handler.send_header("Content-Type", "image/png")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Cache-Control", "no-store")
-    handler.send_header("Content-Disposition", f'inline; filename="{filename}"')
-    handler.end_headers()
-    handler.wfile.write(body)
-
-
-def _json_response(
-    handler: BaseHTTPRequestHandler, status: HTTPStatus, payload: dict[str, Any]
-) -> None:
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Cache-Control", "no-store")
-    handler.send_header("X-Content-Type-Options", "nosniff")
-    handler.end_headers()
-    handler.wfile.write(body)
+    route(handler, deps)

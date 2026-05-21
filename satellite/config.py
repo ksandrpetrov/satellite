@@ -390,7 +390,8 @@ def load_settings(
             port=webapp_port,
             base_url=webapp_base_url,
         ),
-        log_level=(os.getenv("LOG_LEVEL") or DEFAULT_LOG_LEVEL).strip().upper() or DEFAULT_LOG_LEVEL,
+        log_level=(os.getenv("LOG_LEVEL") or DEFAULT_LOG_LEVEL).strip().upper()
+        or DEFAULT_LOG_LEVEL,
         project_root=PROJECT_ROOT,
         env_path=resolved_env_path,
         weather=_load_weather_config(resolved_env_path),

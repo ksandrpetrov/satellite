@@ -1,16 +1,20 @@
-"""Сборка PNG для Web App «Поделиться» (план, ближайшие, аналитика)."""
+"""Сборка PNG для Web App «Поделиться» (план, ближайшие, аналитика).
+
+Для дайджест-карточки (``plan``) сбор статистики идёт через
+:meth:`PlanBuilder.build_day_stats` — это сохраняет инвариант «единый
+рендер дайджеста»: share и текст видят одни и те же числа.
+"""
 
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, tzinfo
 
-from .analytics_service import build_week_analytics
-from .calendar.events import build_upcoming_events_groups, filter_events_for_user
+from .analytics.service import build_week_analytics
+from .calendar.events import build_upcoming_events_groups
 from .calendar.user_calendar_service import UserCalendarService
 from .config import PlanConfig
 from .digest_utils import resolve_target_date
-from .seagull.digest import prepare_seagull_stats
-from .seagull.rules import build_seagull_texts
+from .plan_service import PlanBuilder
 from .share.cards import render_plan_share_card, render_upcoming_share_card
 from .users import UserStore
 
@@ -39,25 +43,16 @@ def build_share_png(
     if kind == SHARE_KIND_PLAN:
         plan_mode = mode if mode in _VALID_PLAN_MODES else "today"
         target = resolve_target_date(plan_mode, today)
-        events, login = calendar_service.fetch_events_for_day(
-            telegram_user_id, target, tz=tz
-        )
-        visible, _hidden = filter_events_for_user(
-            events,
-            target,
+        builder = PlanBuilder(
+            calendar_service=calendar_service,
+            plan_config=plan_config,
             tz=tz,
-            login=login,
-            hide_all_day=plan_config.hide_all_day_events,
-            hide_lunch=plan_config.hide_lunch_events,
         )
-        stats, _meal = prepare_seagull_stats(
-            visible,
-            target,
-            tz=tz,
+        stats, texts = builder.build_day_stats(
+            telegram_user_id=telegram_user_id,
+            target_date=target,
             reference_date=today,
-            login=login,
         )
-        texts = build_seagull_texts(stats)
         return render_plan_share_card(stats, texts)
 
     if kind == SHARE_KIND_UPCOMING:
@@ -69,12 +64,8 @@ def build_share_png(
             end_date=end,
             tz=tz,
         )
-        groups = build_upcoming_events_groups(
-            events, tz, today, days=horizon
-        )
-        return render_upcoming_share_card(
-            groups, days=horizon, reference_date=today
-        )
+        groups = build_upcoming_events_groups(events, tz, today, days=horizon)
+        return render_upcoming_share_card(groups, days=horizon, reference_date=today)
 
     if kind == SHARE_KIND_ANALYTICS:
         png, _caption = build_week_analytics(

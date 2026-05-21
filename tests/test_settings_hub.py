@@ -46,7 +46,6 @@ from satellite.telegram_bot.handlers import (
 )
 from satellite.users import USER_STATUS_APPROVED
 
-
 _WEBAPP = "https://example.com/connect"
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import timezone
 
 from satellite.calendar.event_kinds import (
     classify_event_kind,

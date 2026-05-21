@@ -24,17 +24,13 @@ def test_set_webapp_menu_button_empty_url_falls_back_to_commands() -> None:
     telegram = MagicMock()
     set_webapp_menu_button(telegram, 123, "")
     telegram.set_chat_menu_button.assert_called_once()
-    assert telegram.set_chat_menu_button.call_args.kwargs["menu_button"] == {
-        "type": "commands"
-    }
+    assert telegram.set_chat_menu_button.call_args.kwargs["menu_button"] == {"type": "commands"}
 
 
 def test_set_default_menu_button_global() -> None:
     telegram = MagicMock()
     set_default_menu_button(telegram)
-    telegram.set_chat_menu_button.assert_called_once_with(
-        menu_button={"type": "commands"}
-    )
+    telegram.set_chat_menu_button.assert_called_once_with(menu_button={"type": "commands"})
 
 
 def test_set_default_menu_button_for_chat() -> None:

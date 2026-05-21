@@ -24,7 +24,11 @@ from satellite.telegram_bot.handlers.admin import (
     handle_pending_command,
     route_admin_callback,
 )
-from satellite.telegram_bot.handlers.context import HandlerContext, IncomingCallback, IncomingMessage
+from satellite.telegram_bot.handlers.context import (
+    HandlerContext,
+    IncomingCallback,
+    IncomingMessage,
+)
 from satellite.users import (
     ACCESS_REQUEST_PENDING,
     USER_STATUS_APPROVED,
@@ -142,11 +146,7 @@ def test_admin_approve_notifies_user(users: UserStore) -> None:
     assert record.status == USER_STATUS_APPROVED
     assert users.list_pending_requests() == []
     ctx.telegram.answer_callback_query.assert_called_with("cb1", text="Доступ открыт")
-    user_calls = [
-        c
-        for c in ctx.telegram.send_message.call_args_list
-        if c[0][0] == CHAT_ID
-    ]
+    user_calls = [c for c in ctx.telegram.send_message.call_args_list if c[0][0] == CHAT_ID]
     assert len(user_calls) == 2
     assert user_calls[0][0][1] == ACCESS_APPROVED_HTML
     assert user_calls[0].kwargs["reply_markup"]["inline_keyboard"][0][0]["web_app"]

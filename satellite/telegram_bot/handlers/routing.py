@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Union
 
@@ -14,18 +15,17 @@ from ...messages_ru import (
     button_text_is_check_calendar,
     button_text_is_connect_calendar,
     button_text_is_create_event,
-    button_text_is_settings,
     button_text_is_disconnect_calendar,
     button_text_is_foreign_calendars,
     button_text_is_invitations,
     button_text_is_manage_events,
+    button_text_is_settings,
     button_text_is_subscribe,
     button_text_is_unsubscribe,
     button_text_is_upcoming,
     button_text_to_mode,
 )
 from .context import IncomingCallback, IncomingMessage, PlanMode, SubscriptionAction
-
 
 # --- единая точка правды для команд (роутинг / dedup / FSM-exit) ------------
 
@@ -118,42 +118,45 @@ RecognizedCommand = Union[
 ]
 
 
+def _plan_command(text: str) -> PlanCommand | None:
+    mode = parse_command_mode(text)
+    return PlanCommand(mode=mode) if mode is not None else None
+
+
+def _subscription_command(text: str) -> SubscriptionCommand | None:
+    action = parse_subscription_action(text)
+    return SubscriptionCommand(action=action) if action is not None else None
+
+
+# Порядок важен: первый совпавший выигрывает. Добавление новой команды —
+# одна строка в этом списке + dataclass + matcher.
+_RECOGNIZERS: list[Callable[[str], RecognizedCommand | None]] = [
+    lambda t: StartOrHelpCommand(is_start=True) if is_start_command(t) else None,
+    lambda t: StartOrHelpCommand(is_start=False) if is_help_command(t) else None,
+    _plan_command,
+    _subscription_command,
+    lambda t: SettingsCommand() if is_settings_request(t) else None,
+    lambda t: UpcomingCommand() if is_upcoming_request(t) else None,
+    lambda t: InvitationsCommand() if is_invitations_request(t) else None,
+    lambda t: ManageEventsCommand() if is_manage_events_request(t) else None,
+    lambda t: CreateCommand() if is_create_event_request(t) else None,
+    lambda t: ConnectCommand() if is_connect_calendar_request(t) else None,
+    lambda t: CheckCommand() if is_check_calendar_request(t) else None,
+    lambda t: DisconnectCommand() if is_disconnect_calendar_request(t) else None,
+    lambda t: CalendarSourcesCommand() if is_calendar_sources_request(t) else None,
+    lambda t: ForeignCalendarsCommand() if is_foreign_calendars_request(t) else None,
+    lambda t: PendingCommand() if _is_pending_command(t) else None,
+]
+
+
 def recognize_message(text: str | None) -> RecognizedCommand | None:
     """Распознаёт команду или текст reply-кнопки. None — свободный ввод / unknown."""
     if not text:
         return None
-    if is_start_command(text):
-        return StartOrHelpCommand(is_start=True)
-    if is_help_command(text):
-        return StartOrHelpCommand(is_start=False)
-    mode = parse_command_mode(text)
-    if mode is not None:
-        return PlanCommand(mode=mode)
-    action = parse_subscription_action(text)
-    if action is not None:
-        return SubscriptionCommand(action=action)
-    if is_settings_request(text):
-        return SettingsCommand()
-    if is_upcoming_request(text):
-        return UpcomingCommand()
-    if is_invitations_request(text):
-        return InvitationsCommand()
-    if is_manage_events_request(text):
-        return ManageEventsCommand()
-    if is_create_event_request(text):
-        return CreateCommand()
-    if is_connect_calendar_request(text):
-        return ConnectCommand()
-    if is_check_calendar_request(text):
-        return CheckCommand()
-    if is_disconnect_calendar_request(text):
-        return DisconnectCommand()
-    if is_calendar_sources_request(text):
-        return CalendarSourcesCommand()
-    if is_foreign_calendars_request(text):
-        return ForeignCalendarsCommand()
-    if _is_pending_command(text):
-        return PendingCommand()
+    for recognizer in _RECOGNIZERS:
+        result = recognizer(text)
+        if result is not None:
+            return result
     return None
 
 
@@ -178,12 +181,8 @@ _CMD_UNSUBSCRIBE = re.compile(r"/(?:unsub|unsubscribe|stopdigest)(?:@[a-z0-9_]+)
 # его не открывает, а сразу включает подписку.
 _CMD_DIGEST_SETTINGS = re.compile(r"/settings(?:@[a-z0-9_]+)?\Z")
 _CMD_UPCOMING = re.compile(r"/(?:upcoming|events)(?:@[a-z0-9_]+)?\Z")
-_CMD_INVITATIONS = re.compile(
-    r"/(?:invitations|invites|respond)(?:@[a-z0-9_]+)?\Z"
-)
-_CMD_MANAGE_EVENTS = re.compile(
-    r"/(?:manage|edit|status)(?:@[a-z0-9_]+)?\Z"
-)
+_CMD_INVITATIONS = re.compile(r"/(?:invitations|invites|respond)(?:@[a-z0-9_]+)?\Z")
+_CMD_MANAGE_EVENTS = re.compile(r"/(?:manage|edit|status)(?:@[a-z0-9_]+)?\Z")
 _CMD_CREATE = re.compile(r"/(?:create|addevent)(?:@[a-z0-9_]+)?\Z")
 _CMD_CONNECT = re.compile(r"/connect(?:@[a-z0-9_]+)?\Z")
 _CMD_CALENDARS = re.compile(r"/(?:calendars|calendar_sources)(?:@[a-z0-9_]+)?\Z")
@@ -245,14 +244,25 @@ def parse_subscription_action(text: str | None) -> SubscriptionAction | None:
     return None
 
 
-def is_settings_request(text: str | None) -> bool:
+def _button_or_command(
+    text: str | None,
+    *,
+    button: Callable[[str], bool] | None = None,
+    command: re.Pattern[str] | None = None,
+) -> bool:
+    """Reply-кнопка ИЛИ слэш-команда: общий шаблон ``is_*_request``."""
     if not text:
         return False
     raw = text.strip()
-    if button_text_is_settings(raw):
+    if button is not None and button(raw):
         return True
-    command_part = raw.split(maxsplit=1)[0].lower()
-    return bool(_CMD_DIGEST_SETTINGS.fullmatch(command_part))
+    if command is not None and command.fullmatch(_command_part(raw)):
+        return True
+    return False
+
+
+def is_settings_request(text: str | None) -> bool:
+    return _button_or_command(text, button=button_text_is_settings, command=_CMD_DIGEST_SETTINGS)
 
 
 def is_digest_settings_request(text: str | None) -> bool:
@@ -261,78 +271,41 @@ def is_digest_settings_request(text: str | None) -> bool:
 
 
 def is_upcoming_request(text: str | None) -> bool:
-    if not text:
-        return False
-    raw = text.strip()
-    if button_text_is_upcoming(raw):
-        return True
-    return bool(_CMD_UPCOMING.fullmatch(_command_part(raw)))
+    return _button_or_command(text, button=button_text_is_upcoming, command=_CMD_UPCOMING)
 
 
 def is_invitations_request(text: str | None) -> bool:
-    if not text:
-        return False
-    raw = text.strip()
-    if button_text_is_invitations(raw):
-        return True
-    return bool(_CMD_INVITATIONS.fullmatch(_command_part(raw)))
+    return _button_or_command(text, button=button_text_is_invitations, command=_CMD_INVITATIONS)
 
 
 def is_manage_events_request(text: str | None) -> bool:
-    if not text:
-        return False
-    raw = text.strip()
-    if button_text_is_manage_events(raw):
-        return True
-    return bool(_CMD_MANAGE_EVENTS.fullmatch(_command_part(raw)))
+    return _button_or_command(text, button=button_text_is_manage_events, command=_CMD_MANAGE_EVENTS)
 
 
 def is_create_event_request(text: str | None) -> bool:
-    if not text:
-        return False
-    raw = text.strip()
-    if button_text_is_create_event(raw):
-        return True
-    return bool(_CMD_CREATE.fullmatch(_command_part(raw)))
+    return _button_or_command(text, button=button_text_is_create_event, command=_CMD_CREATE)
 
 
 def is_connect_calendar_request(text: str | None) -> bool:
-    if not text:
-        return False
-    raw = text.strip()
-    if button_text_is_connect_calendar(raw):
-        return True
-    return bool(_CMD_CONNECT.fullmatch(_command_part(raw)))
+    return _button_or_command(text, button=button_text_is_connect_calendar, command=_CMD_CONNECT)
 
 
 def is_check_calendar_request(text: str | None) -> bool:
-    if not text:
-        return False
-    return button_text_is_check_calendar(text.strip())
+    return _button_or_command(text, button=button_text_is_check_calendar)
 
 
 def is_disconnect_calendar_request(text: str | None) -> bool:
-    if not text:
-        return False
-    return button_text_is_disconnect_calendar(text.strip())
+    return _button_or_command(text, button=button_text_is_disconnect_calendar)
 
 
 def is_calendar_sources_request(text: str | None) -> bool:
-    if not text:
-        return False
-    raw = text.strip()
-    if button_text_is_calendar_sources(raw):
-        return True
-    return bool(_CMD_CALENDARS.fullmatch(_command_part(raw)))
+    return _button_or_command(text, button=button_text_is_calendar_sources, command=_CMD_CALENDARS)
 
 
 def is_foreign_calendars_request(text: str | None) -> bool:
-    if not text:
-        return False
-    raw = text.strip()
-    if button_text_is_foreign_calendars(raw):
-        return True
-    return bool(_CMD_FOREIGN_CALENDARS.fullmatch(_command_part(raw)))
+    return _button_or_command(
+        text, button=button_text_is_foreign_calendars, command=_CMD_FOREIGN_CALENDARS
+    )
 
 
 def is_command_like_message(text: str) -> bool:

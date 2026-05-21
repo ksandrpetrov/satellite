@@ -58,8 +58,6 @@ def test_render_upcoming_share_png():
             ],
         }
     ]
-    png = render_upcoming_share_card(
-        groups, days=7, reference_date=date(2026, 5, 21)
-    )
+    png = render_upcoming_share_card(groups, days=7, reference_date=date(2026, 5, 21))
     assert len(png) > 4000
     assert png[:8] == b"\x89PNG\r\n\x1a\n"

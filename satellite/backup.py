@@ -25,9 +25,9 @@ from __future__ import annotations
 
 import logging
 import shutil
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
 
 log = logging.getLogger(__name__)
 
@@ -94,7 +94,11 @@ def _prune_old_snapshots(directory: Path, *, prefix: str, max_snapshots: int) ->
     """Оставляет ``max_snapshots`` самых свежих бэкапов с указанным префиксом."""
     try:
         candidates = sorted(
-            (item for item in directory.iterdir() if item.name.startswith(prefix) and item.name.endswith(".bak")),
+            (
+                item
+                for item in directory.iterdir()
+                if item.name.startswith(prefix) and item.name.endswith(".bak")
+            ),
             key=lambda item: item.name,
         )
     except OSError as exc:

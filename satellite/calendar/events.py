@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import html
+from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta, tzinfo
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 
 from ..messages_ru import format_duration_long_ru
 from .constants import LUNCH_EMOJI_MARKER, PLAN_ALL_DAY_LABEL
@@ -157,7 +158,7 @@ def user_partstat(event: Event, login: str) -> str | None:
         idx = attendee_norm.find("partstat=")
         if idx < 0:
             continue
-        tail = attendee_norm[idx + len("partstat="):]
+        tail = attendee_norm[idx + len("partstat=") :]
         end = len(tail)
         for sep in (";", ",", ":", " "):
             pos = tail.find(sep)
@@ -434,9 +435,7 @@ def format_single_day_events_lines(
     return lines
 
 
-def event_ends_after(
-    event: Event, tz: tzinfo, *, moment: datetime
-) -> bool:
+def event_ends_after(event: Event, tz: tzinfo, *, moment: datetime) -> bool:
     """True, если событие ещё не закончилось относительно ``moment`` (локально)."""
     end = parse_iso(event.get("dtend"))
     start = parse_iso(event.get("dtstart"))
@@ -522,9 +521,7 @@ def format_invitation_list_lines(
         if day is not None and day != last_day:
             if lines:
                 lines.append("")
-            lines.append(
-                f"<b>{format_upcoming_day_header(day, reference_date)}</b>"
-            )
+            lines.append(f"<b>{format_upcoming_day_header(day, reference_date)}</b>")
             last_day = day
         title = html.escape(str(ev.get("summary") or "—"))
         when = format_time_range(ev, tz)

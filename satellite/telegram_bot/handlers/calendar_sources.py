@@ -111,9 +111,7 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
         current.add(target_url)
         enabled_now = True
 
-    updated = ctx.users.set_enabled_calendar_urls(
-        cb.user_id, calendar_urls=sorted(current)
-    )
+    updated = ctx.users.set_enabled_calendar_urls(cb.user_id, calendar_urls=sorted(current))
     enabled_urls = enabled_url_set(updated)
     text = calendar_sources_screen_text(lines=screen_lines(calendars, enabled_urls))
     pairs = [(entry.name, entry.url) for entry in calendars]

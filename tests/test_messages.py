@@ -5,11 +5,11 @@ from satellite.messages_ru import (
     BUTTON_CREATE_EVENT,
     BUTTON_DAY_AFTER,
     BUTTON_FOREIGN_CALENDARS,
+    BUTTON_INVITATIONS,
     BUTTON_MANAGE_EVENTS,
     BUTTON_SETTINGS,
     BUTTON_TODAY,
     BUTTON_TOMORROW,
-    BUTTON_INVITATIONS,
     BUTTON_UPCOMING,
     build_approved_main_keyboard,
     button_text_to_mode,
@@ -22,7 +22,7 @@ TZ = ZoneInfo("Europe/Moscow")
 
 
 def test_normalize_button_text_strips_variation_selectors():
-    assert normalize_button_text("📅\uFE0F Сегодня") == normalize_button_text(BUTTON_TODAY)
+    assert normalize_button_text("📅\ufe0f Сегодня") == normalize_button_text(BUTTON_TODAY)
 
 
 def test_button_text_to_mode_handles_known_buttons():

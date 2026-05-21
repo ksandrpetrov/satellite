@@ -10,6 +10,8 @@
 список с тостом — чтобы можно было обработать несколько встреч подряд.
 Удаление встречи здесь сознательно не делаем: DECLINE и так убирает её из
 плана и дайджеста, а необратимый DELETE в массовом UX опасен.
+
+Общий поток PARTSTAT-ответа делегирован :mod:`.partstat_flow`.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import html
 import logging
 from datetime import date, datetime, timedelta
 
+from ...calendar.callback_tokens import event_callback_token
 from ...calendar.events import (
     collect_manageable_events,
     event_index_marker,
@@ -26,9 +29,7 @@ from ...calendar.events import (
     format_upcoming_day_header,
     user_partstat,
 )
-from ...calendar.callback_tokens import event_callback_token
 from ...calendar.providers.base import (
-    CalendarEventRef,
     CalendarNotConnectedError,
     CalendarProviderError,
 )
@@ -52,32 +53,19 @@ from ...messages_ru import (
     manage_detail_html,
     manage_list_html,
 )
+from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .delivery import edit_callback_message, open_streaming_reply, safe_answer_callback
+from .partstat_flow import PartstatFlow, find_event_by_token, respond_partstat
 
 log = logging.getLogger(__name__)
 
 _HORIZON_DAYS = 7
 _MAX_EVENTS = 12
 
-_PARTSTAT_BY_CODE = {
-    "a": "ACCEPTED",
-    "d": "DECLINED",
-    "t": "TENTATIVE",
-}
 
-_TOAST_BY_CODE = {
-    "a": MANAGE_RESPOND_ACCEPTED,
-    "d": MANAGE_RESPOND_DECLINED,
-    "t": MANAGE_RESPOND_TENTATIVE,
-}
-
-
-def _fetch_manageable(
-    ctx: HandlerContext, user_id: int
-) -> tuple[list, str, bool]:
+def _fetch_manageable(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
     now = datetime.now(tz=ctx.tz)
     today = now.date()
     end = today + timedelta(days=_HORIZON_DAYS)
@@ -102,9 +90,12 @@ def _fetch_manageable(
     return manageable, login, truncated
 
 
-def _format_list_lines(
-    events: list, tz, reference_date: date
-) -> list[str]:
+def _fetch_manageable_events_only(ctx: HandlerContext, user_id: int) -> list:
+    events, _login, _ = _fetch_manageable(ctx, user_id)
+    return events
+
+
+def _format_list_lines(events: list, tz, reference_date: date) -> list[str]:
     """Строки тела списка: заголовок дня + пронумерованные встречи со статусом.
 
     Отличие от ``format_invitation_list_lines``: тут показываем ещё и текущий
@@ -119,9 +110,7 @@ def _format_list_lines(
         if day is not None and day != last_day:
             if lines:
                 lines.append("")
-            lines.append(
-                f"<b>{format_upcoming_day_header(day, reference_date)}</b>"
-            )
+            lines.append(f"<b>{format_upcoming_day_header(day, reference_date)}</b>")
             last_day = day
         marker = event_index_marker(idx)
         title = html.escape(str(ev.get("summary") or "—"))
@@ -150,31 +139,15 @@ def _build_list_screen(
 def _load_list_screen(ctx: HandlerContext, user_id: int) -> tuple[str, dict]:
     events, _login, truncated = _fetch_manageable(ctx, user_id)
     today = datetime.now(tz=ctx.tz).date()
-    return _build_list_screen(
-        events, tz=ctx.tz, reference_date=today, truncated=truncated
-    )
+    return _build_list_screen(events, tz=ctx.tz, reference_date=today, truncated=truncated)
 
 
-def _find_event_by_token(events: list, token: str):
-    needle = (token or "").strip()
-    if not needle:
-        return None
-    for ev in events:
-        if event_callback_token(str(ev.get("url") or "")) == needle:
-            return ev
-    return None
-
-
-def _detail_screen_for(
-    ctx: HandlerContext, event, login: str
-) -> tuple[str, dict]:
+def _detail_screen_for(ctx: HandlerContext, event, login: str) -> tuple[str, dict]:
     token = event_callback_token(str(event.get("url") or ""))
     title = html.escape(str(event.get("summary") or "—"))
     day = event_local_start_date(event, ctx.tz)
     today = datetime.now(tz=ctx.tz).date()
-    day_header = (
-        format_upcoming_day_header(day, today) if day is not None else "—"
-    )
+    day_header = format_upcoming_day_header(day, today) if day is not None else "—"
     when = f"{day_header} · {format_time_range(event, ctx.tz)}"
     partstat = user_partstat(event, login)
     text = manage_detail_html(title=title, when=when, partstat=partstat)
@@ -186,11 +159,7 @@ def _detail_screen_for(
 
 
 def handle_open_manage_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
-    if (
-        not ensure_calendar_connected(ctx, msg)
-        or msg.chat_id is None
-        or msg.user_id is None
-    ):
+    if not ensure_calendar_connected(ctx, msg) or msg.chat_id is None or msg.user_id is None:
         return
     stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
     stream.push(MANAGE_FETCH_STATUS)
@@ -206,9 +175,7 @@ def handle_open_manage_events(ctx: HandlerContext, msg: IncomingMessage) -> None
     log.info("Opened manage events: user_id=%s", msg.user_id)
 
 
-def _refresh_list(
-    ctx: HandlerContext, cb: IncomingCallback, *, toast: str | None = None
-) -> None:
+def _refresh_list(ctx: HandlerContext, cb: IncomingCallback, toast: str | None = None) -> None:
     if cb.user_id is None:
         safe_answer_callback(ctx, cb, text=toast)
         return
@@ -230,7 +197,7 @@ def _open_detail(ctx: HandlerContext, cb: IncomingCallback, token: str) -> None:
         edit_callback_message(ctx, cb, ERR_CALDAV_UNAVAILABLE_TEXT, reply_markup=None)
         safe_answer_callback(ctx, cb)
         return
-    event = _find_event_by_token(events, token)
+    event = find_event_by_token(events, token)
     if event is None:
         _refresh_list(ctx, cb, toast=MANAGE_NOT_FOUND_TEXT)
         return
@@ -239,49 +206,35 @@ def _open_detail(ctx: HandlerContext, cb: IncomingCallback, token: str) -> None:
     safe_answer_callback(ctx, cb)
 
 
-def _handle_respond(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
-    if cb.user_id is None:
-        safe_answer_callback(ctx, cb)
+def _on_success(ctx: HandlerContext, cb: IncomingCallback, _code: str, toast: str) -> None:
+    if cb.chat_id is None:
         return
-    suffix = data[len(CB_MANAGE_RESPOND_PREFIX) :]
-    if ":" not in suffix:
-        safe_answer_callback(ctx, cb)
-        return
-    token, code = suffix.rsplit(":", 1)
-    partstat = _PARTSTAT_BY_CODE.get(code.strip().lower())
-    if not partstat:
-        safe_answer_callback(ctx, cb)
-        return
-    try:
-        events, _login, _ = _fetch_manageable(ctx, cb.user_id)
-        event = _find_event_by_token(events, token)
-        if event is None:
-            _refresh_list(ctx, cb, toast=MANAGE_NOT_FOUND_TEXT)
-            return
-        event_url = str(event.get("url") or "")
-        uid = str(event.get("uid") or "")
-        ctx.calendar_service.set_attendee_partstat(
-            cb.user_id,
-            CalendarEventRef(uid=uid, url=event_url),
-            partstat,
-        )
-    except (CalendarNotConnectedError, CalendarProviderError) as exc:
-        log.error(
-            "Manage respond failed user_id=%s: %s",
-            cb.user_id,
-            getattr(exc, "error_code", exc.__class__.__name__),
-        )
-        safe_answer_callback(ctx, cb, text=MANAGE_RESPOND_FAIL_TEXT)
-        return
-    toast = _TOAST_BY_CODE.get(code.strip().lower(), MANAGE_RESPOND_ACCEPTED)
-    if cb.chat_id is not None:
-        send_with_effect(
-            ctx.telegram,
-            cb.chat_id,
-            toast,
-            message_effect_id=private_message_effect(EFFECT_SPARKLES, cb.chat_id),
-        )
-    _refresh_list(ctx, cb, toast=toast)
+    send_with_effect(
+        ctx.telegram,
+        cb.chat_id,
+        toast,
+        message_effect_id=private_message_effect(EFFECT_SPARKLES, cb.chat_id),
+    )
+
+
+def _on_not_found(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    _refresh_list(ctx, cb, toast=MANAGE_NOT_FOUND_TEXT)
+
+
+_FLOW = PartstatFlow(
+    prefix=CB_MANAGE_RESPOND_PREFIX,
+    fail_text=MANAGE_RESPOND_FAIL_TEXT,
+    toast_by_code={
+        "a": MANAGE_RESPOND_ACCEPTED,
+        "d": MANAGE_RESPOND_DECLINED,
+        "t": MANAGE_RESPOND_TENTATIVE,
+    },
+    log_name="Manage",
+    fetch_events=_fetch_manageable_events_only,
+    refresh_view=_refresh_list,
+    on_not_found=_on_not_found,
+    on_success=_on_success,
+)
 
 
 def route_manage_events_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
@@ -300,6 +253,6 @@ def route_manage_events_callback(ctx: HandlerContext, cb: IncomingCallback) -> b
         _open_detail(ctx, cb, token)
         return True
     if data.startswith(CB_MANAGE_RESPOND_PREFIX):
-        _handle_respond(ctx, cb, data)
+        respond_partstat(ctx, cb, data, _FLOW)
         return True
     return False

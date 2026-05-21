@@ -13,9 +13,9 @@ from ...messages_ru import (
     build_admin_access_keyboard,
 )
 from ..api import TelegramError
+from ..visual import set_default_menu_button_for_chat
 from .access import notify_user_access_decision
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from ..visual import set_default_menu_button_for_chat
 from .delivery import safe_answer_callback, send, webapp_connect_url
 
 log = logging.getLogger(__name__)
@@ -105,8 +105,6 @@ def _handle_reject(ctx: HandlerContext, cb: IncomingCallback, target_id: int) ->
         safe_answer_callback(ctx, cb, text="Пользователь не найден")
         return
     if record.chat_id is not None:
-        notify_user_access_decision(
-            ctx, chat_id=record.chat_id, approved=False, webapp_url=""
-        )
+        notify_user_access_decision(ctx, chat_id=record.chat_id, approved=False, webapp_url="")
     safe_answer_callback(ctx, cb, text="Отклонено")
     log.info("Admin %s rejected user %s", cb.user_id, target_id)

@@ -5,17 +5,18 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from icalendar import Calendar as IcsCalendar, Event as IcsEvent
+from icalendar import Calendar as IcsCalendar
+from icalendar import Event as IcsEvent
 
 from satellite.calendar.caldav_client import CalDAVService
+from satellite.calendar.callback_tokens import event_callback_token
 from satellite.calendar.events import (
     collect_pending_invitations,
     is_pending_invitation_for_user,
 )
-from satellite.calendar.callback_tokens import event_callback_token
+from satellite.messages_ru import BUTTON_INVITATIONS
 from satellite.telegram_bot.handlers.calendar_invitations import _find_event_by_token
 from satellite.telegram_bot.handlers.routing import InvitationsCommand, recognize_message
-from satellite.messages_ru import BUTTON_INVITATIONS
 
 TZ = ZoneInfo("Europe/Moscow")
 LOGIN = "me@mail.ru"
@@ -40,12 +41,8 @@ def _ev(
 
 def test_is_pending_invitation_for_user():
     assert is_pending_invitation_for_user(_ev(), LOGIN)
-    assert not is_pending_invitation_for_user(
-        _ev(partstat="ACCEPTED"), LOGIN
-    )
-    assert not is_pending_invitation_for_user(
-        _ev(partstat="TENTATIVE"), LOGIN
-    )
+    assert not is_pending_invitation_for_user(_ev(partstat="ACCEPTED"), LOGIN)
+    assert not is_pending_invitation_for_user(_ev(partstat="TENTATIVE"), LOGIN)
 
 
 def test_collect_pending_invitations_skips_past_and_accepted():
@@ -59,9 +56,7 @@ def test_collect_pending_invitations_skips_past_and_accepted():
             end="2026-05-19T11:00:00+03:00",
         ),
     ]
-    pending = collect_pending_invitations(
-        events, LOGIN, TZ, now=now, max_events=10
-    )
+    pending = collect_pending_invitations(events, LOGIN, TZ, now=now, max_events=10)
     assert len(pending) == 1
     assert pending[0]["summary"] == "Pending"
 
@@ -94,7 +89,7 @@ class _StubEventObj:
         self.save_called = False
         self.load_called = False
 
-    def load(self, only_if_unloaded: bool = False) -> "_StubEventObj":
+    def load(self, only_if_unloaded: bool = False) -> _StubEventObj:
         if only_if_unloaded and self._data is not None:
             return self
         self.load_called = True
@@ -143,12 +138,8 @@ def test_set_attendee_partstat_updates_ics(monkeypatch):
         saved["body"] = data
         return _PutResp()
 
-    monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.get", fake_get
-    )
-    monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.put", fake_put
-    )
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.put", fake_put)
 
     service = CalDAVService(
         caldav_url="https://fake/",
@@ -156,8 +147,9 @@ def test_set_attendee_partstat_updates_ics(monkeypatch):
         app_password="pw",
         cache_ttl_sec=300,
     )
-    from satellite.calendar.caldav_client import _DiscoveryResult
     import time as _time
+
+    from satellite.calendar.caldav_client import _DiscoveryResult
 
     service._cache = _DiscoveryResult(
         endpoint="https://fake/",
@@ -201,9 +193,7 @@ def test_set_attendee_partstat_adds_attendee_when_missing(monkeypatch):
         saved["body"] = kwargs.get("data") or (args[1] if len(args) > 1 else None)
         return _PutResp()
 
-    monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.put", fake_put
-    )
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.put", fake_put)
 
     service = CalDAVService(
         caldav_url="https://fake/",
@@ -211,8 +201,9 @@ def test_set_attendee_partstat_adds_attendee_when_missing(monkeypatch):
         app_password="pw",
         cache_ttl_sec=300,
     )
-    from satellite.calendar.caldav_client import _DiscoveryResult
     import time as _time
+
+    from satellite.calendar.caldav_client import _DiscoveryResult
 
     service._cache = _DiscoveryResult(
         endpoint="https://fake/",
@@ -288,9 +279,7 @@ def test_set_attendee_partstat_updates_pending_attendee_without_login_match(monk
         saved["body"] = kwargs.get("data") or (args[1] if len(args) > 1 else None)
         return _PutResp()
 
-    monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.put", fake_put
-    )
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.put", fake_put)
 
     service = CalDAVService(
         caldav_url="https://fake/",
@@ -298,8 +287,9 @@ def test_set_attendee_partstat_updates_pending_attendee_without_login_match(monk
         app_password="pw",
         cache_ttl_sec=300,
     )
-    from satellite.calendar.caldav_client import _DiscoveryResult
     import time as _time
+
+    from satellite.calendar.caldav_client import _DiscoveryResult
 
     service._cache = _DiscoveryResult(
         endpoint="https://fake/",

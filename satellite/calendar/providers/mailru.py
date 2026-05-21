@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from datetime import date, tzinfo
 
-from ..caldav_client import CalDAVError, CalDAVService
 from ...security.token_vault import ProviderCredentials
+from ..caldav_client import CalDAVError, CalDAVService
 from ..selection import effective_enabled_calendar_urls_from_parts
 from .base import (
     CalendarConnectionStatus,
@@ -46,7 +46,7 @@ class MailruCalendarProvider:
                 return False, None, "NO_CALENDAR"
             return True, primary, None
         except CalDAVError as exc:
-            login_domain = (credentials.login.split("@")[-1] if "@" in credentials.login else "?")
+            login_domain = credentials.login.split("@")[-1] if "@" in credentials.login else "?"
             log.info(
                 "Mail.ru credential validation failed domain=%s detail=%s",
                 login_domain,
@@ -68,9 +68,7 @@ class MailruCalendarProvider:
             ) from exc
         return [CalendarListEntry(name=handle.name, url=handle.url) for handle in handles]
 
-    def get_connection_status(
-        self, context: UserCalendarContext
-    ) -> CalendarConnectionStatus:
+    def get_connection_status(self, context: UserCalendarContext) -> CalendarConnectionStatus:
         ok, _url, code = self.validate_credentials(context.credentials)
         status = "connected" if ok else "invalid"
         return CalendarConnectionStatus(
@@ -93,9 +91,7 @@ class MailruCalendarProvider:
             primary_calendar_url=context.primary_calendar_url,
         )
         if not calendar_urls:
-            raise CalendarProviderError(
-                "Календарь не настроен.", error_code="NO_CALENDAR"
-            )
+            raise CalendarProviderError("Календарь не настроен.", error_code="NO_CALENDAR")
         try:
             return service.fetch_events_in_range(
                 start_date,
@@ -123,9 +119,7 @@ class MailruCalendarProvider:
             primary_calendar_url=context.primary_calendar_url,
         )
         if not calendar_urls:
-            raise CalendarProviderError(
-                "Календарь не настроен.", error_code="NO_CALENDAR"
-            )
+            raise CalendarProviderError("Календарь не настроен.", error_code="NO_CALENDAR")
         try:
             return service.fetch_events_in_range(
                 start_date,
@@ -177,9 +171,7 @@ class MailruCalendarProvider:
             primary_calendar_url=context.primary_calendar_url,
         )
         if not calendar_urls:
-            raise CalendarProviderError(
-                "Календарь не настроен.", error_code="NO_CALENDAR"
-            )
+            raise CalendarProviderError("Календарь не настроен.", error_code="NO_CALENDAR")
         start = payload.start if payload.start.tzinfo else payload.start.replace(tzinfo=tz)
         end = payload.end if payload.end.tzinfo else payload.end.replace(tzinfo=tz)
         last_exc: CalDAVError | None = None

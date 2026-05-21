@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from ...messages_ru import BOT_KEYBOARD_HINT
 from ..api import TelegramError
@@ -17,7 +19,12 @@ from .access import (
     handle_start_or_help,
 )
 from .admin import handle_pending_command, route_admin_callback
+from .analytics import route_analytics_callback
 from .calendar_create import handle_create_text_input, route_create_callback, start_create_event
+from .calendar_foreign import (
+    handle_open_foreign_calendars,
+    route_foreign_calendars_callback,
+)
 from .calendar_invitations import handle_open_invitations, route_invitations_callback
 from .calendar_list import handle_upcoming_events
 from .calendar_manage import handle_open_manage_events, route_manage_events_callback
@@ -26,10 +33,6 @@ from .calendar_setup import (
     handle_connect_calendar_button,
     handle_disconnect_calendar,
     handle_web_app_connect,
-)
-from .calendar_foreign import (
-    handle_open_foreign_calendars,
-    route_foreign_calendars_callback,
 )
 from .calendar_sources import (
     handle_open_calendar_sources,
@@ -56,7 +59,6 @@ from .routing import (
     UpcomingCommand,
     recognize_message,
 )
-from .analytics import route_analytics_callback
 from .settings import handle_digest_time_input, route_settings_callback
 from .settings_hub import handle_open_settings_hub, route_settings_hub_callback
 from .subscription import handle_subscription_action
@@ -136,52 +138,81 @@ def _route_message(
     _dispatch_recognized(ctx, msg, cmd)
 
 
-def _dispatch_recognized(
-    ctx: HandlerContext, msg: IncomingMessage, cmd: RecognizedCommand
-) -> None:
-    if isinstance(cmd, ConnectCommand):
-        handle_connect_calendar_button(ctx, msg)
+HandlerFn = Callable[[HandlerContext, IncomingMessage, "RecognizedCommand"], None]
+
+
+@dataclass(frozen=True)
+class _MessageRoute:
+    """Один маршрут команды → handler + опциональный access-guard.
+
+    Добавление новой команды: одна строка в :data:`_MESSAGE_ROUTES`.
+    """
+
+    handler: HandlerFn
+    access_guard: Callable[[HandlerContext, IncomingMessage], bool] | None = None
+
+
+def _run_simple(handler):
+    """Адаптер для handler, который не смотрит на конкретный класс команды."""
+
+    def _call(ctx, msg, _cmd):
+        handler(ctx, msg)
+
+    return _call
+
+
+def _plan(ctx, msg, cmd):
+    handle_plan(ctx, msg, cmd.mode)
+
+
+def _subscription(ctx, msg, cmd):
+    handle_subscription_action(ctx, msg, cmd.action)
+
+
+_MESSAGE_ROUTES: dict[type, _MessageRoute] = {
+    ConnectCommand: _MessageRoute(handler=_run_simple(handle_connect_calendar_button)),
+    CheckCommand: _MessageRoute(handler=_run_simple(handle_check_calendar)),
+    DisconnectCommand: _MessageRoute(handler=_run_simple(handle_disconnect_calendar)),
+    UpcomingCommand: _MessageRoute(handler=_run_simple(handle_upcoming_events)),
+    InvitationsCommand: _MessageRoute(
+        handler=_run_simple(handle_open_invitations),
+        access_guard=ensure_calendar_connected,
+    ),
+    ManageEventsCommand: _MessageRoute(
+        handler=_run_simple(handle_open_manage_events),
+        access_guard=ensure_calendar_connected,
+    ),
+    CreateCommand: _MessageRoute(handler=_run_simple(start_create_event)),
+    CalendarSourcesCommand: _MessageRoute(
+        handler=_run_simple(handle_open_calendar_sources),
+        access_guard=ensure_calendar_connected,
+    ),
+    ForeignCalendarsCommand: _MessageRoute(
+        handler=_run_simple(handle_open_foreign_calendars),
+        access_guard=ensure_calendar_connected,
+    ),
+    SettingsCommand: _MessageRoute(
+        handler=_run_simple(handle_open_settings_hub),
+        access_guard=ensure_calendar_access,
+    ),
+    SubscriptionCommand: _MessageRoute(
+        handler=_subscription,
+        access_guard=ensure_calendar_access,
+    ),
+    PlanCommand: _MessageRoute(
+        handler=_plan,
+        access_guard=ensure_calendar_connected,
+    ),
+}
+
+
+def _dispatch_recognized(ctx: HandlerContext, msg: IncomingMessage, cmd: RecognizedCommand) -> None:
+    route = _MESSAGE_ROUTES.get(type(cmd))
+    if route is None:
         return
-    if isinstance(cmd, CheckCommand):
-        handle_check_calendar(ctx, msg)
+    if route.access_guard is not None and not route.access_guard(ctx, msg):
         return
-    if isinstance(cmd, DisconnectCommand):
-        handle_disconnect_calendar(ctx, msg)
-        return
-    if isinstance(cmd, UpcomingCommand):
-        handle_upcoming_events(ctx, msg)
-        return
-    if isinstance(cmd, InvitationsCommand):
-        if ensure_calendar_connected(ctx, msg):
-            handle_open_invitations(ctx, msg)
-        return
-    if isinstance(cmd, ManageEventsCommand):
-        if ensure_calendar_connected(ctx, msg):
-            handle_open_manage_events(ctx, msg)
-        return
-    if isinstance(cmd, CreateCommand):
-        start_create_event(ctx, msg)
-        return
-    if isinstance(cmd, CalendarSourcesCommand):
-        if ensure_calendar_connected(ctx, msg):
-            handle_open_calendar_sources(ctx, msg)
-        return
-    if isinstance(cmd, ForeignCalendarsCommand):
-        if ensure_calendar_connected(ctx, msg):
-            handle_open_foreign_calendars(ctx, msg)
-        return
-    if isinstance(cmd, SettingsCommand):
-        if ensure_calendar_access(ctx, msg):
-            handle_open_settings_hub(ctx, msg)
-        return
-    if isinstance(cmd, SubscriptionCommand):
-        if ensure_calendar_access(ctx, msg):
-            handle_subscription_action(ctx, msg, cmd.action)
-        return
-    if isinstance(cmd, PlanCommand):
-        if ensure_calendar_connected(ctx, msg):
-            handle_plan(ctx, msg, cmd.mode)
-        return
+    route.handler(ctx, msg, cmd)
 
 
 # --- диспетчер: callback_query ---------------------------------------------
@@ -213,25 +244,28 @@ def handle_callback_query(ctx: HandlerContext, cb: IncomingCallback) -> None:
         notify_handler_failure(ctx, cb.chat_id)
 
 
+CallbackRouter = Callable[[HandlerContext, IncomingCallback], bool]
+
+
+# Порядок важен: первый router, вернувший True, забирает callback.
+# Добавление нового раздела — одна строка в этом списке.
+_CALLBACK_ROUTERS: list[CallbackRouter] = [
+    route_admin_callback,
+    route_create_callback,
+    route_invitations_callback,
+    route_manage_events_callback,
+    route_settings_hub_callback,
+    route_analytics_callback,
+    route_settings_callback,
+    route_calendar_sources_callback,
+    route_foreign_calendars_callback,
+]
+
+
 def _route_callback(ctx: HandlerContext, cb: IncomingCallback) -> None:
-    if route_admin_callback(ctx, cb):
-        return
-    if route_create_callback(ctx, cb):
-        return
-    if route_invitations_callback(ctx, cb):
-        return
-    if route_manage_events_callback(ctx, cb):
-        return
-    if route_settings_hub_callback(ctx, cb):
-        return
-    if route_analytics_callback(ctx, cb):
-        return
-    if route_settings_callback(ctx, cb):
-        return
-    if route_calendar_sources_callback(ctx, cb):
-        return
-    if route_foreign_calendars_callback(ctx, cb):
-        return
+    for router in _CALLBACK_ROUTERS:
+        if router(ctx, cb):
+            return
     log.info("Unknown callback_data: %r", cb.data)
     safe_answer_callback(ctx, cb)
 

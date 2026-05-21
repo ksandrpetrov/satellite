@@ -89,7 +89,7 @@ class InstanceLock:
         except OSError:
             pass
 
-    def __enter__(self) -> "InstanceLock":
+    def __enter__(self) -> InstanceLock:
         self.acquire()
         return self
 

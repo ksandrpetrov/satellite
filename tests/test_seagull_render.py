@@ -59,10 +59,7 @@ def test_plain_date_header_when_not_relative_day():
 def test_schedule_blockquote_when_four_or_more_meetings():
     """От 4 встреч расписание оборачивается в blockquote (развёрнутый)."""
 
-    events = [
-        _ev(f"M{i}", f"{10 + i:02d}:00", f"{10 + i:02d}:30")
-        for i in range(4)
-    ]
+    events = [_ev(f"M{i}", f"{10 + i:02d}:00", f"{10 + i:02d}:30") for i in range(4)]
     text = _render(events, plan_date=date(2026, 5, 11))
     assert "<blockquote>" in text
     assert 'expandable="true"' not in text

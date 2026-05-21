@@ -7,16 +7,45 @@ entrypoint уже используют текущие импорты, а стр�
 ## Слои
 
 ```text
-entrypoints
-  -> services / TelegramBot lifecycle
-  -> telegram handlers (+ Web App HTTP)
-  -> domain services (users, subscriptions, plan)
-  -> calendar / weather clients (per-user CalDAV)
-  -> renderers and templates
+entrypoints  (telegram_test_command.py)
+  -> services.run_bot
+  -> TelegramBot lifecycle  +  WebAppServer (background thread)
+       |                          |
+       v                          v
+  telegram_bot/handlers/      web/  (routing -> api/{calendar,share})
+       \                       /
+        \_____ access _______/
+                |
+                v
+  domain services  (users, subscriptions, plan_service, share_service, analytics/service)
+                |
+                v
+  calendar/  (user_calendar_service -> providers/{mailru,yandex} -> caldav_client)
+                |
+                v
+  renderers  (seagull/, weather/, share/cards, analytics/render_card)
+                |
+                v
+  visual_cards/base.py  — единственная палитра/шрифты/логотип для всех PNG
 ```
 
+Все user-facing PNG-карточки (план дня, /upcoming, недельная аналитика)
+рендерятся через примитивы [`visual_cards/base.py`](../satellite/visual_cards/base.py).
+Шрифты/палитра/логотип нигде больше не дублируются.
+
 Handlers принимают Telegram-события и не считают календарную аналитику сами.
-Бизнес-логика живет в сервисах и чистых модулях.
+Бизнес-логика живёт в сервисах и чистых модулях.
+
+### Data-driven routing
+
+- `telegram_bot/handlers/routing.py` — `_RECOGNIZERS`: список матчеров для
+  входящих сообщений; `recognize_message` ходит по таблице, не по if/elif.
+- `telegram_bot/handlers/dispatch.py` — `_MESSAGE_ROUTES` (mapping
+  `RecognizedCommand` → handler + опциональный access guard) и
+  `_CALLBACK_ROUTERS` (список callback-роутеров). Добавление новой команды
+  или callback'а — одна запись в таблице, без изменения каркаса.
+- `web/routing.py` — аналогичный паттерн: один `Route` на endpoint, диспетчер
+  в `server.py` ходит по таблице.
 
 Вспомогательные модули верхнего уровня:
 
@@ -25,7 +54,10 @@ Handlers принимают Telegram-события и не считают ка�
 - `satellite/users.py` — `UserStore`: доступ, заявки, per-user CalDAV в `logs/users.json`.
 - `satellite/security/token_vault.py` — Fernet-шифрование credentials.
 - `satellite/digest_utils.py` — `resolve_target_date`, `is_digest_day_allowed`.
-- `satellite/messages_ru.py` — все user-facing тексты и константы callback data.
+- `satellite/messages_ru/` — пакет с user-facing текстами и callback-константами.
+  `__init__.py` — фасад (re-export всего публичного API), реализация — в
+  `_core.py`. Старые импорты `from satellite.messages_ru import ...` работают
+  без изменений.
 
 ## Entry Points
 
@@ -92,12 +124,20 @@ telegram_test_command.py
   - `calendar_create.py` — `/create`, пошаговый FSM создания события.
   - `calendar_invitations.py` — `/invitations`, список NEEDS-ACTION и ответы
     ACCEPTED / DECLINED / TENTATIVE через CalDAV.
+  - `calendar_manage.py` — `/manage`, смена PARTSTAT по любой встрече на 7 дней.
   - `plan.py` — command → plan → reply.
   - `subscription.py` — subscribe/unsubscribe.
 - `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing.
 - `satellite/telegram_bot/message_editing.py` — edit loading message, fallback.
-- `satellite/telegram_bot/digest_state.py` — in-memory state for digest time input.
-- `satellite/telegram_bot/calendar_state.py` — FSM создания события, dedup callbacks.
+- `satellite/telegram_bot/handlers/digest_state.py` — in-memory state for digest
+  time input (canonical путь; `telegram_bot/digest_state.py` оставлен как
+  back-compat shim).
+- `satellite/telegram_bot/handlers/calendar_state.py` — FSM создания события,
+  dedup callbacks (canonical путь; `telegram_bot/calendar_state.py` —
+  back-compat shim).
+- `satellite/telegram_bot/handlers/partstat_flow.py` — общий PARTSTAT-флоу
+  (lookup события + `set_attendee_partstat` + toast + refresh), shared между
+  `calendar_invitations.py` и `calendar_manage.py`.
 - `satellite/telegram_bot/commands.py` — menu command registration.
 - `satellite/telegram_bot/concurrency.py` — `ChatLockManager`, `InflightTracker`.
 - `satellite/telegram_bot/instance_lock.py` — single-instance `fcntl` lock.
@@ -137,6 +177,12 @@ Important invariants:
 - `satellite/plan_service.py` — `PlanBuilder` (CalDAV → filter → optional weather
   → render). `PlanBuilder` не читает `users.json`; callers pass calendar identity
   and construct per-user `UserCalendarService` when needed.
+- `satellite/share_service.py` — `build_share_png`. Для `plan` использует
+  `PlanBuilder.build_day_stats` (single source of truth с дайджестом); для
+  `analytics` делегирует в `satellite.analytics.service.build_week_analytics`
+  (canonical путь, см. также shim `satellite/analytics_service.py`).
+- `satellite/share/cards.py` — PNG плана дня и списка «ближайшие» (Apple Health–style).
+- `satellite/visual_cards/base.py` — общие примитивы отрисовки (шрифты DejaVu, палитра).
 - `satellite/seagull/digest.py` — `prepare_seagull_stats`, `render_digest_from_stats`.
 - `satellite/seagull/rules.py` — text fragments from metrics.
 - `satellite/seagull/render.py` — Telegram HTML, escaping, truncation;
@@ -207,7 +253,18 @@ resolve_target_date(DIGEST_MODE, today in user timezone)
 
 ## Web App HTTP
 
-- `satellite/web/server.py` — `ThreadingHTTPServer` в фоновом потоке бота.
+- `satellite/web/server.py` — `WebAppServer`, lifecycle `ThreadingHTTPServer` в
+  фоновом потоке бота. Сам сервер не содержит хендлеров эндпоинтов: он строит
+  `Deps` и делегирует роутинг.
+- `satellite/web/routing.py` — таблица `(method, path) → handler`;
+  добавление нового endpoint = одна запись в этом файле.
+- `satellite/web/responses.py` — `json_response`, `png_response`, `AbortRequest`.
+- `satellite/web/parsing.py` — `read_json`, `extract_init_data`, `*_token_from_path`,
+  `parse_positive_int`, `parse_date`, `parse_datetime`, `serialize_event`.
+- `satellite/web/auth.py` — `validated_user` (initData + UserStore.approved).
+- `satellite/web/static_pages.py` — единая `serve_html` для `/connect`, `/share`.
+- `satellite/web/api/calendar.py` и `satellite/web/api/share.py` — собственно
+  REST-хендлеры.
 - `satellite/web/init_data.py` — HMAC-валидация Telegram `initData`
   (`InitDataError` с кодами `no_init_data`, `bad_signature`, `expired`).
 
@@ -231,12 +288,18 @@ resolve_target_date(DIGEST_MODE, today in user timezone)
 | `GET /api/calendar/events?from=&to=` | Список событий |
 | `POST /api/calendar/events` | Создать событие |
 | `DELETE /api/calendar/events/{uid}?url=` | Удалить событие |
+| `GET /share`, `GET /share/{token}` | SPA [`share.html`](../satellite/web/static/share.html) |
+| `GET /api/share/card?kind=&mode=&days=` | PNG для Web App «Поделиться» (`approved` + `has_calendar`) |
+
+`GET /api/share/card`: `kind` — `plan` | `upcoming` | `analytics`; для `plan` —
+`mode` (`today`, `tomorrow`, `day_after_tomorrow`); для `upcoming` — `days` (1–31,
+по умолчанию 7). Те же `initData` и connect-token, что у `/connect`.
 
 `POST /api/calendar/connect` принимает `provider=mailru` (production);
 `yandex` в API возвращает `PROVIDER_NOT_IMPLEMENTED` (backend готов, UI disabled).
 
 HTTPS — задача reverse proxy (Traefik в Docker, nginx/Caddy при systemd).
-Traefik/Docker проксирует `/connect` **и** `/api/calendar/*`.
+Проксируйте `/connect`, `/share` и префиксы `/api/calendar/`, `/api/share/`.
 
 ## Logging
 
@@ -253,8 +316,8 @@ The bot logs operational failures but sends users only safe, non-technical messa
   `logs/` на диске хоста, Web App за внешним nginx/Caddy
   (`WEBAPP_HOST=127.0.0.1`).
 - **Docker** — образ `ghcr.io/ksandrpetrov/satellite`, Ansible playbook
-  (`make deploy`), Traefik терминирует TLS и проксирует `/connect` в контейнер
-  (`WEBAPP_HOST=0.0.0.0`, volume `satellite-logs` → `/app/logs`).
+  (`make deploy`), Traefik терминирует TLS и проксирует `/connect`, `/share` и
+  `/api/*` в контейнер (`WEBAPP_HOST=0.0.0.0`, volume `satellite-logs` → `/app/logs`).
 
 Состояние (`users.json`, `subscriptions.json`, offset, lock) всегда в `logs/`.
 Подробности: [operations.md](operations.md), [deploy/README.md](../deploy/README.md).

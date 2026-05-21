@@ -74,8 +74,7 @@ def test_edit_fails_then_falls_back_to_send(caplog: pytest.LogCaptureFixture) ->
     send_kwargs = telegram.send_message.call_args.kwargs
     assert send_kwargs["parse_mode"] == "HTML"
     assert any(
-        record.levelno == logging.WARNING
-        and "Falling back to new message" in record.getMessage()
+        record.levelno == logging.WARNING and "Falling back to new message" in record.getMessage()
         for record in caplog.records
     )
 

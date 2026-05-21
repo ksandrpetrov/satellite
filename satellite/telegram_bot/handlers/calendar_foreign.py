@@ -34,10 +34,10 @@ from ...messages_ru import (
     foreign_calendars_day_result_text,
     foreign_calendars_pick_day_text,
 )
+from ..html_format import build_copy_text_button
 from .access import ensure_calendar_connected
 from .calendar_view import CalendarListStatus, fetch_calendars, normalize_calendar_url
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from ..html_format import build_copy_text_button
 from .delivery import edit_callback_message, safe_answer_callback, send
 
 log = logging.getLogger(__name__)
@@ -160,9 +160,7 @@ def _handle_pick(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
         safe_answer_callback(ctx, cb)
         return
     text = foreign_calendars_pick_day_text(calendar_name=entry.name)
-    keyboard = build_foreign_day_keyboard(
-        calendar_token=calendar_callback_token(entry.url)
-    )
+    keyboard = build_foreign_day_keyboard(calendar_token=calendar_callback_token(entry.url))
     edit_callback_message(ctx, cb, text, reply_markup=keyboard)
     safe_answer_callback(ctx, cb)
 
@@ -202,9 +200,7 @@ def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
             tz=ctx.tz,
             calendar_urls=(calendar_url,),
         )
-        lines = format_single_day_events_lines(
-            events, ctx.tz, target_date, reference_date=today
-        )
+        lines = format_single_day_events_lines(events, ctx.tz, target_date, reference_date=today)
         if not lines:
             return FOREIGN_CALENDARS_DAY_EMPTY_HTML
         return foreign_calendars_day_result_text(

@@ -88,9 +88,7 @@ class ConnectTokenStore:
             return
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {t: [uid, ts] for t, (uid, ts) in self._tokens.items()}
-        fd, tmp_name = tempfile.mkstemp(
-            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
-        )
+        fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(payload, fh, ensure_ascii=False)

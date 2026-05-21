@@ -22,7 +22,6 @@ from satellite.calendar.providers.base import (
     CalendarConnectionStatus,
     CalendarListEntry,
     CalendarNotConnectedError,
-    CalendarProvider,
     CalendarProviderError,
     UserCalendarContext,
 )
@@ -30,7 +29,6 @@ from satellite.calendar.providers.registry import PROVIDER_MAILRU
 from satellite.calendar.user_calendar_service import UserCalendarService
 from satellite.security.token_vault import ProviderCredentials, TokenVault
 from satellite.users import USER_STATUS_APPROVED, UserStore
-
 
 USER_ID = 7777
 LOGIN = "tester@mail.ru"
@@ -60,9 +58,7 @@ class FakeProvider:
             return False, None, "AUTH_FAILED"
         return True, "https://caldav.example/primary/", None
 
-    def get_connection_status(
-        self, context: UserCalendarContext
-    ) -> CalendarConnectionStatus:
+    def get_connection_status(self, context: UserCalendarContext) -> CalendarConnectionStatus:
         return self.next_status
 
     def list_calendars(self, context: UserCalendarContext) -> list[CalendarListEntry]:

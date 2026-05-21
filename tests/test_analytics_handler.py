@@ -19,12 +19,11 @@ from satellite.calendar.providers.base import (
     CalendarNotConnectedError,
     CalendarProviderError,
 )
-from satellite.telegram_bot.api import TelegramError
 from satellite.messages_ru import (
-    ANALYTICS_FETCH_STATUS,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_GENERIC_HANDLER_TEXT,
 )
+from satellite.telegram_bot.api import TelegramError
 from satellite.telegram_bot.handlers import IncomingCallback, handle_callback_query
 from satellite.telegram_bot.handlers.analytics import CB_ANALYTICS_RUN
 from satellite.users import CALENDAR_CONNECTED, USER_STATUS_APPROVED, UserStore
@@ -98,15 +97,11 @@ def _run_analytics_callback(ctx, *, build_side_effect, monkeypatch):
     handle_callback_query(ctx, cb)
 
 
-def test_unexpected_exception_replaces_loading_message(
-    tmp_path: Path, monkeypatch, caplog
-):
+def test_unexpected_exception_replaces_loading_message(tmp_path: Path, monkeypatch, caplog):
     ctx, _users = _ctx(tmp_path, build_side_effect=None)
     err = ModuleNotFoundError("No module named 'PIL'")
     with caplog.at_level(logging.ERROR, logger="satellite.telegram_bot.handlers"):
-        _run_analytics_callback(
-            ctx, build_side_effect=err, monkeypatch=monkeypatch
-        )
+        _run_analytics_callback(ctx, build_side_effect=err, monkeypatch=monkeypatch)
 
     ctx.telegram.send_message.assert_called_once()
     assert ctx.telegram.send_message.call_args[0][1] == ERR_GENERIC_HANDLER_TEXT
@@ -132,14 +127,14 @@ def test_not_connected_error_uses_caldav_text(tmp_path: Path, monkeypatch):
     _run_analytics_callback(ctx, build_side_effect=err, monkeypatch=monkeypatch)
 
     ctx.telegram.send_message.assert_called_once()
-    assert ctx.telegram.send_message.call_args[0][1] == ERR_CALDAV_UNAVAILABLE_TEXT, "CalendarNotConnectedError должен показывать ERR_CALDAV_UNAVAILABLE_TEXT"
+    assert ctx.telegram.send_message.call_args[0][1] == ERR_CALDAV_UNAVAILABLE_TEXT, (
+        "CalendarNotConnectedError должен показывать ERR_CALDAV_UNAVAILABLE_TEXT"
+    )
 
 
 def test_send_photo_failure_replaces_loading_message(tmp_path: Path, monkeypatch):
     ctx, _users = _ctx(tmp_path, build_side_effect=(b"\x89PNG\x00", "caption"))
-    ctx.telegram.send_photo.side_effect = TelegramError(
-        "Bad Request: can't parse entities"
-    )
+    ctx.telegram.send_photo.side_effect = TelegramError("Bad Request: can't parse entities")
     _run_analytics_callback(
         ctx, build_side_effect=(b"\x89PNG\x00", "caption"), monkeypatch=monkeypatch
     )

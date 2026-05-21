@@ -153,7 +153,8 @@ python -m pytest tests/test_weather.py
 - gate `approved` для `/api/calendar/*`;
 - HMAC-валидация `initData` (коды ошибок `no_init_data`, `bad_signature`, `expired`);
 - `initData` из заголовка, JSON-тела и query;
-- connect/disconnect и CRUD событий (mock `UserCalendarService`).
+- connect/disconnect и CRUD событий (mock `UserCalendarService`);
+- `GET /api/share/card` и сборка PNG (`test_share_cards.py`, `test_share_delivery.py`).
 
 ## Static Checks
 

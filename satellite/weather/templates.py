@@ -6,6 +6,7 @@ import random
 from collections.abc import Sequence
 
 from .analyzer import (
+    _PRIORITY,
     WARNING_COLD,
     WARNING_HOT,
     WARNING_NORMAL,
@@ -15,7 +16,6 @@ from .analyzer import (
     WARNING_STRONG_WIND,
     WARNING_VERY_COLD,
     WARNING_WIND,
-    _PRIORITY,
 )
 from .models import WeatherSummary
 

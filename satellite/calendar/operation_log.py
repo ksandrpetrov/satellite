@@ -43,11 +43,10 @@ class CalendarOperationLog:
         line = json.dumps(entry, ensure_ascii=False)
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            with self._lock:
-                with self._path.open("a", encoding="utf-8") as file:
-                    file.write(line + "\n")
-                    file.flush()
-                    os.fsync(file.fileno())
+            with self._lock, self._path.open("a", encoding="utf-8") as file:
+                file.write(line + "\n")
+                file.flush()
+                os.fsync(file.fileno())
         except OSError as exc:
             log.warning("Failed to write calendar op log: %s", exc)
         return cid

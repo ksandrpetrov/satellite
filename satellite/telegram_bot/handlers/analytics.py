@@ -5,27 +5,27 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from ...analytics_service import build_week_analytics
-from ...calendar.constants import ANALYTICS_WORKDAY_10_19, ANALYTICS_WORKDAY_9_18
+from ...analytics.service import build_week_analytics
+from ...calendar.constants import ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_19
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
-from ..api import TelegramError
 from ...messages_ru import (
     ANALYTICS_FETCH_STATUS,
     ANALYTICS_SAVED_TOAST,
     ANALYTICS_WORKDAY_APPLIED_TEXT,
-    CB_ANALYTICS_BACK,
+    CB_ANALYTICS_BACK,  # noqa: F401 — re-exported для settings_hub
     CB_ANALYTICS_RUN,
     CB_ANALYTICS_WORKDAY_9,
     CB_ANALYTICS_WORKDAY_10,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_GENERIC_HANDLER_TEXT,
+    SHARE_KIND_ANALYTICS,
     analytics_options_screen_text,
     build_analytics_options_keyboard,
 )
-from .access import ensure_calendar_connected
-from .context import HandlerContext, IncomingCallback, IncomingMessage
+from ..api import TelegramError
 from ..visual import EFFECT_SPARKLES, is_private_chat
-from ...messages_ru import SHARE_KIND_ANALYTICS
+from .access import ensure_calendar_connected
+from .context import HandlerContext, IncomingCallback
 from .delivery import (
     edit_callback_message,
     open_streaming_reply,
@@ -41,7 +41,7 @@ def handle_open_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
-    if not ensure_calendar_connected(ctx, _msg_from_cb(cb)):
+    if not ensure_calendar_connected(ctx, chat_id=cb.chat_id, user_id=cb.user_id):
         safe_answer_callback(ctx, cb)
         return
     record = ctx.users.get(cb.user_id)
@@ -59,7 +59,7 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
-    if not ensure_calendar_connected(ctx, _msg_from_cb(cb)):
+    if not ensure_calendar_connected(ctx, chat_id=cb.chat_id, user_id=cb.user_id):
         safe_answer_callback(ctx, cb)
         return
 
@@ -154,14 +154,3 @@ def route_analytics_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
         handle_set_analytics_workday(ctx, cb, ANALYTICS_WORKDAY_10_19)
         return True
     return False
-
-
-def _msg_from_cb(cb: IncomingCallback) -> IncomingMessage:
-    return IncomingMessage(
-        update_id=cb.update_id,
-        chat_id=cb.chat_id,
-        user_id=cb.user_id,
-        username=cb.username,
-        display_name=None,
-        text=None,
-    )

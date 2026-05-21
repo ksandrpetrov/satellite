@@ -18,12 +18,11 @@ from satellite.messages_ru import (
     BUTTON_TODAY,
     BUTTON_TOMORROW,
     CB_FOREIGN_DAY_PREFIX,
-    CB_FOREIGN_PICK_PREFIX,
     build_foreign_day_keyboard,
     button_text_is_foreign_calendars,
 )
 from satellite.telegram_bot.handlers.routing import is_foreign_calendars_request
-from satellite.users import USER_STATUS_APPROVED, UserStore, CALENDAR_CONNECTED
+from satellite.users import CALENDAR_CONNECTED, USER_STATUS_APPROVED, UserStore
 
 TZ = ZoneInfo("Europe/Moscow")
 
@@ -33,9 +32,7 @@ def test_foreign_calendar_entries_excludes_primary():
         CalendarListEntry(name="Мой", url="https://cal/primary"),
         CalendarListEntry(name="Александра Качина", url="https://cal/shared"),
     ]
-    foreign = foreign_calendar_entries(
-        calendars, primary_calendar_url="https://cal/primary/"
-    )
+    foreign = foreign_calendar_entries(calendars, primary_calendar_url="https://cal/primary/")
     assert len(foreign) == 1
     assert foreign[0].name == "Александра Качина"
 
@@ -62,7 +59,7 @@ def test_foreign_day_keyboard_offers_today_tomorrow_and_day_after():
         for btn in row:
             data = btn.get("callback_data", "")
             if data.startswith(CB_FOREIGN_DAY_PREFIX):
-                payload = data[len(CB_FOREIGN_DAY_PREFIX):]
+                payload = data[len(CB_FOREIGN_DAY_PREFIX) :]
                 _idx, _, offset = payload.partition(":")
                 offsets.add(offset)
     assert offsets == {"0", "1", "2"}

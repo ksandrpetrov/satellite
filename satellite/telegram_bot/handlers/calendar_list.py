@@ -13,9 +13,9 @@ from ...messages_ru import (
     UPCOMING_FETCH_STATUS,
     upcoming_events_day_sections,
 )
+from ..visual import is_private_chat, pick_upcoming_message_effect
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingMessage
-from ..visual import is_private_chat, pick_upcoming_message_effect
 from .delivery import open_streaming_reply, share_reply_markup
 
 log = logging.getLogger(__name__)
@@ -39,9 +39,7 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
             end_date=end,
             tz=ctx.tz,
         )
-        day_sections = upcoming_events_day_sections(
-            events, ctx.tz, today, days=_UPCOMING_DAYS
-        )
+        day_sections = upcoming_events_day_sections(events, ctx.tz, today, days=_UPCOMING_DAYS)
         if not day_sections:
             stream.finish(UPCOMING_EMPTY_HTML)
             return

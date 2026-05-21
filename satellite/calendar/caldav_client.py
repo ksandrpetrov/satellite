@@ -5,16 +5,17 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone, tzinfo
-from typing import Any, Sequence
+from datetime import date, datetime, timezone, tzinfo
+from typing import Any
 from uuid import uuid4
-
-from icalendar import Calendar as IcsCalendar, Event as IcsEvent
 
 import requests
 from caldav import DAVClient
 from caldav.lib.error import DAVError
+from icalendar import Calendar as IcsCalendar
+from icalendar import Event as IcsEvent
 
 from .events import day_bounds
 from .ical_parser import _attendee_to_str, parse_calendar_events
@@ -52,9 +53,7 @@ def login_variants_for_caldav(login: str) -> list[str]:
     return variants
 
 
-def _attendee_matches_login_variants(
-    attendee: Any, login_variants: Sequence[str]
-) -> bool:
+def _attendee_matches_login_variants(attendee: Any, login_variants: Sequence[str]) -> bool:
     """True, если ``login_variants`` встречается в сериализованном ATTENDEE.
 
     ``str(vCalAddress)`` отдаёт только mailto без PARTSTAT — сравниваем через
@@ -154,9 +153,7 @@ def build_candidate_urls(caldav_url: str | None, login: str) -> list[str]:
             roots.append(default_root)
 
     direct_mailru_principal = (
-        f"https://calendar.mail.ru/principals/{domain}/{login_name}"
-        if login_name
-        else ""
+        f"https://calendar.mail.ru/principals/{domain}/{login_name}" if login_name else ""
     )
     candidates: list[str] = []
     if seed.startswith("https://calendar.mail.ru") and direct_mailru_principal:
@@ -627,10 +624,7 @@ class CalDAVService:
         # завершения и переиспользуют свежий кэш.
         with self._discovery_lock:
             cached = self._cache
-            if (
-                cached is not None
-                and (time.monotonic() - cached.cached_at) < self._cache_ttl_sec
-            ):
+            if cached is not None and (time.monotonic() - cached.cached_at) < self._cache_ttl_sec:
                 return cached
             cache = self._do_discovery()
             self._cache = cache
@@ -664,9 +658,7 @@ class CalDAVService:
                     )
                 except Exception as exc:  # noqa: BLE001 - server-specific errors vary
                     user_label = "email" if username == self._login else "local-part"
-                    errors.append(
-                        f"{candidate} ({user_label}) -> {exc.__class__.__name__}: {exc}"
-                    )
+                    errors.append(f"{candidate} ({user_label}) -> {exc.__class__.__name__}: {exc}")
         details = "\n".join(errors[-8:])
         raise CalDAVError(f"Unable to discover calendars via CalDAV:\n{details}")
 
@@ -692,9 +684,7 @@ class CalDAVService:
         refresh_started = time.monotonic()
         refresh_count = 0
         for handle in handles:
-            if target_calendar_name and not calendar_matches(
-                handle.name, target_calendar_name
-            ):
+            if target_calendar_name and not calendar_matches(handle.name, target_calendar_name):
                 continue
             matched_calendar = True
             try:
@@ -702,9 +692,7 @@ class CalDAVService:
                     start=day_start, end=day_end, event=True, expand=True
                 )
             except TypeError:
-                events_iter = handle.obj.date_search(
-                    start=day_start, end=day_end, expand=True
-                )
+                events_iter = handle.obj.date_search(start=day_start, end=day_end, expand=True)
             for raw_event in events_iter:
                 parsed = parse_calendar_events(raw_event.data, handle.name)
                 event_url = str(getattr(raw_event, "url", "") or "")
@@ -827,9 +815,7 @@ class CalDAVService:
             headers={"Accept": "text/calendar"},
         )
         if response.status_code != 200 or not response.content:
-            raise CalDAVError(
-                f"Failed to load event ICS (HTTP {response.status_code})"
-            )
+            raise CalDAVError(f"Failed to load event ICS (HTTP {response.status_code})")
         etag = response.headers.get("ETag")
         return response.content, etag
 
@@ -865,13 +851,9 @@ class CalDAVService:
             timeout=self._partstat_update_timeout_sec,
         )
         if response.status_code not in (200, 201, 204):
-            raise CalDAVError(
-                f"Failed to save event ICS (HTTP {response.status_code})"
-            )
+            raise CalDAVError(f"Failed to save event ICS (HTTP {response.status_code})")
 
-    def _refresh_attendees_via_get(
-        self, event_url: str
-    ) -> tuple[list[str], str | None] | None:
+    def _refresh_attendees_via_get(self, event_url: str) -> tuple[list[str], str | None] | None:
         """Доп. GET на ресурс события: mail.ru CalDAV в REPORT иногда выкидывает
         ATTENDEE, но в одиночном GET возвращает строку с PARTSTAT для логина,
         под которым мы авторизованы. Это единственный способ получить статус

@@ -21,6 +21,8 @@ JSON-store ``logs/users.json`` хранит per-user статус доступа
   (пусто = только ``primary_calendar_url``).
 
 Запись на диск — атомарная (``tmp + fsync + os.replace``) и потокобезопасная.
+Все мутаторы идут через общий ``_update_locked`` / ``_update_locked_with``,
+сериализация — через ``UserRecord.to_json`` / ``UserRecord.from_json``.
 """
 
 from __future__ import annotations
@@ -30,14 +32,15 @@ import logging
 import os
 import tempfile
 import threading
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Any
 
 from .calendar.constants import (
-    ANALYTICS_WORKDAY_10_19,
     ANALYTICS_WORKDAY_9_18,
+    ANALYTICS_WORKDAY_10_19,
     DEFAULT_ANALYTICS_WORKDAY,
 )
 
@@ -54,9 +57,7 @@ class UserStorePersistenceError(RuntimeError):
     """
 
 
-ALLOWED_ANALYTICS_WORKDAYS = frozenset(
-    {ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_19}
-)
+ALLOWED_ANALYTICS_WORKDAYS = frozenset({ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_19})
 
 
 USER_STATUS_PENDING = "pending"
@@ -137,6 +138,63 @@ class UserRecord:
             and self.calendar_status == CALENDAR_CONNECTED
         )
 
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "chat_id": self.chat_id,
+            "username": self.username,
+            "display_name": self.display_name,
+            "status": self.status,
+            "access_request_status": self.access_request_status,
+            "access_request_created_at": self.access_request_created_at,
+            "access_resolved_at": self.access_resolved_at,
+            "resolved_by_admin_id": self.resolved_by_admin_id,
+            "calendar_provider": self.calendar_provider,
+            "encrypted_credentials": self.encrypted_credentials,
+            "calendar_status": self.calendar_status,
+            "primary_calendar_url": self.primary_calendar_url,
+            "enabled_calendar_urls": list(self.enabled_calendar_urls),
+            "calendar_connected_at": self.calendar_connected_at,
+            "calendar_last_checked_at": self.calendar_last_checked_at,
+            "analytics_workday": self.analytics_workday,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+    @classmethod
+    def from_json(cls, telegram_user_id: int, raw: dict) -> UserRecord:
+        status = str(raw.get("status") or USER_STATUS_PENDING)
+        if status not in ALLOWED_USER_STATUSES:
+            status = USER_STATUS_PENDING
+        access_request_status = str(raw.get("access_request_status") or ACCESS_REQUEST_NONE)
+        if access_request_status not in ALLOWED_ACCESS_REQUEST_STATES:
+            access_request_status = ACCESS_REQUEST_NONE
+        calendar_status = str(raw.get("calendar_status") or CALENDAR_DISCONNECTED)
+        if calendar_status not in ALLOWED_CALENDAR_STATES:
+            calendar_status = CALENDAR_DISCONNECTED
+        return cls(
+            telegram_user_id=telegram_user_id,
+            chat_id=_coerce_optional_int(raw.get("chat_id")),
+            username=(
+                (raw.get("username") or None) and str(raw.get("username") or "").lower() or None
+            ),
+            display_name=(raw.get("display_name") or None),
+            status=status,
+            access_request_status=access_request_status,
+            access_request_created_at=raw.get("access_request_created_at") or None,
+            access_resolved_at=raw.get("access_resolved_at") or None,
+            resolved_by_admin_id=_coerce_optional_int(raw.get("resolved_by_admin_id")),
+            calendar_provider=(raw.get("calendar_provider") or None),
+            encrypted_credentials=(raw.get("encrypted_credentials") or None),
+            calendar_status=calendar_status,
+            primary_calendar_url=(raw.get("primary_calendar_url") or None),
+            enabled_calendar_urls=_parse_enabled_calendar_urls(raw.get("enabled_calendar_urls")),
+            calendar_connected_at=raw.get("calendar_connected_at") or None,
+            calendar_last_checked_at=raw.get("calendar_last_checked_at") or None,
+            analytics_workday=_parse_analytics_workday(raw.get("analytics_workday")),
+            created_at=str(raw.get("created_at") or ""),
+            updated_at=str(raw.get("updated_at") or ""),
+        )
+
 
 class UserStore:
     """Thread-safe JSON-store пользователей.
@@ -144,6 +202,9 @@ class UserStore:
     Атомарные записи (``tmp + fsync + os.replace``); все читающие/пишущие
     методы синхронизированы через один lock. Загрузка устойчива к битому
     файлу: невалидная запись игнорируется, остальные подгружаются.
+
+    Все мутаторы — тонкие обёртки над ``_update_locked`` / ``_update_locked_with``;
+    единственное место, где меняется ``updated_at`` и идёт ``_save_locked``.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -243,15 +304,10 @@ class UserStore:
         with self._lock:
             existing = self._items.get(telegram_user_id)
             if existing is None:
-                raise ValueError(
-                    f"submit_access_request: user {telegram_user_id} is unknown"
-                )
+                raise ValueError(f"submit_access_request: user {telegram_user_id} is unknown")
             if existing.access_request_status == ACCESS_REQUEST_PENDING:
                 return existing, False
-            if existing.status == USER_STATUS_APPROVED:
-                # Уже одобрен — заявку не открываем.
-                return existing, False
-            if existing.status == USER_STATUS_BLOCKED:
+            if existing.status in (USER_STATUS_APPROVED, USER_STATUS_BLOCKED):
                 return existing, False
             updated = replace(
                 existing,
@@ -283,26 +339,19 @@ class UserStore:
         )
 
     def block(self, telegram_user_id: int, *, admin_telegram_id: int) -> UserRecord:
-        now_iso = self._now_iso()
-        with self._lock:
-            existing = self._items.get(telegram_user_id)
-            if existing is None:
-                raise KeyError(telegram_user_id)
-            updated = replace(
-                existing,
-                status=USER_STATUS_BLOCKED,
-                calendar_provider=None,
-                encrypted_credentials=None,
-                calendar_status=CALENDAR_DISCONNECTED,
-                primary_calendar_url=None,
-                enabled_calendar_urls=(),
-                resolved_by_admin_id=admin_telegram_id,
-                access_resolved_at=now_iso,
-                updated_at=now_iso,
-            )
-            self._items[telegram_user_id] = updated
-            self._save_locked()
-            return updated
+        return self._update_locked_with(
+            telegram_user_id,
+            change=lambda _existing, now_iso: {
+                "status": USER_STATUS_BLOCKED,
+                "calendar_provider": None,
+                "encrypted_credentials": None,
+                "calendar_status": CALENDAR_DISCONNECTED,
+                "primary_calendar_url": None,
+                "enabled_calendar_urls": (),
+                "resolved_by_admin_id": admin_telegram_id,
+                "access_resolved_at": now_iso,
+            },
+        )
 
     def set_calendar_connection(
         self,
@@ -316,25 +365,18 @@ class UserStore:
             raise ValueError("provider is required")
         if not encrypted_credentials.strip():
             raise ValueError("encrypted_credentials is required")
-        now_iso = self._now_iso()
-        with self._lock:
-            existing = self._items.get(telegram_user_id)
-            if existing is None:
-                raise KeyError(telegram_user_id)
-            updated = replace(
-                existing,
-                calendar_provider=provider.strip(),
-                encrypted_credentials=encrypted_credentials,
-                primary_calendar_url=(primary_calendar_url or "").strip() or None,
-                enabled_calendar_urls=(),
-                calendar_status=CALENDAR_CONNECTED,
-                calendar_connected_at=existing.calendar_connected_at or now_iso,
-                calendar_last_checked_at=now_iso,
-                updated_at=now_iso,
-            )
-            self._items[telegram_user_id] = updated
-            self._save_locked()
-            return updated
+        return self._update_locked_with(
+            telegram_user_id,
+            change=lambda existing, now_iso: {
+                "calendar_provider": provider.strip(),
+                "encrypted_credentials": encrypted_credentials,
+                "primary_calendar_url": (primary_calendar_url or "").strip() or None,
+                "enabled_calendar_urls": (),
+                "calendar_status": CALENDAR_CONNECTED,
+                "calendar_connected_at": existing.calendar_connected_at or now_iso,
+                "calendar_last_checked_at": now_iso,
+            },
+        )
 
     def set_enabled_calendar_urls(
         self,
@@ -345,86 +387,49 @@ class UserStore:
         normalized = _normalize_calendar_url_list(calendar_urls)
         if not normalized:
             raise ValueError("At least one calendar URL is required")
-        now_iso = self._now_iso()
-        with self._lock:
-            existing = self._items.get(telegram_user_id)
-            if existing is None:
-                raise KeyError(telegram_user_id)
-            updated = replace(
-                existing,
-                enabled_calendar_urls=normalized,
-                updated_at=now_iso,
-            )
-            self._items[telegram_user_id] = updated
-            self._save_locked()
-            return updated
+        return self._update_locked(
+            telegram_user_id,
+            enabled_calendar_urls=normalized,
+        )
 
-    def mark_calendar_status(
-        self, telegram_user_id: int, *, status: str
-    ) -> UserRecord | None:
+    def mark_calendar_status(self, telegram_user_id: int, *, status: str) -> UserRecord | None:
         if status not in ALLOWED_CALENDAR_STATES:
             raise ValueError(f"Unknown calendar status: {status!r}")
-        now_iso = self._now_iso()
-        with self._lock:
-            existing = self._items.get(telegram_user_id)
-            if existing is None:
-                return None
-            if existing.calendar_status == status:
-                updated = replace(
-                    existing,
-                    calendar_last_checked_at=now_iso,
-                    updated_at=now_iso,
-                )
-            else:
-                updated = replace(
-                    existing,
-                    calendar_status=status,
-                    calendar_last_checked_at=now_iso,
-                    updated_at=now_iso,
-                )
-            self._items[telegram_user_id] = updated
-            self._save_locked()
-            return updated
+        try:
+            return self._update_locked_with(
+                telegram_user_id,
+                change=lambda _existing, now_iso: {
+                    "calendar_status": status,
+                    "calendar_last_checked_at": now_iso,
+                },
+            )
+        except KeyError:
+            return None
 
     def set_analytics_workday(self, telegram_user_id: int, *, preset: str) -> UserRecord:
         if preset not in ALLOWED_ANALYTICS_WORKDAYS:
             raise ValueError(f"Unknown analytics workday preset: {preset!r}")
-        now_iso = self._now_iso()
         with self._lock:
             existing = self._items.get(telegram_user_id)
             if existing is None:
                 raise KeyError(telegram_user_id)
             if existing.analytics_workday == preset:
                 return existing
-            updated = replace(
-                existing,
-                analytics_workday=preset,
-                updated_at=now_iso,
-            )
-            self._items[telegram_user_id] = updated
-            self._save_locked()
-            return updated
+        return self._update_locked(telegram_user_id, analytics_workday=preset)
 
     def clear_calendar_connection(self, telegram_user_id: int) -> UserRecord:
-        now_iso = self._now_iso()
-        with self._lock:
-            existing = self._items.get(telegram_user_id)
-            if existing is None:
-                raise KeyError(telegram_user_id)
-            updated = replace(
-                existing,
-                calendar_provider=None,
-                encrypted_credentials=None,
-                primary_calendar_url=None,
-                enabled_calendar_urls=(),
-                calendar_status=CALENDAR_DISCONNECTED,
-                calendar_connected_at=None,
-                calendar_last_checked_at=now_iso,
-                updated_at=now_iso,
-            )
-            self._items[telegram_user_id] = updated
-            self._save_locked()
-            return updated
+        return self._update_locked_with(
+            telegram_user_id,
+            change=lambda _existing, now_iso: {
+                "calendar_provider": None,
+                "encrypted_credentials": None,
+                "primary_calendar_url": None,
+                "enabled_calendar_urls": (),
+                "calendar_status": CALENDAR_DISCONNECTED,
+                "calendar_connected_at": None,
+                "calendar_last_checked_at": now_iso,
+            },
+        )
 
     def ensure_admin_record(
         self,
@@ -448,7 +453,6 @@ class UserStore:
         )
         if record.status == USER_STATUS_APPROVED:
             return record
-        # Был ``pending`` / ``rejected`` — повышаем до ``approved`` от имени себя.
         return self.approve(telegram_user_id, admin_telegram_id=telegram_user_id)
 
     # --- internals -------------------------------------------------------
@@ -461,19 +465,45 @@ class UserStore:
         new_status: str,
         new_request_status: str,
     ) -> UserRecord:
+        return self._update_locked_with(
+            telegram_user_id,
+            change=lambda _existing, now_iso: {
+                "status": new_status,
+                "access_request_status": new_request_status,
+                "access_resolved_at": now_iso,
+                "resolved_by_admin_id": admin_telegram_id,
+            },
+        )
+
+    def _update_locked(self, telegram_user_id: int, **fields: Any) -> UserRecord:
+        """Атомарно применяет статические поля поверх существующей записи.
+
+        Подходит, когда новые значения не зависят от текущих. Всегда
+        обновляет ``updated_at``. KeyError, если запись отсутствует.
+        """
+        return self._update_locked_with(
+            telegram_user_id,
+            change=lambda _existing, _now_iso: dict(fields),
+        )
+
+    def _update_locked_with(
+        self,
+        telegram_user_id: int,
+        *,
+        change: Callable[[UserRecord, str], dict[str, Any]],
+    ) -> UserRecord:
+        """Атомарно применяет поля, зависящие от существующей записи / времени.
+
+        ``change(existing, now_iso) -> dict`` — какие поля заменить.
+        ``updated_at`` всегда обновляется на ``now_iso``.
+        """
         now_iso = self._now_iso()
         with self._lock:
             existing = self._items.get(telegram_user_id)
             if existing is None:
                 raise KeyError(telegram_user_id)
-            updated = replace(
-                existing,
-                status=new_status,
-                access_request_status=new_request_status,
-                access_resolved_at=now_iso,
-                resolved_by_admin_id=admin_telegram_id,
-                updated_at=now_iso,
-            )
+            fields = change(existing, now_iso)
+            updated = replace(existing, **fields, updated_at=now_iso)
             self._items[telegram_user_id] = updated
             self._save_locked()
             return updated
@@ -503,16 +533,13 @@ class UserStore:
             if not isinstance(value, dict):
                 continue
             try:
-                items[user_id] = _record_from_json(user_id, value)
+                items[user_id] = UserRecord.from_json(user_id, value)
             except Exception:  # noqa: BLE001 - не валим бот из-за одной битой записи
                 log.warning("Skipping malformed user record %r", key, exc_info=True)
         return items
 
     def _save_locked(self) -> None:
-        payload = {
-            str(rec.telegram_user_id): _record_to_json(rec)
-            for rec in self._items.values()
-        }
+        payload = {str(rec.telegram_user_id): rec.to_json() for rec in self._items.values()}
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             fd, tmp_path = tempfile.mkstemp(
@@ -539,82 +566,15 @@ class UserStore:
             ) from exc
 
 
-def _record_to_json(rec: UserRecord) -> dict[str, object | None]:
-    return {
-        "chat_id": rec.chat_id,
-        "username": rec.username,
-        "display_name": rec.display_name,
-        "status": rec.status,
-        "access_request_status": rec.access_request_status,
-        "access_request_created_at": rec.access_request_created_at,
-        "access_resolved_at": rec.access_resolved_at,
-        "resolved_by_admin_id": rec.resolved_by_admin_id,
-        "calendar_provider": rec.calendar_provider,
-        "encrypted_credentials": rec.encrypted_credentials,
-        "calendar_status": rec.calendar_status,
-        "primary_calendar_url": rec.primary_calendar_url,
-        "enabled_calendar_urls": list(rec.enabled_calendar_urls),
-        "calendar_connected_at": rec.calendar_connected_at,
-        "calendar_last_checked_at": rec.calendar_last_checked_at,
-        "analytics_workday": rec.analytics_workday,
-        "created_at": rec.created_at,
-        "updated_at": rec.updated_at,
-    }
-
-
-def _record_from_json(telegram_user_id: int, raw: dict) -> UserRecord:
-    status = str(raw.get("status") or USER_STATUS_PENDING)
-    if status not in ALLOWED_USER_STATUSES:
-        status = USER_STATUS_PENDING
-    access_request_status = str(raw.get("access_request_status") or ACCESS_REQUEST_NONE)
-    if access_request_status not in ALLOWED_ACCESS_REQUEST_STATES:
-        access_request_status = ACCESS_REQUEST_NONE
-    calendar_status = str(raw.get("calendar_status") or CALENDAR_DISCONNECTED)
-    if calendar_status not in ALLOWED_CALENDAR_STATES:
-        calendar_status = CALENDAR_DISCONNECTED
-    chat_id_raw = raw.get("chat_id")
-    chat_id: int | None
-    if isinstance(chat_id_raw, int):
-        chat_id = chat_id_raw
-    elif isinstance(chat_id_raw, str) and chat_id_raw.strip():
+def _coerce_optional_int(raw: object) -> int | None:
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str) and raw.strip():
         try:
-            chat_id = int(chat_id_raw)
+            return int(raw)
         except ValueError:
-            chat_id = None
-    else:
-        chat_id = None
-    admin_id_raw = raw.get("resolved_by_admin_id")
-    admin_id: int | None
-    if isinstance(admin_id_raw, int):
-        admin_id = admin_id_raw
-    elif isinstance(admin_id_raw, str) and admin_id_raw.strip():
-        try:
-            admin_id = int(admin_id_raw)
-        except ValueError:
-            admin_id = None
-    else:
-        admin_id = None
-    return UserRecord(
-        telegram_user_id=telegram_user_id,
-        chat_id=chat_id,
-        username=(raw.get("username") or None) and str(raw.get("username") or "").lower() or None,
-        display_name=(raw.get("display_name") or None),
-        status=status,
-        access_request_status=access_request_status,
-        access_request_created_at=raw.get("access_request_created_at") or None,
-        access_resolved_at=raw.get("access_resolved_at") or None,
-        resolved_by_admin_id=admin_id,
-        calendar_provider=(raw.get("calendar_provider") or None),
-        encrypted_credentials=(raw.get("encrypted_credentials") or None),
-        calendar_status=calendar_status,
-        primary_calendar_url=(raw.get("primary_calendar_url") or None),
-        enabled_calendar_urls=_parse_enabled_calendar_urls(raw.get("enabled_calendar_urls")),
-        calendar_connected_at=raw.get("calendar_connected_at") or None,
-        calendar_last_checked_at=raw.get("calendar_last_checked_at") or None,
-        analytics_workday=_parse_analytics_workday(raw.get("analytics_workday")),
-        created_at=str(raw.get("created_at") or ""),
-        updated_at=str(raw.get("updated_at") or ""),
-    )
+            return None
+    return None
 
 
 def _normalize_calendar_url(url: str) -> str:

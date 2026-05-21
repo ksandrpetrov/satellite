@@ -55,9 +55,7 @@ def enabled_url_set(record: UserRecord) -> set[str]:
     return {normalize_calendar_url(url) for url in effective_enabled_calendar_urls(record)}
 
 
-def screen_lines(
-    calendars: list[CalendarListEntry], enabled_urls: set[str]
-) -> list[str]:
+def screen_lines(calendars: list[CalendarListEntry], enabled_urls: set[str]) -> list[str]:
     lines: list[str] = []
     for entry in calendars:
         mark = "✅" if normalize_calendar_url(entry.url) in enabled_urls else "⬜️"
@@ -72,9 +70,7 @@ def fetch_calendars(ctx: HandlerContext, user_id: int) -> CalendarListResult:
         log.info("List calendars: user_id=%s not connected", user_id)
         return CalendarListResult(status=CalendarListStatus.NOT_CONNECTED)
     except CalendarProviderError as exc:
-        log.warning(
-            "List calendars failed user_id=%s code=%s", user_id, exc.error_code
-        )
+        log.warning("List calendars failed user_id=%s code=%s", user_id, exc.error_code)
         return CalendarListResult(status=CalendarListStatus.UNAVAILABLE)
     return CalendarListResult(
         status=CalendarListStatus.OK,
@@ -99,9 +95,7 @@ class CalendarSourcesScreen:
     keyboard: dict | None = None
 
 
-def build_calendar_sources_screen(
-    ctx: HandlerContext, user_id: int
-) -> CalendarSourcesScreen:
+def build_calendar_sources_screen(ctx: HandlerContext, user_id: int) -> CalendarSourcesScreen:
     """Единый builder экрана «Календари в плане».
 
     Возвращает либо готовые ``text`` + ``keyboard`` (``SCREEN``), либо

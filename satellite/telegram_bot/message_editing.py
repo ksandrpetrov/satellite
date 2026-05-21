@@ -63,13 +63,9 @@ def edit_or_send_message(
         except TelegramError as error:
             log.warning("Falling back to new message after edit failed: %s", error)
         except Exception as error:  # noqa: BLE001 - не показываем стек юзеру
-            log.warning(
-                "Unexpected error editing message, sending new one: %s", error
-            )
+            log.warning("Unexpected error editing message, sending new one: %s", error)
 
-    send_reply_markup = (
-        reply_markup if fallback_reply_markup is _UNSET else fallback_reply_markup
-    )
+    send_reply_markup = reply_markup if fallback_reply_markup is _UNSET else fallback_reply_markup
     return telegram.send_message(
         chat_id,
         text,

@@ -1,0 +1,65 @@
+[project]
+name = "satellite"
+version = "0.0.0"
+description = "Production Telegram bot 'Chaika': CalDAV → дайджест дня (см. AGENTS.md)"
+requires-python = ">=3.11"
+
+# Полный список рантайм-зависимостей живёт в requirements.txt — `pip install -r`
+# остаётся первичным способом установки (см. scripts/install.sh). Здесь
+# `pyproject.toml` нужен только как площадка для конфигов инструментов (ruff,
+# mypy, pytest) — пакет в PyPI мы не публикуем.
+
+[tool.ruff]
+line-length = 100
+# Локальный dev-venv может быть на 3.9, а CI/прод — на 3.11+; держим младшую
+# версию, чтобы ruff не предлагал апгрейды синтаксиса, которые сломают локал.
+target-version = "py39"
+extend-exclude = ["venv", ".venv", "logs", "deploy", "scripts"]
+
+[tool.ruff.lint]
+# Базовый набор: pyflakes (F), pycodestyle (E/W), import-order (I), bugbear (B),
+# pyupgrade (UP), simplify (SIM). Цель — дешёвые ошибки и мусор, не доводя до
+# стилистических придирок. Несколько правил отключены глобально как слишком
+# назойливые/контр-продуктивные для нашего кода (см. комментарии).
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",   # длинные строки — терпимо в комментариях/HTML
+    "B008",   # `default=Foo()` в dataclass-аргументах — норма
+    "B904",   # raise ... from — handler-слой подавляет first-error по дизайну
+    "SIM102", # nested if — иногда читаемее
+    "SIM103", # `return cond` — иногда явный `if` понятнее
+    "SIM105", # contextlib.suppress — try/except/pass у нас как best-effort save
+    "SIM108", # тернарник если возражает читабельность
+    "SIM118", # `key in dict.keys()` — изредка для явности
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Re-export hub'ы: handlers/__init__ и пр. умышленно ре-экспортируют публичный API.
+"satellite/telegram_bot/handlers/__init__.py" = ["F401"]
+"satellite/messages_ru/__init__.py" = ["F401", "F403"]
+"satellite/messages_ru/_core.py" = ["E", "W"]
+"satellite/telegram_bot/calendar_state.py" = ["F401", "F403"]
+"satellite/telegram_bot/digest_state.py" = ["F401", "F403"]
+"satellite/analytics_service.py" = ["F401", "F403"]
+"tests/**" = ["B", "SIM", "F841"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+show_error_codes = true
+files = ["satellite"]
+
+# Strict-режим планируется ввести точечно — на ядро (providers, web, plan,
+# scheduler). На момент Фазы 10 они ещё не полностью аннотированы; запускаем
+# mypy информативно (см. CI: continue-on-error), strict подключаем модуль за
+# модулем по мере очистки. См. docs/refactor-log.md, шаг 10.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

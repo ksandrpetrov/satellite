@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import date, tzinfo
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 from ..security.token_vault import ProviderCredentials, TokenVault
+from ..users import CALENDAR_CONNECTED, UserRecord, UserStore
 from .operation_log import CalendarOperationLog
 from .providers.base import (
     CalendarConnectionStatus,
@@ -21,7 +23,6 @@ from .providers.base import (
     UserCalendarContext,
 )
 from .providers.registry import get_provider
-from ..users import UserRecord, UserStore, CALENDAR_CONNECTED
 
 log = logging.getLogger(__name__)
 
@@ -154,9 +155,7 @@ class UserCalendarService:
             context = cc.context
             if calendar_urls:
                 context = replace(context, enabled_calendar_urls=calendar_urls)
-            return cc.provider.list_events(
-                context, start_date=start_date, end_date=end_date, tz=tz
-            )
+            return cc.provider.list_events(context, start_date=start_date, end_date=end_date, tz=tz)
 
         return self._run(telegram_user_id, operation="list", fn=_list)
 
@@ -184,9 +183,7 @@ class UserCalendarService:
         return self._run(
             telegram_user_id,
             operation="update",
-            fn=lambda cc: cc.provider.update_event(
-                cc.context, event_ref, payload, tz=tz
-            ),
+            fn=lambda cc: cc.provider.update_event(cc.context, event_ref, payload, tz=tz),
         )
 
     def delete_event(
@@ -228,9 +225,7 @@ class UserCalendarService:
         self._run(
             telegram_user_id,
             operation="update",
-            fn=lambda cc: cc.provider.set_attendee_partstat(
-                cc.context, event_ref, partstat
-            ),
+            fn=lambda cc: cc.provider.set_attendee_partstat(cc.context, event_ref, partstat),
         )
 
     def fetch_events_for_day(

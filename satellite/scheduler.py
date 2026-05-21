@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from datetime import date, datetime, tzinfo
-from typing import Callable
 from zoneinfo import ZoneInfo
 
 from .calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
@@ -236,11 +236,7 @@ class DigestScheduler:
             )
             return False
 
-        effect = (
-            pick_plan_message_effect(plan_text)
-            if is_private_chat(sub.chat_id)
-            else None
-        )
+        effect = pick_plan_message_effect(plan_text) if is_private_chat(sub.chat_id) else None
         try:
             self._telegram.send_message(
                 sub.chat_id,

@@ -31,19 +31,19 @@ from ...messages_ru import (
     build_create_date_keyboard,
     build_create_duration_keyboard,
 )
-from ..calendar_state import (
-    CalendarFlowState,
-    CreateEventDraft,
+from ..visual import EFFECT_PARTY, private_message_effect, send_with_effect
+from .access import ensure_calendar_connected
+from .calendar_state import (
     STATE_CREATE_CONFIRM,
-    STATE_CREATE_SUBMITTING,
     STATE_CREATE_DATE,
     STATE_CREATE_DURATION,
+    STATE_CREATE_SUBMITTING,
     STATE_CREATE_TIME,
     STATE_CREATE_TITLE,
+    CalendarFlowState,
+    CreateEventDraft,
 )
-from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from ..visual import EFFECT_PARTY, private_message_effect, send_with_effect
 from .delivery import edit_callback_message, safe_answer_callback, send
 
 log = logging.getLogger(__name__)
@@ -146,9 +146,7 @@ def _ask_duration(ctx: HandlerContext, chat_id: int) -> None:
     )
 
 
-def _apply_date_preset(
-    ctx: HandlerContext, cb: IncomingCallback, data: str
-) -> None:
+def _apply_date_preset(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
     """Жмём «Сегодня»/«Завтра» — заполняем дату и переходим к шагу времени.
 
     State-проверка нужна, чтобы старая кнопка из давно отправленного сообщения
@@ -163,18 +161,14 @@ def _apply_date_preset(
         safe_answer_callback(ctx, cb)
         return
     today = datetime.now(tz=ctx.tz).date()
-    flow.draft.event_date = (
-        today if data == CB_CREATE_DATE_TODAY else today + timedelta(days=1)
-    )
+    flow.draft.event_date = today if data == CB_CREATE_DATE_TODAY else today + timedelta(days=1)
     flow.state = STATE_CREATE_TIME
     ctx.calendar_state.set(cb.chat_id, flow)
     send(ctx, cb.chat_id, CREATE_EVENT_ASK_TIME)
     safe_answer_callback(ctx, cb)
 
 
-def _apply_duration_preset(
-    ctx: HandlerContext, cb: IncomingCallback, data: str
-) -> None:
+def _apply_duration_preset(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
     if cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
@@ -183,7 +177,7 @@ def _apply_duration_preset(
         safe_answer_callback(ctx, cb)
         return
     try:
-        minutes = int(data[len(CB_CREATE_DURATION_PREFIX):])
+        minutes = int(data[len(CB_CREATE_DURATION_PREFIX) :])
     except ValueError:
         safe_answer_callback(ctx, cb)
         return
@@ -245,11 +239,8 @@ def _confirm_create(ctx: HandlerContext, cb: IncomingCallback) -> None:
     safe_answer_callback(ctx, cb, text="Создаю…")
     edit_callback_message(ctx, cb, CREATE_EVENT_CREATING_HTML, reply_markup=None)
 
-    def do_create() -> None:
-        ctx.calendar_service.create_event(cb.user_id, payload, tz=ctx.tz)
-
     try:
-        do_create()
+        ctx.calendar_service.create_event(cb.user_id, payload, tz=ctx.tz)
     except CalendarProviderError as exc:
         log.error("Create event failed user_id=%s code=%s", cb.user_id, exc.error_code)
         ctx.calendar_state.clear(cb.chat_id)

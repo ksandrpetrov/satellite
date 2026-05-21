@@ -20,11 +20,9 @@ from satellite.telegram_bot.handlers.calendar_view import (
     fetch_calendars,
 )
 from satellite.users import (
-    CALENDAR_CONNECTED,
     USER_STATUS_APPROVED,
     UserStore,
 )
-
 
 USER_ID = 3001
 
@@ -107,9 +105,7 @@ def test_build_calendar_sources_screen_single_calendar(users: UserStore) -> None
 
 def test_build_calendar_sources_screen_unavailable(users: UserStore) -> None:
     service = MagicMock()
-    service.list_calendars.side_effect = CalendarProviderError(
-        "boom", error_code="CALENDAR_ERROR"
-    )
+    service.list_calendars.side_effect = CalendarProviderError("boom", error_code="CALENDAR_ERROR")
     screen = build_calendar_sources_screen(_ctx(users, service), USER_ID)
     assert screen.status is CalendarSourcesScreenStatus.UNAVAILABLE
 

@@ -1,5 +1,6 @@
-import pytest
 from pathlib import Path
+
+import pytest
 
 from satellite.config import (
     is_valid_webapp_base_url,

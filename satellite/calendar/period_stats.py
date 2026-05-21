@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta, tzinfo
-from typing import Literal, Sequence
+from typing import Literal
 
 from .constants import (
-    ANALYTICS_WORKDAY_10_19,
     ANALYTICS_WORKDAY_9_18,
     DEFAULT_ANALYTICS_WORKDAY,
 )
@@ -158,8 +158,7 @@ def build_analytics_report(
     current_start, _ = week_bounds(reference_date)
     previous_start = current_start - timedelta(days=7)
     quarter_starts = [
-        current_start - timedelta(days=7 * offset)
-        for offset in range(QUARTER_WEEKS - 1, -1, -1)
+        current_start - timedelta(days=7 * offset) for offset in range(QUARTER_WEEKS - 1, -1, -1)
     ]
     quarter_busy = tuple(
         build_week_summary(events, ws, tz=tz, login=login, options=opts).total_busy

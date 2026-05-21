@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from .base import CalendarProvider
-from .mailru import MailruCalendarProvider, PROVIDER_ID as PROVIDER_MAILRU
-from .yandex import YandexCalendarProvider, PROVIDER_ID as PROVIDER_YANDEX
+from .mailru import PROVIDER_ID as PROVIDER_MAILRU
+from .mailru import MailruCalendarProvider
+from .yandex import PROVIDER_ID as PROVIDER_YANDEX
+from .yandex import YandexCalendarProvider
 
 PROVIDER_IDS = frozenset({PROVIDER_MAILRU, PROVIDER_YANDEX})
 

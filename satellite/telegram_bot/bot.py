@@ -8,7 +8,6 @@ import signal
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-
 from zoneinfo import ZoneInfo
 
 from ..backup import snapshot_all
@@ -24,10 +23,8 @@ from ..weather.client import WeatherForecastClient
 from ..web.connect_token import ConnectTokenStore
 from ..web.server import WebAppServer, WebAppServerConfig
 from .api import TelegramClient, TelegramError
-from .calendar_state import CalendarStateStore
 from .commands import setup_bot_identity
 from .concurrency import ChatLockManager
-from .digest_state import DigestStateStore
 from .handlers import (
     HandlerContext,
     IncomingCallback,
@@ -39,6 +36,8 @@ from .handlers import (
     is_update_callback,
     is_update_message,
 )
+from .handlers.calendar_state import CalendarStateStore
+from .handlers.digest_state import DigestStateStore
 from .offset_store import OffsetStore
 from .offset_tracker import OffsetTracker
 
@@ -62,9 +61,7 @@ class TelegramBot:
         # Снапшоты до открытия сторов: если кто-то руками подменил файл и сейчас
         # запись битая, мы успеем сохранить его как-есть до того, как сторы
         # перезапишут диск своим in-memory представлением.
-        self._startup_snapshots = snapshot_all(
-            [self._users_path, self._subscriptions_path]
-        )
+        self._startup_snapshots = snapshot_all([self._users_path, self._subscriptions_path])
         self._users = UserStore(self._users_path)
         self._token_vault = TokenVault(settings.security.encryption_key)
         self._operation_log = CalendarOperationLog(logs_dir / "calendar_ops.jsonl")
@@ -301,9 +298,7 @@ class TelegramBot:
             return
         self._offset_tracker.mark_completed(update_id)
 
-    def _dispatch_message(
-        self, ctx: HandlerContext, update: dict, update_id: int
-    ) -> None:
+    def _dispatch_message(self, ctx: HandlerContext, update: dict, update_id: int) -> None:
         msg = extract_message(update)
 
         try:
@@ -312,13 +307,9 @@ class TelegramBot:
             log.info("Executor shut down; deferring update_id=%s", msg.update_id)
             return
 
-        future.add_done_callback(
-            lambda _fut, _msg=msg: self._on_message_done(_msg)
-        )
+        future.add_done_callback(lambda _fut, _msg=msg: self._on_message_done(_msg))
 
-    def _dispatch_callback(
-        self, ctx: HandlerContext, update: dict, update_id: int
-    ) -> None:
+    def _dispatch_callback(self, ctx: HandlerContext, update: dict, update_id: int) -> None:
         cb = extract_callback_query(update)
         if cb is None:
             self._offset_tracker.mark_completed(update_id)
@@ -327,25 +318,19 @@ class TelegramBot:
         try:
             future = self._executor.submit(self._run_callback_handler, ctx, cb)
         except RuntimeError:
-            log.info(
-                "Executor shut down; deferring callback update_id=%s", cb.update_id
-            )
+            log.info("Executor shut down; deferring callback update_id=%s", cb.update_id)
             return
 
         future.add_done_callback(
             lambda _fut, _cb=cb: self._offset_tracker.mark_completed(_cb.update_id)
         )
 
-    def _run_message_handler(
-        self, ctx: HandlerContext, msg: IncomingMessage
-    ) -> None:
+    def _run_message_handler(self, ctx: HandlerContext, msg: IncomingMessage) -> None:
         lock = self._chat_locks.acquire(msg.chat_id)
         with lock:
             handle_message(ctx, msg)
 
-    def _run_callback_handler(
-        self, ctx: HandlerContext, cb: IncomingCallback
-    ) -> None:
+    def _run_callback_handler(self, ctx: HandlerContext, cb: IncomingCallback) -> None:
         lock = self._chat_locks.acquire(cb.chat_id)
         with lock:
             handle_callback_query(ctx, cb)

@@ -16,6 +16,8 @@
   и админских операций).
 - ``Subscription`` оставлен как алиас для обратной совместимости импортов;
   у него те же поля (chat_id, username, subscribed_at), плюс новые с дефолтами.
+- Мутаторы идут через общий ``_update_locked_with``, сериализация — через
+  ``DigestSettings.to_json`` / ``DigestSettings.from_json``.
 """
 
 from __future__ import annotations
@@ -25,16 +27,17 @@ import logging
 import os
 import tempfile
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from .calendar.time_utils import normalize_hhmm_input
 
 log = logging.getLogger(__name__)
 
 
-# Канонические значения digest_days. Сохраняются в JSON «как есть».
 DIGEST_DAYS_WEEKDAYS = "weekdays"
 DIGEST_DAYS_ALL = "all_days"
 ALLOWED_DIGEST_DAYS = frozenset({DIGEST_DAYS_WEEKDAYS, DIGEST_DAYS_ALL})
@@ -81,11 +84,64 @@ class DigestSettings:
     digest_days: str = DEFAULT_DIGEST_DAYS
     digest_time: str = DEFAULT_DIGEST_TIME
     digest_timezone: str = DEFAULT_DIGEST_TIMEZONE
-    subscribed_at: str = ""  # ISO8601 UTC момента первого включения подписки
-    last_digest_sent_date: str | None = None  # "YYYY-MM-DD" или None
+    subscribed_at: str = ""
+    last_digest_sent_date: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "telegram_user_id": self.telegram_user_id,
+            "username": self.username,
+            "digest_enabled": self.digest_enabled,
+            "digest_days": self.digest_days,
+            "digest_time": self.digest_time,
+            "digest_timezone": self.digest_timezone,
+            "subscribed_at": self.subscribed_at,
+            "last_digest_sent_date": self.last_digest_sent_date,
+        }
+
+    @classmethod
+    def from_json(cls, chat_id: int, raw: dict) -> DigestSettings | None:
+        """Парсит запись JSON. ``None`` — если запись непригодна (нет username).
+
+        Старый формат файла (без явного ``digest_enabled``) считается активной
+        подпиской: само присутствие записи раньше означало «подписан».
+        """
+        username = str(raw.get("username") or "").lower()
+        if not username:
+            return None
+        subscribed_at = str(raw.get("subscribed_at") or "")
+        digest_days = str(raw.get("digest_days") or DEFAULT_DIGEST_DAYS)
+        if digest_days not in ALLOWED_DIGEST_DAYS:
+            digest_days = DEFAULT_DIGEST_DAYS
+        digest_time = _normalize_digest_time(raw.get("digest_time"))
+        digest_timezone = str(raw.get("digest_timezone") or DEFAULT_DIGEST_TIMEZONE)
+        raw_enabled = raw.get("digest_enabled")
+        digest_enabled = True if raw_enabled is None else _coerce_bool(raw_enabled, default=False)
+        last_sent = raw.get("last_digest_sent_date")
+        last_sent_str = None if last_sent in (None, "") else str(last_sent)
+        uid_raw = raw.get("telegram_user_id")
+        if isinstance(uid_raw, int):
+            telegram_user_id = uid_raw
+        elif isinstance(uid_raw, str) and uid_raw.strip():
+            try:
+                telegram_user_id = int(uid_raw)
+            except ValueError:
+                telegram_user_id = chat_id
+        else:
+            telegram_user_id = chat_id
+        return cls(
+            chat_id=chat_id,
+            telegram_user_id=telegram_user_id,
+            username=username,
+            digest_enabled=digest_enabled,
+            digest_days=digest_days,
+            digest_time=digest_time,
+            digest_timezone=digest_timezone,
+            subscribed_at=subscribed_at,
+            last_digest_sent_date=last_sent_str,
+        )
 
 
-# Старое имя класса используется в тестах и шедулере. Оставляем как алиас.
 Subscription = DigestSettings
 
 
@@ -172,31 +228,23 @@ class SubscriptionStore:
         if not username:
             raise ValueError("username is required")
         normalized = username.lower()
-        resolved_user_id = (
-            int(telegram_user_id)
-            if telegram_user_id is not None
-            else int(chat_id)
-        )
-        with self._lock:
-            existing = self._items.get(chat_id)
+        resolved_user_id = int(telegram_user_id) if telegram_user_id is not None else int(chat_id)
+
+        def _change(existing: DigestSettings | None) -> DigestSettings:
             if existing is None:
-                created = DigestSettings(
+                return DigestSettings(
                     chat_id=chat_id,
                     telegram_user_id=resolved_user_id,
                     username=normalized,
                 )
-                self._items[chat_id] = created
-                self._save_locked()
-                return created
             updated = existing
             if existing.username != normalized:
                 updated = replace(updated, username=normalized)
             if existing.telegram_user_id != resolved_user_id:
                 updated = replace(updated, telegram_user_id=resolved_user_id)
-            if updated is not existing:
-                self._items[chat_id] = updated
-                self._save_locked()
             return updated
+
+        return self._upsert_locked(chat_id, build=_change)
 
     def update_settings(
         self,
@@ -219,24 +267,19 @@ class SubscriptionStore:
         if not username:
             raise ValueError("username is required")
         normalized_user = username.lower()
-        resolved_user_id = (
-            int(telegram_user_id)
-            if telegram_user_id is not None
-            else int(chat_id)
-        )
+        resolved_user_id = int(telegram_user_id) if telegram_user_id is not None else int(chat_id)
         now_iso = self._now_iso()
-        with self._lock:
-            existing = self._items.get(chat_id)
-            if existing is None:
-                existing = DigestSettings(
-                    chat_id=chat_id,
-                    telegram_user_id=resolved_user_id,
-                    username=normalized_user,
-                )
-            updated = existing
-            if existing.username != normalized_user:
+
+        def _change(existing: DigestSettings | None) -> DigestSettings:
+            current = existing or DigestSettings(
+                chat_id=chat_id,
+                telegram_user_id=resolved_user_id,
+                username=normalized_user,
+            )
+            updated = current
+            if current.username != normalized_user:
                 updated = replace(updated, username=normalized_user)
-            if existing.telegram_user_id != resolved_user_id:
+            if current.telegram_user_id != resolved_user_id:
                 updated = replace(updated, telegram_user_id=resolved_user_id)
             if digest_enabled is not None and digest_enabled != updated.digest_enabled:
                 if digest_enabled:
@@ -261,10 +304,9 @@ class SubscriptionStore:
                     )
             if digest_timezone is not None and digest_timezone:
                 updated = replace(updated, digest_timezone=digest_timezone)
-            if updated != existing or chat_id not in self._items:
-                self._items[chat_id] = updated
-                self._save_locked()
             return updated
+
+        return self._upsert_locked(chat_id, build=_change)
 
     def mark_digest_sent(self, chat_id: int, sent_date: date | str) -> None:
         """Записывает дату последней успешной автоотправки (YYYY-MM-DD)."""
@@ -289,6 +331,25 @@ class SubscriptionStore:
             return list(self._items.values())
 
     # --- internals --------------------------------------------------------
+
+    def _upsert_locked(
+        self,
+        chat_id: int,
+        *,
+        build: Callable[[DigestSettings | None], DigestSettings],
+    ) -> DigestSettings:
+        """Атомарно применяет ``build(existing|None) -> новая запись``.
+
+        Сохраняет только если что-то реально поменялось или запись только что
+        появилась. Возвращает финальную запись.
+        """
+        with self._lock:
+            existing = self._items.get(chat_id)
+            updated = build(existing)
+            if updated != existing or chat_id not in self._items:
+                self._items[chat_id] = updated
+                self._save_locked()
+            return updated
 
     @staticmethod
     def _now_iso() -> str:
@@ -316,65 +377,13 @@ class SubscriptionStore:
                 continue
             if not isinstance(value, dict):
                 continue
-            username = str(value.get("username") or "").lower()
-            if not username:
-                continue
-            subscribed_at = str(value.get("subscribed_at") or "")
-            digest_days = str(value.get("digest_days") or DEFAULT_DIGEST_DAYS)
-            if digest_days not in ALLOWED_DIGEST_DAYS:
-                digest_days = DEFAULT_DIGEST_DAYS
-            digest_time = _normalize_digest_time(value.get("digest_time"))
-            digest_timezone = str(value.get("digest_timezone") or DEFAULT_DIGEST_TIMEZONE)
-            # Старый формат не содержал явного `digest_enabled`: само присутствие
-            # записи означало активную подписку. Сохраняем эту семантику миграцией.
-            raw_enabled = value.get("digest_enabled")
-            if raw_enabled is None:
-                digest_enabled = True
-            else:
-                digest_enabled = _coerce_bool(raw_enabled, default=False)
-            last_sent = value.get("last_digest_sent_date")
-            last_sent_str: str | None
-            if last_sent in (None, ""):
-                last_sent_str = None
-            else:
-                last_sent_str = str(last_sent)
-            uid_raw = value.get("telegram_user_id")
-            if isinstance(uid_raw, int):
-                telegram_user_id = uid_raw
-            elif isinstance(uid_raw, str) and uid_raw.strip():
-                try:
-                    telegram_user_id = int(uid_raw)
-                except ValueError:
-                    telegram_user_id = chat_id
-            else:
-                telegram_user_id = chat_id
-            items[chat_id] = DigestSettings(
-                chat_id=chat_id,
-                telegram_user_id=telegram_user_id,
-                username=username,
-                digest_enabled=digest_enabled,
-                digest_days=digest_days,
-                digest_time=digest_time,
-                digest_timezone=digest_timezone,
-                subscribed_at=subscribed_at,
-                last_digest_sent_date=last_sent_str,
-            )
+            record = DigestSettings.from_json(chat_id, value)
+            if record is not None:
+                items[chat_id] = record
         return items
 
     def _save_locked(self) -> None:
-        payload = {
-            str(chat_id): {
-                "telegram_user_id": rec.telegram_user_id,
-                "username": rec.username,
-                "digest_enabled": rec.digest_enabled,
-                "digest_days": rec.digest_days,
-                "digest_time": rec.digest_time,
-                "digest_timezone": rec.digest_timezone,
-                "subscribed_at": rec.subscribed_at,
-                "last_digest_sent_date": rec.last_digest_sent_date,
-            }
-            for chat_id, rec in self._items.items()
-        }
+        payload = {str(chat_id): rec.to_json() for chat_id, rec in self._items.items()}
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             fd, tmp_path = tempfile.mkstemp(

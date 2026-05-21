@@ -6,11 +6,10 @@ import hashlib
 import hmac
 import json
 import socket
-import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock
 from urllib.parse import urlencode

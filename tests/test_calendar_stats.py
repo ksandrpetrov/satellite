@@ -12,8 +12,9 @@
 
 from __future__ import annotations
 
-import pytest
 from datetime import date
+
+import pytest
 
 from satellite.calendar.stats import (
     DEFAULT_LUNCH_END,
@@ -33,6 +34,7 @@ _PD = date(2026, 5, 11)
 
 # 1. Пустой день -------------------------------------------------------------
 
+
 def test_empty_day_has_no_meetings_and_only_lunch_subtracted():
     stats = calculate_day_stats([], date_label="Сегодня", plan_date=_PD)
     assert stats.meetings_count == 0
@@ -45,6 +47,7 @@ def test_empty_day_has_no_meetings_and_only_lunch_subtracted():
 
 
 # 2. Одна встреча ------------------------------------------------------------
+
 
 def test_single_meeting_matches_section_12_example():
     stats = calculate_day_stats(
@@ -64,6 +67,7 @@ def test_single_meeting_matches_section_12_example():
 
 # 3. Несколько встреч без пересечений ----------------------------------------
 
+
 def test_multiple_non_overlapping_meetings():
     events = [
         make_event("A", "10:00", "10:30"),
@@ -79,6 +83,7 @@ def test_multiple_non_overlapping_meetings():
 
 
 # 4. Пересекающиеся встречи --------------------------------------------------
+
 
 def test_overlapping_meetings_do_not_double_count_busy():
     # 10:00–11:00 и 10:30–11:30 → занято 90 мин, не 120 (мердж интервалов).
@@ -105,6 +110,7 @@ def test_three_mutually_overlapping_meetings_have_three_pairs():
 
 # 5. Клиппинг к рабочему дню -------------------------------------------------
 
+
 def test_meeting_before_workday_clipped():
     # 09:30–10:30: внутрь рабочего дня попадают только 30 минут.
     stats = calculate_day_stats(
@@ -128,6 +134,7 @@ def test_meeting_after_workday_clipped():
 
 
 # 6. Спецслучаи нормализации -------------------------------------------------
+
 
 def test_cancelled_events_are_ignored():
     stats = calculate_day_stats(
@@ -156,6 +163,7 @@ def test_zero_or_inverted_events_are_dropped():
 
 # 7. Форматирование длительности (см. test_messages для углового) ------------
 
+
 def test_format_duration_ru_known_values():
     assert format_duration_ru(0) == "0 мин"
     assert format_duration_ru(30) == "30 мин"
@@ -165,6 +173,7 @@ def test_format_duration_ru_known_values():
 
 
 # 8. WorkdayOptions ----------------------------------------------------------
+
 
 def test_workday_options_validate_rejects_inverted_workday():
     with pytest.raises(ValueError):

@@ -1,6 +1,5 @@
 from satellite.calendar.ical_parser import parse_calendar_events
 
-
 _ICS = (
     "BEGIN:VCALENDAR\r\n"
     "VERSION:2.0\r\n"
@@ -48,12 +47,8 @@ def test_parse_calendar_events_preserves_partstat_for_pending_attendee():
     events = parse_calendar_events(ics, "Test Cal")
     assert len(events) == 1
     attendees = events[0]["attendees"]
-    assert any(
-        "mailto:me@mail.ru" in a and "PARTSTAT=NEEDS-ACTION" in a for a in attendees
-    )
-    assert any(
-        "mailto:other@mail.ru" in a and "PARTSTAT=ACCEPTED" in a for a in attendees
-    )
+    assert any("mailto:me@mail.ru" in a and "PARTSTAT=NEEDS-ACTION" in a for a in attendees)
+    assert any("mailto:other@mail.ru" in a and "PARTSTAT=ACCEPTED" in a for a in attendees)
 
 
 def test_parse_calendar_events_garbage_input_returns_empty():

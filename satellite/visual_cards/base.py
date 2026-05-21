@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from PIL import Image as PILImage
-    from PIL import ImageDraw, ImageFont
+    from PIL import ImageDraw
 
 CARD_WIDTH = 1200
 MARGIN = 56
@@ -42,10 +42,10 @@ def pil():
     return Image, ImageDraw, ImageFont
 
 
-_LOGO_CACHE: "PILImage.Image | None" = None
+_LOGO_CACHE: PILImage.Image | None = None
 
 
-def load_brand_logo() -> "PILImage.Image | None":
+def load_brand_logo() -> PILImage.Image | None:
     global _LOGO_CACHE
     if _LOGO_CACHE is not None:
         return _LOGO_CACHE
@@ -126,23 +126,25 @@ def strip_markup(text: str) -> str:
 
 
 def rounded_rect(
-    draw: "ImageDraw.ImageDraw",
+    draw: ImageDraw.ImageDraw,
     box: tuple[int, int, int, int],
     radius: int,
     *,
     fill: tuple[int, int, int],
     outline: tuple[int, int, int] | None = None,
 ) -> None:
-    draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=1 if outline else 0)
+    draw.rounded_rectangle(
+        box, radius=radius, fill=fill, outline=outline, width=1 if outline else 0
+    )
 
 
 def draw_surface_card(
     img,
-    draw: "ImageDraw.ImageDraw",
+    draw: ImageDraw.ImageDraw,
     box: tuple[int, int, int, int],
     *,
     radius: int = CARD_RADIUS,
-) -> "ImageDraw.ImageDraw":
+) -> ImageDraw.ImageDraw:
     Image, ImageDraw, _ = pil()
     x0, y0, x1, y1 = box
     height = img.size[1]
@@ -161,13 +163,13 @@ def draw_surface_card(
     return draw
 
 
-def text_width(draw: "ImageDraw.ImageDraw", text: str, font) -> int:
+def text_width(draw: ImageDraw.ImageDraw, text: str, font) -> int:
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[2] - bbox[0]
 
 
 def draw_pill(
-    draw: "ImageDraw.ImageDraw",
+    draw: ImageDraw.ImageDraw,
     xy: tuple[int, int],
     text: str,
     *,
@@ -194,7 +196,7 @@ def draw_pill(
 
 
 def draw_load_ring(
-    draw: "ImageDraw.ImageDraw",
+    draw: ImageDraw.ImageDraw,
     cx: int,
     cy: int,
     radius: int,
@@ -213,7 +215,7 @@ def draw_load_ring(
 
 
 def draw_stat_row(
-    draw: "ImageDraw.ImageDraw",
+    draw: ImageDraw.ImageDraw,
     left: int,
     top: int,
     *,
@@ -236,7 +238,7 @@ def draw_stat_row(
 
 
 def wrap_text_lines(
-    draw: "ImageDraw.ImageDraw",
+    draw: ImageDraw.ImageDraw,
     text: str,
     font,
     max_width: int,

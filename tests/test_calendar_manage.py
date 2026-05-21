@@ -204,9 +204,7 @@ def _ctx(*, events: list[dict] | None = None) -> MagicMock:
     connected.context = MagicMock()
     connected.context.login = LOGIN
     ctx.calendar_service.require_connection = MagicMock(return_value=connected)
-    ctx.calendar_service.list_events_for_invitations = MagicMock(
-        return_value=list(events or [])
-    )
+    ctx.calendar_service.list_events_for_invitations = MagicMock(return_value=list(events or []))
     ctx.calendar_service.set_attendee_partstat = MagicMock()
     return ctx
 
@@ -259,11 +257,7 @@ def test_handle_open_manage_events_shows_list_with_buttons(monkeypatch):
     assert "Standup" in rendered
     keyboard = ctx.telegram.send_message.call_args.kwargs.get("reply_markup")
     assert isinstance(keyboard, dict)
-    callbacks = [
-        btn["callback_data"]
-        for row in keyboard["inline_keyboard"]
-        for btn in row
-    ]
+    callbacks = [btn["callback_data"] for row in keyboard["inline_keyboard"] for btn in row]
     expected_token = event_callback_token("https://e/standup")
     assert f"{CB_MANAGE_PICK_PREFIX}{expected_token}" in callbacks
 
@@ -339,9 +333,7 @@ def test_manage_respond_calls_set_attendee_partstat_and_refreshes(monkeypatch):
     ctx = _ctx(events=[_ev(summary="Standup", url=url, uid="uid-x")])
     token = event_callback_token(url)
 
-    handle_callback_query(
-        ctx, _cb(900, f"{CB_MANAGE_RESPOND_PREFIX}{token}:d")
-    )
+    handle_callback_query(ctx, _cb(900, f"{CB_MANAGE_RESPOND_PREFIX}{token}:d"))
 
     ctx.calendar_service.set_attendee_partstat.assert_called_once()
     args = ctx.calendar_service.set_attendee_partstat.call_args
@@ -373,9 +365,7 @@ def test_manage_respond_accept_uses_accept_toast(monkeypatch):
     ctx = _ctx(events=[_ev(summary="Demo", url=url, partstat="TENTATIVE")])
     token = event_callback_token(url)
 
-    handle_callback_query(
-        ctx, _cb(900, f"{CB_MANAGE_RESPOND_PREFIX}{token}:a")
-    )
+    handle_callback_query(ctx, _cb(900, f"{CB_MANAGE_RESPOND_PREFIX}{token}:a"))
 
     args = ctx.calendar_service.set_attendee_partstat.call_args
     assert args.args[2] == "ACCEPTED"
@@ -399,9 +389,7 @@ def test_manage_respond_tentative_uses_tentative_toast(monkeypatch):
     ctx = _ctx(events=[_ev(summary="Demo", url=url, partstat="ACCEPTED")])
     token = event_callback_token(url)
 
-    handle_callback_query(
-        ctx, _cb(900, f"{CB_MANAGE_RESPOND_PREFIX}{token}:t")
-    )
+    handle_callback_query(ctx, _cb(900, f"{CB_MANAGE_RESPOND_PREFIX}{token}:t"))
 
     args = ctx.calendar_service.set_attendee_partstat.call_args
     assert args.args[2] == "TENTATIVE"

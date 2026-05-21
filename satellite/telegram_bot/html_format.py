@@ -13,7 +13,6 @@ Telegram показывал их свёрнутыми с кнопкой «Пок
 from __future__ import annotations
 
 import re
-from html import escape
 
 # Custom emoji document id'ы для ``<tg-emoji emoji-id="…">``.
 #

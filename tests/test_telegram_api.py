@@ -98,9 +98,7 @@ def test_get_updates_does_not_block_send_message() -> None:
     elapsed = time.monotonic() - started
 
     assert result == {"message_id": 7}
-    assert elapsed < 0.5, (
-        f"send_message blocked behind long-poll for {elapsed:.2f}s"
-    )
+    assert elapsed < 0.5, f"send_message blocked behind long-poll for {elapsed:.2f}s"
 
     long_poll_release.set()
     assert poll_done.wait(timeout=2.0), "long-poll did not finish"
@@ -186,9 +184,7 @@ def test_send_message_retries_without_effect_on_message_effect_error() -> None:
     client = TelegramClient("token")
     client._call = MagicMock(  # noqa: SLF001
         side_effect=[
-            TelegramError(
-                "sendMessage: HTTP 400: Bad Request: message_effect_id invalid"
-            ),
+            TelegramError("sendMessage: HTTP 400: Bad Request: message_effect_id invalid"),
             {"message_id": 8},
         ]
     )
@@ -216,9 +212,7 @@ def test_send_message_retries_without_tg_emoji_on_custom_emoji_error() -> None:
     client = TelegramClient("token")
     mock_call, snapshots = _capture_call_snapshots(
         [
-            TelegramError(
-                "sendMessage: HTTP 400: Bad Request: CUSTOM_EMOJI_ID_INVALID"
-            ),
+            TelegramError("sendMessage: HTTP 400: Bad Request: CUSTOM_EMOJI_ID_INVALID"),
             {"message_id": 9},
         ]
     )

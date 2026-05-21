@@ -21,8 +21,6 @@ from satellite.calendar.time_utils import normalize_hhmm_input
 from satellite.messages_ru import (
     BUTTON_DIGEST_SETTINGS,
     BUTTON_SETTINGS,
-    CB_SETTINGS_DIGEST,
-    SETTINGS_HUB_TEXT,
     CB_DIGEST_BACK,
     CB_DIGEST_CLOSE,
     CB_DIGEST_DAYS,
@@ -31,6 +29,7 @@ from satellite.messages_ru import (
     CB_DIGEST_SETTINGS,
     CB_DIGEST_TIME,
     CB_DIGEST_TOGGLE,
+    CB_SETTINGS_DIGEST,
     DIGEST_DAYS_ALL_APPLIED_TEXT,
     DIGEST_DAYS_WEEKDAYS_APPLIED_TEXT,
     DIGEST_SETTINGS_CLOSED_TEXT,
@@ -38,7 +37,6 @@ from satellite.messages_ru import (
     build_digest_days_keyboard,
     build_digest_settings_keyboard,
     button_text_is_digest_settings,
-    digest_days_screen_text,
     digest_settings_screen_text,
     digest_time_applied_text,
 )
@@ -59,7 +57,6 @@ from satellite.telegram_bot.handlers import (
     handle_message,
     is_digest_settings_request,
 )
-
 
 # --- time validation -------------------------------------------------------
 
@@ -319,7 +316,12 @@ def test_button_text_is_digest_settings_recognized():
 def test_digest_settings_button_sends_inline_settings_screen(tmp_path: Path):
     ctx, store, _state = _ctx(tmp_path)
     msg = IncomingMessage(
-        update_id=1, chat_id=900, user_id=1, username="alice", display_name=None, text=BUTTON_SETTINGS
+        update_id=1,
+        chat_id=900,
+        user_id=1,
+        username="alice",
+        display_name=None,
+        text=BUTTON_SETTINGS,
     )
     handle_message(ctx, msg)
 
@@ -337,7 +339,12 @@ def test_digest_settings_button_sends_inline_settings_screen(tmp_path: Path):
 def test_settings_hub_digest_button_opens_digest_screen(tmp_path: Path):
     ctx, store, _state = _ctx(tmp_path)
     msg = IncomingMessage(
-        update_id=1, chat_id=900, user_id=1, username="alice", display_name=None, text=BUTTON_SETTINGS
+        update_id=1,
+        chat_id=900,
+        user_id=1,
+        username="alice",
+        display_name=None,
+        text=BUTTON_SETTINGS,
     )
     handle_message(ctx, msg)
 
@@ -354,7 +361,12 @@ def test_digest_settings_screen_shows_enabled_status_after_subscribe(tmp_path: P
     ctx, store, _state = _ctx(tmp_path)
     store.subscribe(900, "alice")
     msg = IncomingMessage(
-        update_id=2, chat_id=900, user_id=1, username="alice", display_name=None, text=BUTTON_SETTINGS
+        update_id=2,
+        chat_id=900,
+        user_id=1,
+        username="alice",
+        display_name=None,
+        text=BUTTON_SETTINGS,
     )
     handle_message(ctx, msg)
     handle_callback_query(ctx, _callback(900, CB_SETTINGS_DIGEST))
@@ -451,7 +463,9 @@ def test_valid_time_input_saves_and_clears_state(tmp_path: Path):
     store.get_or_create(900, "alice")
     state.set_waiting_for_time(900, message_id=77)
 
-    msg = IncomingMessage(update_id=20, chat_id=900, user_id=1, username="alice", display_name=None, text="8:30")
+    msg = IncomingMessage(
+        update_id=20, chat_id=900, user_id=1, username="alice", display_name=None, text="8:30"
+    )
     handle_message(ctx, msg)
 
     assert store.get(900).digest_time == "08:30"
@@ -466,7 +480,9 @@ def test_valid_time_input_09_00_stays_normalized(tmp_path: Path):
     store.get_or_create(900, "alice")
     state.set_waiting_for_time(900, message_id=77)
 
-    msg = IncomingMessage(update_id=21, chat_id=900, user_id=1, username="alice", display_name=None, text="09:00")
+    msg = IncomingMessage(
+        update_id=21, chat_id=900, user_id=1, username="alice", display_name=None, text="09:00"
+    )
     handle_message(ctx, msg)
 
     assert store.get(900).digest_time == "09:00"
@@ -478,7 +494,9 @@ def test_invalid_time_input_keeps_state_and_does_not_change_settings(tmp_path: P
     state.set_waiting_for_time(900, message_id=77)
     original_time = store.get(900).digest_time
 
-    msg = IncomingMessage(update_id=22, chat_id=900, user_id=1, username="alice", display_name=None, text="25:00")
+    msg = IncomingMessage(
+        update_id=22, chat_id=900, user_id=1, username="alice", display_name=None, text="25:00"
+    )
     handle_message(ctx, msg)
 
     assert store.get(900).digest_time == original_time
@@ -591,8 +609,7 @@ def test_callback_set_days_skips_confirmation_when_value_unchanged(tmp_path: Pat
     handle_callback_query(ctx, _callback(900, CB_DIGEST_DAYS_WEEKDAYS))
 
     confirmations = [
-        c.args[1] for c in ctx.telegram.send_message.call_args_list
-        if "Готово" in c.args[1]
+        c.args[1] for c in ctx.telegram.send_message.call_args_list if "Готово" in c.args[1]
     ]
     assert confirmations == []
 
@@ -631,7 +648,12 @@ def test_legacy_subscribe_button_enables_digest_via_settings_model(tmp_path: Pat
     store.update_settings(900, "alice", digest_days=DIGEST_DAYS_ALL, digest_time="10:15")
 
     msg = IncomingMessage(
-        update_id=30, chat_id=900, user_id=1, username="alice", display_name=None, text=BUTTON_SUBSCRIBE
+        update_id=30,
+        chat_id=900,
+        user_id=1,
+        username="alice",
+        display_name=None,
+        text=BUTTON_SUBSCRIBE,
     )
     handle_message(ctx, msg)
 
@@ -655,7 +677,12 @@ def test_legacy_unsubscribe_button_disables_but_keeps_record(tmp_path: Path):
     store.update_settings(900, "alice", digest_time="10:15")
 
     msg = IncomingMessage(
-        update_id=31, chat_id=900, user_id=1, username="alice", display_name=None, text=BUTTON_UNSUBSCRIBE
+        update_id=31,
+        chat_id=900,
+        user_id=1,
+        username="alice",
+        display_name=None,
+        text=BUTTON_UNSUBSCRIBE,
     )
     handle_message(ctx, msg)
 
@@ -673,11 +700,11 @@ def test_digest_command_enables_subscription_without_resetting_settings(
     """`/digest` — основной способ включить подписку из меню Telegram."""
     ctx, store, _state = _ctx(tmp_path)
     store.get_or_create(900, "alice")
-    store.update_settings(
-        900, "alice", digest_days=DIGEST_DAYS_ALL, digest_time="10:15"
-    )
+    store.update_settings(900, "alice", digest_days=DIGEST_DAYS_ALL, digest_time="10:15")
 
-    msg = IncomingMessage(update_id=40, chat_id=900, user_id=1, username="alice", display_name=None, text="/digest")
+    msg = IncomingMessage(
+        update_id=40, chat_id=900, user_id=1, username="alice", display_name=None, text="/digest"
+    )
     handle_message(ctx, msg)
 
     settings = store.get(900)
@@ -692,7 +719,9 @@ def test_digest_command_does_not_open_settings_screen(tmp_path: Path):
     ctx, store, _state = _ctx(tmp_path)
     store.get_or_create(900, "alice")
 
-    msg = IncomingMessage(update_id=41, chat_id=900, user_id=1, username="alice", display_name=None, text="/digest")
+    msg = IncomingMessage(
+        update_id=41, chat_id=900, user_id=1, username="alice", display_name=None, text="/digest"
+    )
     handle_message(ctx, msg)
 
     # на /digest мы шлём подтверждение текстом, без inline-кнопок настроек
@@ -705,12 +734,15 @@ def test_stopdigest_command_disables_but_keeps_days_and_time(tmp_path: Path):
     """`/stopdigest` отключает подписку и сохраняет настройки дней/времени."""
     ctx, store, _state = _ctx(tmp_path)
     store.subscribe(900, "alice")
-    store.update_settings(
-        900, "alice", digest_days=DIGEST_DAYS_ALL, digest_time="10:15"
-    )
+    store.update_settings(900, "alice", digest_days=DIGEST_DAYS_ALL, digest_time="10:15")
 
     msg = IncomingMessage(
-        update_id=42, chat_id=900, user_id=1, username="alice", display_name=None, text="/stopdigest"
+        update_id=42,
+        chat_id=900,
+        user_id=1,
+        username="alice",
+        display_name=None,
+        text="/stopdigest",
     )
     handle_message(ctx, msg)
 
@@ -725,7 +757,9 @@ def test_settings_command_opens_inline_screen(tmp_path: Path):
     ctx, store, _state = _ctx(tmp_path)
     store.get_or_create(900, "alice")
 
-    msg = IncomingMessage(update_id=43, chat_id=900, user_id=1, username="alice", display_name=None, text="/settings")
+    msg = IncomingMessage(
+        update_id=43, chat_id=900, user_id=1, username="alice", display_name=None, text="/settings"
+    )
     handle_message(ctx, msg)
 
     ctx.telegram.send_message.assert_called_once()

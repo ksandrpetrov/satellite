@@ -222,9 +222,13 @@ class StreamingReply:
         placeholder из Bot API 10.0. Если ботом-серверу < 10.0, мы повторяем
         старт с непустым текстом (см. ``_try_start_draft``).
         """
-        resolved_draft_id = draft_id if draft_id else _stable_draft_id(
-            chat_id=chat_id,
-            seed=int(time.time() * 1000) % 1_000_000_007,
+        resolved_draft_id = (
+            draft_id
+            if draft_id
+            else _stable_draft_id(
+                chat_id=chat_id,
+                seed=int(time.time() * 1000) % 1_000_000_007,
+            )
         )
         session = cls(
             telegram,

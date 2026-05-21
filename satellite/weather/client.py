@@ -70,7 +70,9 @@ def _parse_hourly_payload(payload: Mapping[str, Any]) -> list[HourlyWeather]:
                 rain=float(rain[i]) if i < len(rain) and rain[i] is not None else None,
                 snowfall=float(snow[i]) if i < len(snow) and snow[i] is not None else None,
                 wind_speed=float(wind[i]) if i < len(wind) and wind[i] is not None else None,
-                surface_pressure=float(press[i]) if i < len(press) and press[i] is not None else None,
+                surface_pressure=float(press[i])
+                if i < len(press) and press[i] is not None
+                else None,
             )
         )
     return out

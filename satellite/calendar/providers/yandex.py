@@ -28,9 +28,7 @@ class YandexCalendarProvider:
     ) -> tuple[bool, str | None, str | None]:
         raise ProviderNotImplementedError(self.provider_id)
 
-    def get_connection_status(
-        self, context: UserCalendarContext
-    ) -> CalendarConnectionStatus:
+    def get_connection_status(self, context: UserCalendarContext) -> CalendarConnectionStatus:
         raise ProviderNotImplementedError(self.provider_id)
 
     def list_calendars(self, context: UserCalendarContext) -> list[CalendarListEntry]:

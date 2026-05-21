@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from unittest.mock import MagicMock
-
 from zoneinfo import ZoneInfo
 
 from satellite.calendar.stats import NormalizedEvent, WorkdayOptions, calculate_day_stats
@@ -52,7 +51,9 @@ def _hour(day: str, hour: int, **kw: object) -> HourlyWeather:
     )
 
 
-def _stats_for_day(events: list[NormalizedEvent], *, label: str = "Сегодня", plan_date: date | None = None):
+def _stats_for_day(
+    events: list[NormalizedEvent], *, label: str = "Сегодня", plan_date: date | None = None
+):
     pd = plan_date or date(2026, 5, 12)
     return calculate_day_stats(events, date_label=label, plan_date=pd)
 
@@ -63,7 +64,8 @@ def _digest_now_may_12_14h() -> datetime:
 
 def test_rain_high_probability_80_triggers_umbrella_warning():
     hours = [
-        _hour("2026-05-12", h, precipitation_probability=80, apparent_temperature=7.0) for h in range(10, 19)
+        _hour("2026-05-12", h, precipitation_probability=80, apparent_temperature=7.0)
+        for h in range(10, 19)
     ]
     stats = _stats_for_day([], plan_date=date(2026, 5, 12))
     s = summarize_for_digest_day(
@@ -76,14 +78,19 @@ def test_rain_high_probability_80_triggers_umbrella_warning():
         now=_digest_now_may_12_14h(),
     )
     assert WARNING_RAIN_HIGH in s.warnings
-    msg = build_weather_message(s, show_normal_weather=False, message_seed="t1", digest_is_today=True)
+    msg = build_weather_message(
+        s, show_normal_weather=False, message_seed="t1", digest_is_today=True
+    )
     assert msg is not None
     assert "зонт" in msg.lower() or "крыл" in msg.lower()
     assert "80%" in msg
 
 
 def test_rain_probability_30_no_rain_warning():
-    hours = [_hour("2026-05-12", h, precipitation_probability=30, apparent_temperature=10.0) for h in range(10, 19)]
+    hours = [
+        _hour("2026-05-12", h, precipitation_probability=30, apparent_temperature=10.0)
+        for h in range(10, 19)
+    ]
     stats = _stats_for_day([], plan_date=date(2026, 5, 12))
     s = summarize_for_digest_day(
         hours,
@@ -164,7 +171,9 @@ def test_apparent_plus_31_hot():
 
 
 def test_wind_13_strong():
-    hours = [_hour("2026-05-12", h, wind_speed=13.0, apparent_temperature=15.0) for h in range(10, 19)]
+    hours = [
+        _hour("2026-05-12", h, wind_speed=13.0, apparent_temperature=15.0) for h in range(10, 19)
+    ]
     stats = _stats_for_day([], plan_date=date(2026, 5, 12))
     s = summarize_for_digest_day(
         hours,
@@ -200,7 +209,9 @@ def test_multiple_warnings_combined_rain_and_wind():
         now=_digest_now_may_12_14h(),
     )
     assert WARNING_RAIN_HIGH in s.warnings and WARNING_STRONG_WIND in s.warnings
-    msg = build_weather_message(s, show_normal_weather=False, message_seed="combo", digest_is_today=True)
+    msg = build_weather_message(
+        s, show_normal_weather=False, message_seed="combo", digest_is_today=True
+    )
     assert msg is not None
     assert "🌧💨" in msg or ("🌧" in msg and "💨" in msg)
 
@@ -376,7 +387,10 @@ def test_tomorrow_vs_day_after_date_filtering():
 
 
 def test_weather_text_no_chayka_word():
-    hours = [_hour("2026-05-12", h, precipitation_probability=80, apparent_temperature=7.0) for h in range(10, 19)]
+    hours = [
+        _hour("2026-05-12", h, precipitation_probability=80, apparent_temperature=7.0)
+        for h in range(10, 19)
+    ]
     stats = _stats_for_day([], plan_date=date(2026, 5, 12))
     s = summarize_for_digest_day(
         hours,
@@ -387,13 +401,18 @@ def test_weather_text_no_chayka_word():
         reference_date=date(2026, 5, 12),
         now=_digest_now_may_12_14h(),
     )
-    msg = build_weather_message(s, show_normal_weather=False, message_seed="x", digest_is_today=True)
+    msg = build_weather_message(
+        s, show_normal_weather=False, message_seed="x", digest_is_today=True
+    )
     assert msg
     assert "чайка" not in msg.lower()
 
 
 def test_weather_text_has_style_token():
-    hours = [_hour("2026-05-12", h, precipitation_probability=80, apparent_temperature=7.0) for h in range(10, 19)]
+    hours = [
+        _hour("2026-05-12", h, precipitation_probability=80, apparent_temperature=7.0)
+        for h in range(10, 19)
+    ]
     stats = _stats_for_day([], plan_date=date(2026, 5, 12))
     s = summarize_for_digest_day(
         hours,
@@ -404,7 +423,9 @@ def test_weather_text_has_style_token():
         reference_date=date(2026, 5, 12),
         now=_digest_now_may_12_14h(),
     )
-    msg = build_weather_message(s, show_normal_weather=False, message_seed="x", digest_is_today=True)
+    msg = build_weather_message(
+        s, show_normal_weather=False, message_seed="x", digest_is_today=True
+    )
     assert seagull_style_tokens_present(msg)
 
 
@@ -472,7 +493,9 @@ def test_message_no_empty_colon_without_details():
         max_wind_speed=None,
         warnings=(WARNING_RAIN_HIGH,),
     )
-    msg = build_weather_message(s, show_normal_weather=False, message_seed="nodet", digest_is_today=True)
+    msg = build_weather_message(
+        s, show_normal_weather=False, message_seed="nodet", digest_is_today=True
+    )
     assert msg is not None
     assert ": ." not in msg
     assert ": ," not in msg
@@ -530,7 +553,9 @@ def test_today_message_contains_seychas_and_dnyom():
         reference_date=date(2026, 5, 12),
         now=datetime(2026, 5, 12, 14, 15, tzinfo=MOSCOW),
     )
-    msg = build_weather_message(s, show_normal_weather=False, message_seed="td", digest_is_today=True)
+    msg = build_weather_message(
+        s, show_normal_weather=False, message_seed="td", digest_is_today=True
+    )
     assert msg
     assert "сейчас +7°C" in msg
     assert "днём до +12°C" in msg
@@ -560,7 +585,9 @@ def test_future_day_says_na_starte_not_seychas():
         tz_name="Europe/Moscow",
         reference_date=date(2026, 5, 12),
     )
-    msg = build_weather_message(s, show_normal_weather=False, message_seed="tm", digest_is_today=False)
+    msg = build_weather_message(
+        s, show_normal_weather=False, message_seed="tm", digest_is_today=False
+    )
     assert msg
     assert "на старте +9°C" in msg
     assert "днём до +15°C" in msg
@@ -591,7 +618,9 @@ def test_apparent_preferred_over_temperature_2m():
         reference_date=date(2026, 5, 12),
         now=_digest_now_may_12_14h(),
     )
-    msg = build_weather_message(s, show_normal_weather=False, message_seed="ap", digest_is_today=True)
+    msg = build_weather_message(
+        s, show_normal_weather=False, message_seed="ap", digest_is_today=True
+    )
     assert msg
     assert "+7°C" in msg
     assert "+3°C" not in msg
@@ -621,7 +650,9 @@ def test_fallback_to_temperature_when_no_apparent():
         reference_date=date(2026, 5, 12),
         now=_digest_now_may_12_14h(),
     )
-    msg = build_weather_message(s, show_normal_weather=False, message_seed="fb", digest_is_today=True)
+    msg = build_weather_message(
+        s, show_normal_weather=False, message_seed="fb", digest_is_today=True
+    )
     assert msg
     assert "+8°C" in msg
 
@@ -655,13 +686,18 @@ def test_day_max_over_entire_calendar_date_not_work_window():
         reference_date=date(2026, 5, 12),
         now=_digest_now_may_12_14h(),
     )
-    msg = build_weather_message(s, show_normal_weather=False, message_seed="dm", digest_is_today=True)
+    msg = build_weather_message(
+        s, show_normal_weather=False, message_seed="dm", digest_is_today=True
+    )
     assert msg
     assert "днём до +22°C" in msg
 
 
 def test_precip_shown_as_osadki_do_percent():
-    hours = [_hour("2026-05-12", h, apparent_temperature=10.0, precipitation_probability=80, rain=1.0) for h in range(24)]
+    hours = [
+        _hour("2026-05-12", h, apparent_temperature=10.0, precipitation_probability=80, rain=1.0)
+        for h in range(24)
+    ]
     stats = _stats_for_day([], plan_date=date(2026, 5, 12))
     s = summarize_for_digest_day(
         hours,
@@ -672,7 +708,9 @@ def test_precip_shown_as_osadki_do_percent():
         reference_date=date(2026, 5, 12),
         now=_digest_now_may_12_14h(),
     )
-    msg = build_weather_message(s, show_normal_weather=False, message_seed="pr", digest_is_today=True)
+    msg = build_weather_message(
+        s, show_normal_weather=False, message_seed="pr", digest_is_today=True
+    )
     assert msg and "осадки до 80%" in msg
 
 
@@ -704,6 +742,8 @@ def test_first_meeting_before_10_uses_that_hour_for_start_temperature():
         tz_name="Europe/Moscow",
         reference_date=date(2026, 5, 12),
     )
-    msg = build_weather_message(s, show_normal_weather=True, message_seed="early", digest_is_today=False)
+    msg = build_weather_message(
+        s, show_normal_weather=True, message_seed="early", digest_is_today=False
+    )
     assert msg
     assert "на старте +9°C" in msg

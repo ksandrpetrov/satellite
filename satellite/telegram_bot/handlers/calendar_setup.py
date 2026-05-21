@@ -58,9 +58,7 @@ def handle_web_app_connect(ctx: HandlerContext, msg: IncomingMessage) -> None:
         return
     provider = str(payload.get("provider") or PROVIDER_MAILRU).strip().lower()
     login = str(payload.get("login") or "").strip()
-    app_password = str(
-        payload.get("app_password") or payload.get("token") or ""
-    ).strip()
+    app_password = str(payload.get("app_password") or payload.get("token") or "").strip()
     if provider not in PROVIDER_IDS:
         send(ctx, msg.chat_id, CALENDAR_CHECK_FAIL_HTML)
         return
