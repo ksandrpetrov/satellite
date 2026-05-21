@@ -1,11 +1,11 @@
-"""Фоновый scheduler для per-user дайджеста.
+"""Фоновый scheduler для per-user дайджестов (план дня и непринятые встречи).
 
 Дизайн (Вариант А из ТЗ):
 
 - Один поток просыпается каждые ``tick_interval_sec`` (по умолчанию 30 с)
-  и сверяет ``HH:MM`` в часовом поясе пользователя с его ``digest_time``.
+  и сверяет ``HH:MM`` в часовом поясе пользователя с его расписанием.
 - Если совпало, день недели разрешён, и сегодня этому пользователю ещё
-  не отправляли — стреляем; ``last_digest_sent_date`` записываем только после
+  не отправляли — стреляем; ``last_*_sent_date`` записываем только после
   успешного ``sendMessage``.
 - Каждый подписчик обрабатывается независимо (фейл одного не валит остальных).
 """
@@ -23,6 +23,7 @@ from .calendar.time_utils import parse_hhmm
 from .calendar.user_calendar_service import UserCalendarService
 from .config import DigestConfig, PlanConfig, WeatherConfig
 from .digest_utils import is_digest_day_allowed, resolve_target_date
+from .invitations_view import load_pending_invitations_screen
 from .plan_service import PlanBuilder
 from .subscriptions import DigestSettings, SubscriptionStore
 from .telegram_bot.api import TelegramClient, TelegramError
@@ -35,32 +36,73 @@ log = logging.getLogger(__name__)
 _DEFAULT_TICK_SEC = 30.0
 
 
-def should_fire_for_user(
+def should_fire_at(
     *,
-    settings: DigestSettings,
+    enabled: bool,
+    days: str,
+    time_str: str,
+    last_sent_iso: str | None,
     now_in_user_tz: datetime,
+    chat_id: int | None = None,
+    log_label: str = "digest_time",
 ) -> bool:
-    """Чистая функция-решатель для одного пользователя."""
-    if not settings.digest_enabled:
+    """Чистый решатель «пора ли стрелять» для одного вида дайджеста."""
+    if not enabled:
         return False
-    if not is_digest_day_allowed(settings.digest_days, now_in_user_tz.weekday()):
+    if not is_digest_day_allowed(days, now_in_user_tz.weekday()):
         return False
     try:
-        scheduled_minutes = parse_hhmm(settings.digest_time)
+        scheduled_minutes = parse_hhmm(time_str)
     except ValueError:
-        log.warning(
-            "Invalid digest_time for chat_id=%s: %r",
-            settings.chat_id,
-            settings.digest_time,
-        )
+        if chat_id is not None:
+            log.warning(
+                "Invalid %s for chat_id=%s: %r",
+                log_label,
+                chat_id,
+                time_str,
+            )
         return False
     current_minutes = now_in_user_tz.hour * 60 + now_in_user_tz.minute
     if current_minutes != scheduled_minutes:
         return False
     today_iso = now_in_user_tz.date().isoformat()
-    if settings.last_digest_sent_date == today_iso:
+    if last_sent_iso == today_iso:
         return False
     return True
+
+
+def should_fire_for_user(
+    *,
+    settings: DigestSettings,
+    now_in_user_tz: datetime,
+) -> bool:
+    """Дайджест на сегодня (план дня)."""
+    return should_fire_at(
+        enabled=settings.digest_enabled,
+        days=settings.digest_days,
+        time_str=settings.digest_time,
+        last_sent_iso=settings.last_digest_sent_date,
+        now_in_user_tz=now_in_user_tz,
+        chat_id=settings.chat_id,
+        log_label="digest_time",
+    )
+
+
+def should_fire_pending_for_user(
+    *,
+    settings: DigestSettings,
+    now_in_user_tz: datetime,
+) -> bool:
+    """Дайджест непринятых встреч (экран /invitations)."""
+    return should_fire_at(
+        enabled=settings.pending_digest_enabled,
+        days=settings.pending_digest_days,
+        time_str=settings.pending_digest_time,
+        last_sent_iso=settings.last_pending_digest_sent_date,
+        now_in_user_tz=now_in_user_tz,
+        chat_id=settings.chat_id,
+        log_label="pending_digest_time",
+    )
 
 
 class DigestScheduler:
@@ -87,6 +129,7 @@ class DigestScheduler:
         self._tz = tz
         self._subscriptions = subscriptions
         self._users = users
+        self._calendar_service = calendar_service
         self._telegram = telegram
         self._plan_builder = PlanBuilder(
             calendar_service=calendar_service,
@@ -123,41 +166,43 @@ class DigestScheduler:
             thread.join(timeout=self._tick_interval_sec + 2)
 
     def tick(self) -> int:
-        """Один логический шаг. Возвращает количество успешно отправленных дайджестов."""
+        """Один логический шаг. Возвращает число успешно отправленных дайджестов."""
         subscriptions = self._subscriptions.list_active()
         if not subscriptions:
             return 0
-        due = 0
-        delivered = 0
-        failed = 0
+        daily_due = pending_due = 0
+        daily_sent = pending_sent = 0
+        daily_failed = pending_failed = 0
         for sub in subscriptions:
             if self._stop_event.is_set():
                 break
             try:
-                result = self._maybe_deliver(sub)
-                if result is None:
-                    continue
-                due += 1
-                if result:
-                    delivered += 1
-                else:
-                    failed += 1
+                d_due, d_sent, d_fail, p_due, p_sent, p_fail = self._maybe_deliver(sub)
+                daily_due += d_due
+                daily_sent += d_sent
+                daily_failed += d_fail
+                pending_due += p_due
+                pending_sent += p_sent
+                pending_failed += p_fail
             except Exception:  # noqa: BLE001 - один пользователь не валит остальных
-                failed += 1
                 log.exception(
                     "Failed to deliver digest to chat_id=%s username=%s",
                     sub.chat_id,
                     sub.username,
                 )
-        if due or failed:
+        if daily_due or pending_due or daily_failed or pending_failed:
             log.info(
-                "Digest scheduler tick: checked=%d due=%d sent=%d failed=%d",
+                "Digest scheduler tick: checked=%d daily_due=%d daily_sent=%d "
+                "daily_failed=%d pending_due=%d pending_sent=%d pending_failed=%d",
                 len(subscriptions),
-                due,
-                delivered,
-                failed,
+                daily_due,
+                daily_sent,
+                daily_failed,
+                pending_due,
+                pending_sent,
+                pending_failed,
             )
-        return delivered
+        return daily_sent + pending_sent
 
     def _run(self) -> None:
         while not self._stop_event.is_set():
@@ -179,22 +224,51 @@ class DigestScheduler:
             log.warning("Unknown timezone %r; falling back to scheduler default", name)
             return self._tz
 
-    def _maybe_deliver(self, sub: DigestSettings) -> bool | None:
-        user_tz = self._user_tz(sub.digest_timezone)
-        now_local = self._now_fn(user_tz)
-        if not should_fire_for_user(settings=sub, now_in_user_tz=now_local):
-            return None
-        today = now_local.date()
-        log.info(
-            "Digest firing at %s for chat_id=%s username=%s",
-            now_local.isoformat(timespec="seconds"),
-            sub.chat_id,
-            sub.username,
-        )
-        delivered = self._deliver(sub, today=today)
-        if delivered:
-            self._subscriptions.mark_digest_sent(sub.chat_id, today)
-        return delivered
+    def _maybe_deliver(
+        self, sub: DigestSettings
+    ) -> tuple[int, int, int, int, int, int]:
+        """(daily_due, daily_sent, daily_fail, pending_due, pending_sent, pending_fail)."""
+        daily_due = daily_sent = daily_failed = 0
+        pending_due = pending_sent = pending_failed = 0
+
+        user_tz_daily = self._user_tz(sub.digest_timezone)
+        now_daily = self._now_fn(user_tz_daily)
+        if should_fire_for_user(settings=sub, now_in_user_tz=now_daily):
+            daily_due = 1
+            today = now_daily.date()
+            log.info(
+                "Daily digest firing at %s for chat_id=%s username=%s",
+                now_daily.isoformat(timespec="seconds"),
+                sub.chat_id,
+                sub.username,
+            )
+            delivered = self._deliver_daily(sub, today=today)
+            if delivered:
+                daily_sent = 1
+                self._subscriptions.mark_digest_sent(sub.chat_id, today)
+            else:
+                daily_failed = 1
+
+        user_tz_pending = self._user_tz(sub.pending_digest_timezone)
+        now_pending = self._now_fn(user_tz_pending)
+        if should_fire_pending_for_user(settings=sub, now_in_user_tz=now_pending):
+            pending_due = 1
+            today = now_pending.date()
+            log.info(
+                "Pending digest firing at %s for chat_id=%s username=%s",
+                now_pending.isoformat(timespec="seconds"),
+                sub.chat_id,
+                sub.username,
+            )
+            result = self._deliver_pending(sub, today=today, now_local=now_pending)
+            if result is True:
+                pending_sent = 1
+                self._subscriptions.mark_pending_digest_sent(sub.chat_id, today)
+            elif result is False:
+                pending_failed = 1
+            # None — silent skip (нет pending), не считаем failure
+
+        return daily_due, daily_sent, daily_failed, pending_due, pending_sent, pending_failed
 
     def _resolve_telegram_user_id(self, sub: DigestSettings) -> int | None:
         user_record = self._users.get(sub.telegram_user_id)
@@ -214,7 +288,7 @@ class DigestScheduler:
             return None
         return user_record.telegram_user_id
 
-    def _deliver(self, sub: DigestSettings, *, today: date) -> bool:
+    def _deliver_daily(self, sub: DigestSettings, *, today: date) -> bool:
         telegram_user_id = self._resolve_telegram_user_id(sub)
         if telegram_user_id is None:
             return False
@@ -229,7 +303,7 @@ class DigestScheduler:
             )
         except (CalendarNotConnectedError, CalendarProviderError) as exc:
             log.error(
-                "Digest calendar failure for chat_id=%s username=%s: %s",
+                "Daily digest calendar failure for chat_id=%s username=%s: %s",
                 sub.chat_id,
                 sub.username,
                 exc,
@@ -244,14 +318,73 @@ class DigestScheduler:
                 message_effect_id=effect,
             )
             log.info(
-                "Digest sent: chat_id=%s username=%s",
+                "Daily digest sent: chat_id=%s username=%s",
                 sub.chat_id,
                 sub.username,
             )
             return True
         except TelegramError as exc:
             log.error(
-                "Digest send failed: chat_id=%s username=%s: %s",
+                "Daily digest send failed: chat_id=%s username=%s: %s",
+                sub.chat_id,
+                sub.username,
+                exc,
+            )
+            return False
+
+    def _deliver_pending(
+        self,
+        sub: DigestSettings,
+        *,
+        today: date,
+        now_local: datetime,
+    ) -> bool | None:
+        """True — отправлено; False — ошибка; None — нет pending, молча пропуск."""
+        telegram_user_id = self._resolve_telegram_user_id(sub)
+        if telegram_user_id is None:
+            return False
+
+        user_tz = self._user_tz(sub.pending_digest_timezone)
+        try:
+            screen = load_pending_invitations_screen(
+                self._calendar_service,
+                telegram_user_id,
+                tz=user_tz,
+                now=now_local,
+            )
+        except (CalendarNotConnectedError, CalendarProviderError) as exc:
+            log.error(
+                "Pending digest calendar failure for chat_id=%s username=%s: %s",
+                sub.chat_id,
+                sub.username,
+                exc,
+            )
+            return False
+
+        if not screen.pending:
+            log.info(
+                "Pending digest skipped (empty): chat_id=%s username=%s",
+                sub.chat_id,
+                sub.username,
+            )
+            return None
+
+        try:
+            self._telegram.send_message(
+                sub.chat_id,
+                screen.text,
+                reply_markup=screen.keyboard,
+            )
+            log.info(
+                "Pending digest sent: chat_id=%s username=%s count=%d",
+                sub.chat_id,
+                sub.username,
+                len(screen.pending),
+            )
+            return True
+        except TelegramError as exc:
+            log.error(
+                "Pending digest send failed: chat_id=%s username=%s: %s",
                 sub.chat_id,
                 sub.username,
                 exc,

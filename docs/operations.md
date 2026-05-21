@@ -250,6 +250,28 @@ Playbook ставит Docker Engine, кладёт `docker-compose.yml` и `.env`
 После миграции обязательно добавьте `location` в **ваш** nginx — TLS больше не
 выдаёт playbook (см. [Reverse proxy](#reverse-proxy-для-web-app)).
 
+#### Миграция systemd → Docker (logs в volume)
+
+systemd хранил `users.json` / `subscriptions.json` в `/opt/satellite/logs/` **на
+хосте**. Compose маунтит volume `satellite_satellite-logs` → `/app/logs`; при
+первом `compose up` volume пустой — бот стартует без пользователей, хотя legacy-файлы
+целы на диске.
+
+Перед `compose up` [`ci-deploy-remote.sh`](../scripts/ci-deploy-remote.sh) сравнивает
+число пользователей на хосте и в volume; если на хосте больше — deploy **падает**
+с указателем на миграцию (контейнер с пустым стором не поднимется поверх живых данных).
+
+Однократный перенос:
+
+```bash
+sudo bash /opt/satellite/scripts/migrate-legacy-logs.sh
+```
+
+Скрипт делает rescue-копию volume в `/root/satellite-rescue-<timestamp>/`, копирует
+legacy-логи, `chown` под uid `satellite` внутри образа, поднимает контейнер и ждёт
+`healthy`. Идемпотентен; `FORCE=1` — перетереть непустой volume. Подробнее —
+[troubleshooting.md — пропали юзеры после Docker](troubleshooting.md#после-деплоя-пропали-юзеры--авторизация--календари-systemd--docker).
+
 #### Автодеплой из GitHub Actions
 
 Перед merge в `main` на PR гоняется
@@ -274,8 +296,10 @@ Pipeline [`deploy.yml`](../.github/workflows/deploy.yml) после сборки
 legacy `satellite-bot.service` останавливает и отключает unit, чтобы
 освободить `127.0.0.1:<satellite_host_port>`; затем перезаписывает `SATELLITE_IMAGE`
 в `/opt/satellite/.env` на сборку `:sha-<short>`, выполняет `docker compose pull satellite`
-и `docker compose up -d satellite`, ждёт `healthy`, проверяет `curl http://127.0.0.1:8080/healthz`
-на сервере и [`smoke-prod.sh`](../scripts/smoke-prod.sh) с runner (если
+перед `compose up` — детект legacy `users.json` на хосте vs пустой volume (см.
+[миграцию](#миграция-systemd--docker-logs-в-volume)); затем `docker compose up -d satellite`,
+ждёт `healthy`, проверяет host `/healthz` (тело парсится как JSON, допустим
+`{"status": "ok"}` с пробелами — как отдаёт `json.dumps`) и [`smoke-prod.sh`](../scripts/smoke-prod.sh) с runner (если
 `SMOKE_PUBLIC_BASE_URL` не пустой; в Actions по умолчанию `https://cassinilab.ru`) —
 публичные `/healthz`, `/connect`, `/api/calendar/status`. Job **deploy** перед SSH
 проверяет наличие секретов `DEPLOY_HOST`, `DEPLOY_USER`, `SSH_PRIVATE_KEY`

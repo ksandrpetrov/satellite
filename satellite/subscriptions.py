@@ -43,6 +43,7 @@ DIGEST_DAYS_ALL = "all_days"
 ALLOWED_DIGEST_DAYS = frozenset({DIGEST_DAYS_WEEKDAYS, DIGEST_DAYS_ALL})
 
 DEFAULT_DIGEST_TIME = "09:00"
+DEFAULT_PENDING_DIGEST_TIME = "10:00"
 DEFAULT_DIGEST_TIMEZONE = "Europe/Moscow"
 DEFAULT_DIGEST_DAYS = DIGEST_DAYS_WEEKDAYS
 
@@ -86,6 +87,11 @@ class DigestSettings:
     digest_timezone: str = DEFAULT_DIGEST_TIMEZONE
     subscribed_at: str = ""
     last_digest_sent_date: str | None = None
+    pending_digest_enabled: bool = False
+    pending_digest_days: str = DEFAULT_DIGEST_DAYS
+    pending_digest_time: str = DEFAULT_PENDING_DIGEST_TIME
+    pending_digest_timezone: str = DEFAULT_DIGEST_TIMEZONE
+    last_pending_digest_sent_date: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -97,6 +103,11 @@ class DigestSettings:
             "digest_timezone": self.digest_timezone,
             "subscribed_at": self.subscribed_at,
             "last_digest_sent_date": self.last_digest_sent_date,
+            "pending_digest_enabled": self.pending_digest_enabled,
+            "pending_digest_days": self.pending_digest_days,
+            "pending_digest_time": self.pending_digest_time,
+            "pending_digest_timezone": self.pending_digest_timezone,
+            "last_pending_digest_sent_date": self.last_pending_digest_sent_date,
         }
 
     @classmethod
@@ -119,6 +130,18 @@ class DigestSettings:
         digest_enabled = True if raw_enabled is None else _coerce_bool(raw_enabled, default=False)
         last_sent = raw.get("last_digest_sent_date")
         last_sent_str = None if last_sent in (None, "") else str(last_sent)
+        pending_days = str(raw.get("pending_digest_days") or DEFAULT_DIGEST_DAYS)
+        if pending_days not in ALLOWED_DIGEST_DAYS:
+            pending_days = DEFAULT_DIGEST_DAYS
+        pending_time_raw = raw.get("pending_digest_time")
+        if pending_time_raw is None:
+            pending_time = DEFAULT_PENDING_DIGEST_TIME
+        else:
+            pending_time = _normalize_digest_time(pending_time_raw)
+        pending_timezone = str(raw.get("pending_digest_timezone") or DEFAULT_DIGEST_TIMEZONE)
+        pending_enabled = _coerce_bool(raw.get("pending_digest_enabled"), default=False)
+        last_pending = raw.get("last_pending_digest_sent_date")
+        last_pending_str = None if last_pending in (None, "") else str(last_pending)
         uid_raw = raw.get("telegram_user_id")
         if isinstance(uid_raw, int):
             telegram_user_id = uid_raw
@@ -139,6 +162,11 @@ class DigestSettings:
             digest_timezone=digest_timezone,
             subscribed_at=subscribed_at,
             last_digest_sent_date=last_sent_str,
+            pending_digest_enabled=pending_enabled,
+            pending_digest_days=pending_days,
+            pending_digest_time=pending_time,
+            pending_digest_timezone=pending_timezone,
+            last_pending_digest_sent_date=last_pending_str,
         )
 
 
@@ -161,7 +189,9 @@ class SubscriptionStore:
     def is_subscribed(self, chat_id: int) -> bool:
         with self._lock:
             record = self._items.get(chat_id)
-            return bool(record and record.digest_enabled)
+            return bool(
+                record and (record.digest_enabled or record.pending_digest_enabled)
+            )
 
     def subscribe(
         self,
@@ -256,6 +286,10 @@ class SubscriptionStore:
         digest_days: str | None = None,
         digest_time: str | None = None,
         digest_timezone: str | None = None,
+        pending_digest_enabled: bool | None = None,
+        pending_digest_days: str | None = None,
+        pending_digest_time: str | None = None,
+        pending_digest_timezone: str | None = None,
     ) -> DigestSettings:
         """Точечное обновление полей. Создаёт запись, если её ещё нет.
 
@@ -304,6 +338,22 @@ class SubscriptionStore:
                     )
             if digest_timezone is not None and digest_timezone:
                 updated = replace(updated, digest_timezone=digest_timezone)
+            if pending_digest_enabled is not None and pending_digest_enabled != updated.pending_digest_enabled:
+                updated = replace(updated, pending_digest_enabled=pending_digest_enabled)
+            if pending_digest_days is not None and pending_digest_days in ALLOWED_DIGEST_DAYS:
+                updated = replace(updated, pending_digest_days=pending_digest_days)
+            if pending_digest_time is not None and pending_digest_time:
+                normalized_pending_time = normalize_hhmm_input(pending_digest_time)
+                if normalized_pending_time is not None:
+                    updated = replace(updated, pending_digest_time=normalized_pending_time)
+                else:
+                    log.info(
+                        "Ignored invalid pending_digest_time for chat_id=%s: %r",
+                        chat_id,
+                        pending_digest_time,
+                    )
+            if pending_digest_timezone is not None and pending_digest_timezone:
+                updated = replace(updated, pending_digest_timezone=pending_digest_timezone)
             return updated
 
         return self._upsert_locked(chat_id, build=_change)
@@ -320,8 +370,20 @@ class SubscriptionStore:
             self._items[chat_id] = replace(existing, last_digest_sent_date=iso)
             self._save_locked()
 
+    def mark_pending_digest_sent(self, chat_id: int, sent_date: date | str) -> None:
+        """Дата последней успешной автоотправки дайджеста непринятых встреч."""
+        iso = sent_date.isoformat() if isinstance(sent_date, date) else str(sent_date)
+        with self._lock:
+            existing = self._items.get(chat_id)
+            if existing is None:
+                return
+            if existing.last_pending_digest_sent_date == iso:
+                return
+            self._items[chat_id] = replace(existing, last_pending_digest_sent_date=iso)
+            self._save_locked()
+
     def list_active(self) -> list[DigestSettings]:
-        """Только активные подписчики (digest_enabled=True).
+        """Подписчики с хотя бы одним включённым дайджестом.
 
         Раньше назывался ``list()``, но это shadow'ит builtin ``list`` в
         типовых аннотациях класса, из-за чего mypy ломался на ``list_all() ->
@@ -329,7 +391,11 @@ class SubscriptionStore:
         вызовы обновлены, тесты — тоже.
         """
         with self._lock:
-            return [s for s in self._items.values() if s.digest_enabled]
+            return [
+                s
+                for s in self._items.values()
+                if s.digest_enabled or s.pending_digest_enabled
+            ]
 
     def list_all(self) -> list[DigestSettings]:
         """Все записи, включая отключённые — для админских операций и тестов."""

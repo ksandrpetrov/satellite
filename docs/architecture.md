@@ -253,6 +253,11 @@ digest_time
 digest_timezone
 subscribed_at
 last_digest_sent_date
+pending_digest_enabled      # опционально в JSON; шедулер/UI пока не шлют
+pending_digest_days
+pending_digest_time         # default 10:00
+pending_digest_timezone
+last_pending_digest_sent_date
 ```
 
 `unsubscribe` не удаляет запись — выставляет `digest_enabled=false`, настройки
@@ -271,24 +276,36 @@ Writes are atomic: temporary file, flush, `fsync`, `os.replace`.
 `satellite/scheduler.py` is a single background thread. It polls active
 subscriptions every 30 seconds in each user's timezone.
 
-It sends only when:
+Two independent per-user schedules live in the same `DigestSettings`
+record:
 
-- `digest_enabled` is true;
-- day is allowed by `digest_days`;
-- current `HH:MM` equals `digest_time`;
-- `last_digest_sent_date` is not today;
-- user has connected calendar in `UserStore` (`has_calendar`).
+1. **Daily plan** (`digest_enabled`, `digest_days`, `digest_time`,
+   `last_digest_sent_date`) — `PlanBuilder.build_text` + `sendMessage`.
+2. **Pending invitations** (`pending_digest_enabled`, `pending_digest_days`,
+   `pending_digest_time`, `last_pending_digest_sent_date`) — same screen as
+   `/invitations` via [`invitations_view.load_pending_invitations_screen`](../satellite/invitations_view.py)
+   (inline keyboard included). If there are no NEEDS-ACTION meetings at fire
+   time, the tick skips silently (no message, no `last_pending` mark).
 
-`last_digest_sent_date` updates only after successful Telegram `sendMessage`.
-One failed user does not stop the rest of the tick.
+Each kind fires only when enabled, day allowed, `HH:MM` matches, not already
+sent today, and `has_calendar`. `last_*_sent_date` updates only after
+successful `sendMessage`. One failed user does not stop the rest of the tick.
 
-Per tick:
+Per tick (daily):
 
 ```text
 resolve_target_date(DIGEST_MODE, today in user timezone)
   -> load UserRecord by chat_id / telegram_user_id
   -> skip if not has_calendar
   -> decrypt credentials, UserCalendarService, PlanBuilder.build_text(...)
+```
+
+Per tick (pending):
+
+```text
+load_pending_invitations_screen(calendar_service, user_id, tz)
+  -> if pending empty: skip
+  -> else sendMessage(text, reply_markup=keyboard)
 ```
 
 ## Web App HTTP

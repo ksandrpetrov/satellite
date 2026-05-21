@@ -5,7 +5,7 @@
 - Сценарий FSM: пользователь нажал inline-кнопку «🕘 Время отправки», после
   чего следующий текстовый ввод должен трактоваться как новое время. Полный
   aiogram FSM здесь избыточен — достаточно потокобезопасной мапы
-  ``chat_id -> {state, message_id}``.
+  ``chat_id -> {state, message_id, digest_kind}``.
 
 - Dedup callback_query_id: Telegram иногда переотдаёт один и тот же
   callback_query (offset-рассинхрон при рестарте, гонки с другими процессами
@@ -25,8 +25,13 @@ from __future__ import annotations
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
+from typing import Literal
 
 STATE_WAITING_FOR_DIGEST_TIME = "waiting_for_digest_time"
+
+DigestKind = Literal["daily", "pending"]
+DIGEST_KIND_DAILY: DigestKind = "daily"
+DIGEST_KIND_PENDING: DigestKind = "pending"
 
 # Размер кольцевого dedup-буфера. ~1k — потолок «одной активной сессии» с запасом.
 _DEDUP_CAPACITY = 1024
@@ -36,6 +41,7 @@ _DEDUP_CAPACITY = 1024
 class WaitingState:
     state: str
     message_id: int | None  # id «исходного» inline-сообщения, чтобы вернуться на него
+    digest_kind: DigestKind = DIGEST_KIND_DAILY
 
 
 class DigestStateStore:
@@ -47,11 +53,18 @@ class DigestStateStore:
         self._seen_callbacks: OrderedDict[str, None] = OrderedDict()
         self._dedup_capacity = max(1, int(dedup_capacity))
 
-    def set_waiting_for_time(self, chat_id: int, message_id: int | None) -> None:
+    def set_waiting_for_time(
+        self,
+        chat_id: int,
+        message_id: int | None,
+        *,
+        digest_kind: DigestKind = DIGEST_KIND_DAILY,
+    ) -> None:
         with self._lock:
             self._items[chat_id] = WaitingState(
                 state=STATE_WAITING_FOR_DIGEST_TIME,
                 message_id=message_id,
+                digest_kind=digest_kind,
             )
 
     def get(self, chat_id: int) -> WaitingState | None:

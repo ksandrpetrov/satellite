@@ -57,6 +57,7 @@ from satellite.telegram_bot.handlers import (
     is_digest_settings_request,
 )
 from satellite.telegram_bot.handlers.digest_state import DigestStateStore
+from satellite.telegram_bot.handlers.settings import handle_digest_time_input
 
 # --- time validation -------------------------------------------------------
 
@@ -215,6 +216,28 @@ def test_legacy_subscription_file_migrates_to_defaults(tmp_path: Path):
     assert settings.digest_days == DEFAULT_DIGEST_DAYS
     assert settings.digest_time == DEFAULT_DIGEST_TIME
     assert settings.digest_timezone == DEFAULT_DIGEST_TIMEZONE
+    assert settings.pending_digest_enabled is False
+    assert settings.pending_digest_time == "10:00"
+    assert settings.last_pending_digest_sent_date is None
+
+
+def test_pending_digest_fields_round_trip(tmp_path: Path):
+    store = SubscriptionStore(tmp_path / "subs.json")
+    store.update_settings(
+        100,
+        "alice",
+        pending_digest_enabled=True,
+        pending_digest_days=DIGEST_DAYS_ALL,
+        pending_digest_time="11:15",
+    )
+    store.mark_pending_digest_sent(100, "2026-05-11")
+    reloaded = SubscriptionStore(tmp_path / "subs.json")
+    rec = reloaded.get(100)
+    assert rec is not None
+    assert rec.pending_digest_enabled is True
+    assert rec.pending_digest_days == DIGEST_DAYS_ALL
+    assert rec.pending_digest_time == "11:15"
+    assert rec.last_pending_digest_sent_date == "2026-05-11"
 
 
 def test_corrupted_subscription_file_normalizes_time_and_bool(tmp_path: Path):
@@ -256,11 +279,17 @@ def test_corrupted_subscription_file_normalizes_time_and_bool(tmp_path: Path):
 
 
 def test_digest_state_store_basic_flow():
+    from satellite.telegram_bot.handlers.digest_state import DIGEST_KIND_PENDING
+
     s = DigestStateStore()
     assert not s.is_waiting_for_time(1)
     s.set_waiting_for_time(1, message_id=42)
     assert s.is_waiting_for_time(1)
     assert s.get(1).message_id == 42
+    assert s.get(1).digest_kind == "daily"
+
+    s.set_waiting_for_time(2, message_id=99, digest_kind=DIGEST_KIND_PENDING)
+    assert s.get(2).digest_kind == DIGEST_KIND_PENDING
 
     cleared = s.clear(1)
     assert cleared is not None
@@ -333,7 +362,8 @@ def test_digest_settings_button_sends_inline_settings_screen(tmp_path: Path):
     assert keyboard is not None
     assert "inline_keyboard" in keyboard
     labels = [btn["text"] for row in keyboard["inline_keyboard"] for btn in row]
-    assert "🔔 Дайджест" in labels
+    assert "🔔 Дайджест на сегодня" in labels
+    assert "📨 Дайджест непринятых встреч" in labels
 
 
 def test_settings_hub_digest_button_opens_digest_screen(tmp_path: Path):
@@ -351,7 +381,7 @@ def test_settings_hub_digest_button_opens_digest_screen(tmp_path: Path):
     handle_callback_query(ctx, _callback(900, CB_SETTINGS_DIGEST))
 
     text = ctx.telegram.edit_message_text.call_args.args[2]
-    assert "Настройки дайджеста" in text
+    assert "Настройки дайджеста на сегодня" in text
     assert "🔕" in text
     assert "будни" in text
     assert "09:00 МСК" in text
@@ -633,7 +663,72 @@ def test_callback_settings_opens_main_screen(tmp_path: Path):
     handle_callback_query(ctx, _callback(900, CB_DIGEST_SETTINGS))
 
     edit_text = ctx.telegram.edit_message_text.call_args.args[2]
-    assert "Настройки дайджеста" in edit_text
+    assert "Настройки дайджеста на сегодня" in edit_text
+
+
+# --- дайджест непринятых встреч --------------------------------------------
+
+
+def test_settings_hub_pending_button_opens_pending_screen(tmp_path: Path):
+    from satellite.messages_ru import CB_PENDING_DIGEST_SETTINGS
+
+    ctx, store, _state = _ctx(tmp_path)
+    handle_callback_query(ctx, _callback(900, CB_PENDING_DIGEST_SETTINGS))
+
+    text = ctx.telegram.edit_message_text.call_args.args[2]
+    assert "Настройки дайджеста непринятых встреч" in text
+    assert "🔕" in text
+
+
+def test_pending_digest_toggle_enables(tmp_path: Path):
+    from satellite.messages_ru import CB_PENDING_DIGEST_TOGGLE
+
+    ctx, store, _state = _ctx(tmp_path)
+    store.get_or_create(900, "alice")
+
+    handle_callback_query(ctx, _callback(900, CB_PENDING_DIGEST_TOGGLE))
+
+    assert store.get(900).pending_digest_enabled is True
+    text = ctx.telegram.edit_message_text.call_args.args[2]
+    assert "включён" in text
+
+
+def test_pending_digest_time_input_updates_field(tmp_path: Path):
+    from satellite.messages_ru import CB_PENDING_DIGEST_TIME, PENDING_DIGEST_TIME_INVALID_TEXT
+    from satellite.telegram_bot.handlers.digest_state import DIGEST_KIND_PENDING
+
+    ctx, store, state = _ctx(tmp_path)
+    store.get_or_create(900, "alice")
+    handle_callback_query(ctx, _callback(900, CB_PENDING_DIGEST_TIME))
+    assert state.get(900).digest_kind == DIGEST_KIND_PENDING
+
+    handle_digest_time_input(
+        ctx,
+        IncomingMessage(
+            update_id=50,
+            chat_id=900,
+            user_id=1,
+            username="alice",
+            display_name=None,
+            text="bad",
+        ),
+    )
+    assert state.is_waiting_for_time(900)
+    assert ctx.telegram.send_message.call_args.args[1] == PENDING_DIGEST_TIME_INVALID_TEXT
+
+    handle_digest_time_input(
+        ctx,
+        IncomingMessage(
+            update_id=51,
+            chat_id=900,
+            user_id=1,
+            username="alice",
+            display_name=None,
+            text="10 45",
+        ),
+    )
+    assert store.get(900).pending_digest_time == "10:45"
+    assert not state.is_waiting_for_time(900)
 
 
 # --- старые кнопки подписки -----------------------------------------------

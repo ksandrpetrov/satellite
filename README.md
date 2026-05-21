@@ -188,7 +188,8 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 
 Скрипты установки и диагностики: `scripts/install.sh`, `install-server.sh`,
 `bootstrap-server.sh`, `diagnose_caldav.py`, `diagnose_invitation.py`,
-`ci-deploy-remote.sh`, `docker-smoke-image.sh`, `smoke-prod.sh` — см. [AGENTS.md](AGENTS.md#скрипты)
+`ci-deploy-remote.sh`, `migrate-legacy-logs.sh`, `docker-smoke-image.sh`,
+`smoke-prod.sh` — см. [AGENTS.md](AGENTS.md#скрипты)
 и [operations.md](docs/operations.md#запуск-на-сервере). Локально: `make docker-smoke`, `make smoke-prod`.
 
 CI/CD:

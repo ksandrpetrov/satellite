@@ -7,16 +7,14 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
 
-from ...calendar.callback_tokens import event_callback_token
-from ...calendar.events import (
-    collect_pending_invitations,
-    format_invitation_list_lines,
-)
 from ...calendar.providers.base import (
     CalendarNotConnectedError,
     CalendarProviderError,
+)
+from ...invitations_view import (
+    fetch_invitation_events,
+    load_pending_invitations_screen,
 )
 from ...messages_ru import (
     CB_INV_BACK,
@@ -26,14 +24,11 @@ from ...messages_ru import (
     CB_SETTINGS_INVITATIONS,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     INVITATIONS_CLOSED_TEXT,
-    INVITATIONS_EMPTY_HTML,
     INVITATIONS_FETCH_STATUS,
     INVITATIONS_RESPOND_ACCEPTED,
     INVITATIONS_RESPOND_DECLINED,
     INVITATIONS_RESPOND_FAIL_TEXT,
     INVITATIONS_RESPOND_TENTATIVE,
-    build_invitations_keyboard,
-    invitations_list_html,
 )
 from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .access import ensure_calendar_connected
@@ -61,74 +56,23 @@ __all__ = [
 
 log = logging.getLogger(__name__)
 
-_INVITATION_HORIZON_DAYS = 60
-_INVITATION_LOOKBACK_DAYS = 14
-_MAX_INVITATIONS = 12
 _INVITATIONS_OPEN_ACTION = "invitations:open"
 
 # Двойной /invitations пока CalDAV ещё идёт — два одинаковых экрана.
 _invitations_open_guard = ActionGuard(cooldown_sec=10.0)
 
 
-def _screen_from_pending(
-    pending: list,
-    tz,
-    *,
-    reference_date: date,
-    truncated: bool,
-) -> tuple[str, dict]:
-    if not pending:
-        return INVITATIONS_EMPTY_HTML, build_invitations_keyboard([])
-    body = format_invitation_list_lines(pending, tz, reference_date)
-    keyboard_rows = [
-        (event_callback_token(str(ev.get("url") or "")), str(idx + 1))
-        for idx, ev in enumerate(pending)
-    ]
-    text = invitations_list_html(body_lines=body, truncated=truncated)
-    return text, build_invitations_keyboard(keyboard_rows)
-
-
 def _load_screen(ctx: HandlerContext, user_id: int) -> tuple[str, dict]:
-    pending, _login, truncated = _fetch_pending(ctx, user_id)
-    today = datetime.now(tz=ctx.tz).date()
-    return _screen_from_pending(pending, ctx.tz, reference_date=today, truncated=truncated)
-
-
-def _fetch_invitation_events(ctx: HandlerContext, user_id: int) -> tuple[list, str, datetime]:
-    """Все события на горизонте приглашений (до фильтра NEEDS-ACTION)."""
-    now = datetime.now(tz=ctx.tz)
-    today = now.date()
-    start = today - timedelta(days=_INVITATION_LOOKBACK_DAYS)
-    end = today + timedelta(days=_INVITATION_HORIZON_DAYS)
-    connected = ctx.calendar_service.require_connection(user_id)
-    login = connected.context.login
-    events = ctx.calendar_service.list_events_for_invitations(
+    screen = load_pending_invitations_screen(
+        ctx.calendar_service,
         user_id,
-        start_date=start,
-        end_date=end,
         tz=ctx.tz,
     )
-    return events, login, now
-
-
-def _fetch_pending(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
-    events, login, now = _fetch_invitation_events(ctx, user_id)
-    pending = collect_pending_invitations(
-        events,
-        login,
-        ctx.tz,
-        now=now,
-        max_events=_MAX_INVITATIONS + 1,
-        lookback_days=_INVITATION_LOOKBACK_DAYS,
-    )
-    truncated = len(pending) > _MAX_INVITATIONS
-    if truncated:
-        pending = pending[:_MAX_INVITATIONS]
-    return pending, login, truncated
+    return screen.text, screen.keyboard
 
 
 def _fetch_all_for_token_lookup(ctx: HandlerContext, user_id: int) -> list:
-    events, _login, _now = _fetch_invitation_events(ctx, user_id)
+    events, _login, _now = fetch_invitation_events(ctx.calendar_service, user_id, tz=ctx.tz)
     return events
 
 

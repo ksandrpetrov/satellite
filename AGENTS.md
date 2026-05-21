@@ -106,14 +106,15 @@ satellite/
 | Логику дайджеста (метрики) | [`calendar/stats.py`](satellite/calendar/stats.py) |
 | Финальный рендер | [`seagull/render.py`](satellite/seagull/render.py), [`seagull/rules.py`](satellite/seagull/rules.py) |
 | Команду / кнопку | [`recognize_message`](satellite/telegram_bot/handlers/routing.py) → запись в `_RECOGNIZERS`; маршрутизация — [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py) (`_MESSAGE_ROUTES`, `_CALLBACK_ROUTERS`) |
-| Хаб настроек / дайджест | [`handlers/settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py) (роутер всех `CB_SETTINGS_*` / `CB_ANALYTICS_*`), [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) (экран дайджеста) |
+| Хаб настроек / дайджест | [`handlers/settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py) (роутер всех `CB_SETTINGS_*` / `CB_ANALYTICS_*`), [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) (экраны «на сегодня» и «непринятых встреч») |
+| Дайджест непринятых встреч (расписание + автоотправка) | [`scheduler.py`](satellite/scheduler.py) `_deliver_pending`, [`invitations_view.py`](satellite/invitations_view.py) `load_pending_invitations_screen`; настройки — `pending_digest_*` в [`subscriptions.py`](satellite/subscriptions.py), `mark_pending_digest_sent` |
 | Чужие (пошаренные) календари | [`handlers/calendar_foreign.py`](satellite/telegram_bot/handlers/calendar_foreign.py) |
 | Список CalDAV-календарей в UI | [`handlers/calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py) — `fetch_calendars` (→ `CalendarListResult`) и `build_calendar_sources_screen` |
 | Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users/record.py`](satellite/users/record.py) |
 | URL Web App connect | [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `webapp_connect_url(ctx)` (персональный `/connect/<token>`); store — [`web/connect_token.py`](satellite/web/connect_token.py) |
 | Потоковый ответ (черновик + финал) | [`streaming_delivery.py`](satellite/telegram_bot/streaming_delivery.py), [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `open_streaming_reply` (plan, upcoming, invitations, manage, analytics) |
 | Визуал Telegram (typing, effects, меню) | [`visual.py`](satellite/telegram_bot/visual.py) — `TypingIndicator`, `pick_plan_message_effect`, `set_default_menu_button_for_chat`; HTML — [`html_format.py`](satellite/telegram_bot/html_format.py); профиль бота на старте — [`commands.py`](satellite/telegram_bot/commands.py) `setup_bot_identity` |
-| Расписание дайджеста | [`scheduler.py`](satellite/scheduler.py) + [`subscriptions.py`](satellite/subscriptions.py) |
+| Расписание дайджеста на сегодня | [`scheduler.py`](satellite/scheduler.py) `_deliver_daily` + [`subscriptions.py`](satellite/subscriptions.py) (`digest_*`, `mark_digest_sent`) |
 | Доступ, заявки, календарь пользователя | [`users/store.py`](satellite/users/store.py) (UserStore) + [`users/record.py`](satellite/users/record.py) (UserRecord, статусы), шифрование — [`security/token_vault.py`](satellite/security/token_vault.py) |
 | Web App connect | handlers + HTTP в [`bot.py`](satellite/telegram_bot/bot.py); env — [`config.py`](satellite/config.py) |
 | Дату дайджеста (mode→дата) | [`digest_utils.py`](satellite/digest_utils.py) |

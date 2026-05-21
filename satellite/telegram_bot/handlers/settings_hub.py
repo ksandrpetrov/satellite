@@ -31,6 +31,7 @@ from ...messages_ru import (
     CALENDAR_SOURCES_LOAD_FAIL_HTML,
     CALENDAR_SOURCES_SINGLE_HTML,
     CALENDAR_SOURCES_UNAVAILABLE_TEXT,
+    CB_PENDING_DIGEST_SETTINGS,
     CB_SETTINGS_ANALYTICS,
     CB_SETTINGS_BACK,
     CB_SETTINGS_CALENDAR_MENU,
@@ -61,7 +62,7 @@ from .delivery import (
     send,
     webapp_connect_url,
 )
-from .settings import show_digest_settings_screen
+from .settings import show_digest_settings_screen, show_pending_digest_settings_screen
 
 log = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ def _hub_text_and_keyboard(ctx: HandlerContext, user_id: int, chat_id: int):
     record = ctx.users.get(user_id)
     has_cal = bool(record and record.has_calendar)
     digest_on = None
+    pending_on = None
     if record:
         sub = ctx.subscriptions.get_or_create(
             chat_id,
@@ -101,7 +103,14 @@ def _hub_text_and_keyboard(ctx: HandlerContext, user_id: int, chat_id: int):
             telegram_user_id=user_id,
         )
         digest_on = sub.digest_enabled
-    text = settings_hub_text(digest_enabled=digest_on, has_calendar=has_cal)
+        pending_on = sub.pending_digest_enabled
+    else:
+        pending_on = None
+    text = settings_hub_text(
+        digest_enabled=digest_on,
+        pending_digest_enabled=pending_on,
+        has_calendar=has_cal,
+    )
     keyboard = build_settings_hub_keyboard(
         webapp_url=webapp_connect_url(ctx, user_id),
         has_calendar=has_cal,
@@ -171,6 +180,9 @@ def route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bo
     data = (cb.data or "").strip()
     if data == CB_SETTINGS_DIGEST:
         show_digest_settings_screen(ctx, cb)
+        return True
+    if data == CB_PENDING_DIGEST_SETTINGS:
+        show_pending_digest_settings_screen(ctx, cb)
         return True
     if data == CB_SETTINGS_ANALYTICS:
         handle_open_analytics(ctx, cb)

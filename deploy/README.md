@@ -20,8 +20,10 @@ Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на 
 3. **deploy** — SSH на сервер (`scripts/ci-deploy-remote.sh`): нормализация
    `DEPLOY_HOST`/`DEPLOY_USER`/`SATELLITE_IMAGE`; при наличии legacy
    `satellite-bot.service` — остановить и отключить unit (освободить порт на хосте);
+   если на хосте больше пользователей в `users.json`, чем в Docker volume — fail
+   с указателем на `scripts/migrate-legacy-logs.sh` (см. [operations](../docs/operations.md#миграция-systemd--docker-logs-в-volume));
    обновить `SATELLITE_IMAGE` в `.env`, `docker compose pull satellite`,
-   `docker compose up -d satellite`, дождаться `healthy`, `curl` host `/healthz`,
+   `docker compose up -d satellite`, дождаться `healthy`, host `/healthz` (JSON parse),
    затем `scripts/smoke-prod.sh` с публичного URL (по умолчанию `https://cassinilab.ru`).
    Только для push в `main` и ручного `workflow_dispatch`.
    Перед SSH job проверяет, что заданы секреты `DEPLOY_HOST`, `DEPLOY_USER`, `SSH_PRIVATE_KEY`.

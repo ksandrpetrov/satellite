@@ -15,9 +15,11 @@ from zoneinfo import ZoneInfo
 
 from satellite.config import DigestConfig
 from satellite.digest_utils import is_digest_day_allowed, resolve_target_date
+from satellite.invitations_view import InvitationsScreen
 from satellite.scheduler import (
     DigestScheduler,
     should_fire_for_user,
+    should_fire_pending_for_user,
 )
 from satellite.subscriptions import (
     DIGEST_DAYS_ALL,
@@ -141,6 +143,50 @@ def test_invalid_digest_time_does_not_fire():
     assert not should_fire_for_user(
         settings=_settings(time_str="bad-value"),
         now_in_user_tz=_at(2026, 5, 11, 9, 0),
+    )
+
+
+def _settings_pending(
+    chat_id: int = 1,
+    *,
+    enabled: bool = True,
+    days: str = DIGEST_DAYS_WEEKDAYS,
+    time_str: str = "10:00",
+    last_sent: str | None = None,
+) -> DigestSettings:
+    base = _settings(
+        chat_id,
+        enabled=False,
+        days=days,
+        time_str="09:00",
+    )
+    return DigestSettings(
+        chat_id=base.chat_id,
+        telegram_user_id=base.telegram_user_id,
+        username=base.username,
+        digest_enabled=False,
+        digest_days=base.digest_days,
+        digest_time=base.digest_time,
+        digest_timezone=base.digest_timezone,
+        pending_digest_enabled=enabled,
+        pending_digest_days=days,
+        pending_digest_time=time_str,
+        pending_digest_timezone=base.digest_timezone,
+        last_pending_digest_sent_date=last_sent,
+    )
+
+
+def test_pending_fires_at_default_time():
+    assert should_fire_pending_for_user(
+        settings=_settings_pending(time_str="10:00"),
+        now_in_user_tz=_at(2026, 5, 11, 10, 0),
+    )
+
+
+def test_pending_does_not_fire_if_already_sent_today():
+    assert not should_fire_pending_for_user(
+        settings=_settings_pending(time_str="10:00", last_sent="2026-05-11"),
+        now_in_user_tz=_at(2026, 5, 11, 10, 0),
     )
 
 
@@ -350,3 +396,82 @@ def test_tick_one_failed_user_does_not_block_others(tmp_path: Path):
 
     scheduler.tick()  # не падает
     assert 2 in seen  # bob всё равно дошёл до отправки
+
+
+def test_tick_pending_silent_skip_when_empty(tmp_path: Path, monkeypatch):
+    from unittest.mock import patch
+
+    now = _at(2026, 5, 11, 10, 0)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(1, "alice")
+    store.update_settings(1, "alice", digest_enabled=False, pending_digest_enabled=True)
+
+    empty_screen = InvitationsScreen(
+        pending=[],
+        text="empty",
+        keyboard={"inline_keyboard": []},
+        truncated=False,
+        login="alice@mail.ru",
+    )
+    with patch(
+        "satellite.scheduler.load_pending_invitations_screen",
+        return_value=empty_screen,
+    ):
+        assert scheduler.tick() == 0
+    telegram.send_message.assert_not_called()
+    assert store.get(1).last_pending_digest_sent_date is None
+
+
+def test_tick_pending_sends_with_keyboard_and_marks_sent(tmp_path: Path):
+    from unittest.mock import patch
+
+    now = _at(2026, 5, 11, 10, 0)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(1, "alice")
+    store.update_settings(1, "alice", digest_enabled=False, pending_digest_enabled=True)
+
+    screen = InvitationsScreen(
+        pending=[{"url": "https://cal/event/1", "summary": "Sync"}],
+        text="<b>inv</b>",
+        keyboard={"inline_keyboard": [[{"text": "1", "callback_data": "x"}]]},
+        truncated=False,
+        login="alice@mail.ru",
+    )
+    with patch(
+        "satellite.scheduler.load_pending_invitations_screen",
+        return_value=screen,
+    ):
+        assert scheduler.tick() == 1
+    assert store.get(1).last_pending_digest_sent_date == "2026-05-11"
+    call = telegram.send_message.call_args
+    assert call.kwargs.get("reply_markup") == screen.keyboard
+
+
+def test_tick_sends_both_daily_and_pending(tmp_path: Path):
+    from unittest.mock import patch
+
+    now = _at(2026, 5, 11, 9, 0)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(1, "alice")
+    store.update_settings(
+        1,
+        "alice",
+        pending_digest_enabled=True,
+        pending_digest_time="09:00",
+    )
+
+    screen = InvitationsScreen(
+        pending=[{"url": "https://cal/event/1", "summary": "Sync"}],
+        text="<b>inv</b>",
+        keyboard={"inline_keyboard": []},
+        truncated=False,
+        login="alice@mail.ru",
+    )
+    with patch(
+        "satellite.scheduler.load_pending_invitations_screen",
+        return_value=screen,
+    ):
+        assert scheduler.tick() == 2
+    assert telegram.send_message.call_count == 2
+    assert store.get(1).last_digest_sent_date == "2026-05-11"
+    assert store.get(1).last_pending_digest_sent_date == "2026-05-11"

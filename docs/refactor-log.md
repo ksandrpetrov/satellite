@@ -233,3 +233,20 @@ pytest оставался зелёным.
 - `deploy.yml`: `GHCR_TOKEN: secrets.GHCR_PULL_TOKEN || github.token` — rolling
   deploy на сервере делает `docker login` без обязательного `GHCR_PULL_TOKEN`
   для пакета этого repo.
+
+## Миграция systemd → Docker: logs в volume (2026-05-21)
+
+- `scripts/migrate-legacy-logs.sh` — перенос `/opt/satellite/logs/` (хост) в
+  volume `satellite_satellite-logs`, rescue-копия, `chown` под uid `satellite` в образе.
+- `ci-deploy-remote.sh` — перед `compose up` сравнивает `users.json` на хосте и в volume;
+  host > volume → fail deploy с указателем на migrate.
+- `bot.warn_if_users_lost` — WARNING при пустом сторе, но есть `users.json.*.bak` в
+  `logs/backups/`; тесты — `test_persistence_warning.py`.
+- Документация: AGENTS.md (раздел миграции), operations, troubleshooting, README.
+
+## Deploy: `/healthz` через JSON parse (2026-05-21)
+
+- `ci-deploy-remote.sh`: host smoke сравнивает распарсенный JSON `{"status": "ok"}`,
+  а не точную строку тела — иначе ложный fail при `json.dumps` с пробелами при
+  живом боте.
+- Документация: operations, troubleshooting.

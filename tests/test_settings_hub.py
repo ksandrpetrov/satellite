@@ -2,7 +2,7 @@
 
 Иерархия:
 
-- ``⚙️ Настройки`` → ``🔔 Дайджест`` / ``📊 Аналитика недели`` / ``📅 Календарь``;
+- ``⚙️ Настройки`` → дайджесты / ``📊 Аналитика недели`` / ``📅 Календарь``;
 - ``📅 Календарь`` (подэкран) → ``📚 Календари``, ``✅ Проверить``,
   ``🔄 Переподключить`` (Web App), ``🗑 Отключить``;
 - ``🗑 Отключить`` → экран подтверждения с двумя кнопками
@@ -110,11 +110,12 @@ def test_settings_hub_text_uses_seagull_voice():
     assert "Настройки" in SETTINGS_HUB_TEXT
 
 
-def test_settings_hub_keyboard_three_sections_when_connected():
-    """С подключённым календарём в хабе видны три раздела + закрыть."""
+def test_settings_hub_keyboard_digest_and_calendar_when_connected():
+    """С подключённым календарём в хабе видны оба дайджеста, аналитика, календарь."""
     kb = build_settings_hub_keyboard(webapp_url=_WEBAPP, has_calendar=True)
     labels = [btn["text"] for row in kb["inline_keyboard"] for btn in row]
-    assert "🔔 Дайджест" in labels
+    assert "🔔 Дайджест на сегодня" in labels
+    assert "📨 Дайджест непринятых встреч" in labels
     assert BUTTON_ANALYTICS in labels
     assert BUTTON_CALENDAR_MENU in labels
     # Деструктивный «Отключить» НЕ должен висеть на главном экране настроек,

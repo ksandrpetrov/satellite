@@ -214,6 +214,11 @@ digest_time        # HH:MM
 digest_timezone    # IANA, напр. Europe/Moscow
 subscribed_at
 last_digest_sent_date
+pending_digest_enabled      # опционально; шедулер/UI пока не шлют
+pending_digest_days
+pending_digest_time         # default 10:00 при отсутствии в JSON
+pending_digest_timezone
+last_pending_digest_sent_date
 ```
 
 Глобальная переменная:

@@ -433,10 +433,15 @@ cd /opt/satellite && docker compose up -d satellite
 `bash scripts/docker-smoke-image.sh ghcr.io/ksandrpetrov/satellite:sha-<short>`.
 Смотрите вывод `smoke_container.py` (первые строки `smoke_container: FAIL …`).
 
-**Deploy — public smoke:** runner не получил `{"status":"ok"}` на `https://<domain>/healthz`
-(часто nginx отдаёт HTML главной — нет `location = /healthz` на порт бота),
-`/connect` не 200, или `/api/calendar/status` не 401. На сервере сначала
-`curl http://127.0.0.1:8080/healthz`, затем `make smoke-prod` с ноутбука.
+**Deploy — host `/healthz`:** job пишет `Unexpected /healthz on host` при HTTP не 200
+или JSON, где `status` ≠ `ok`. Проверка парсит JSON (пробелы после `:` допустимы);
+сырой match строки `{"status":"ok"}` не используется. На сервере:
+`curl -sS http://127.0.0.1:8080/healthz`.
+
+**Deploy — public smoke:** runner не получил JSON с `"status"` и `"ok"` на
+`https://<domain>/healthz` (часто nginx отдаёт HTML главной — нет `location = /healthz`
+на порт бота), `/connect` не 200, или `/api/calendar/status` не 401. На сервере
+сначала host `/healthz`, затем `make smoke-prod` с ноутбука.
 Variable `SMOKE_PUBLIC_BASE_URL` — если домен не `cassinilab.ru`.
 
 ## Тесты не запускаются после переноса папки
