@@ -157,7 +157,7 @@ BOT_LONG_POLL_SEC=30
 ## Пользователи и доступ (`logs/users.json`)
 
 Единственный источник правды по авторизации — JSON-store
-`satellite/users.py` → `logs/users.json`.
+`satellite/users/` (пакет: `record.py` / `store.py` / `admin.py`) → `logs/users.json`.
 
 Поля записи (`UserRecord`):
 

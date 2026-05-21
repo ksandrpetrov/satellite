@@ -27,7 +27,11 @@ satellite/
   services.py            # run_bot
   backup.py              # снапшоты users.json / subscriptions.json при старте
   config.py              # load_settings; SecurityConfig, AdminConfig, WebAppConfig
-  users.py               # UserStore, UserRecord, access + calendar connection
+  users/                 # пакет: фасад + record (UserRecord) + store (UserStore) + admin (parse_admin_ids)
+    __init__.py          # re-export публичного API (UserStore, UserRecord, USER_STATUS_*, …)
+    record.py            # UserRecord (dataclass) + enum-константы + helpers парсинга
+    store.py             # UserStore + UserStorePersistenceError (атомарная запись users.json)
+    admin.py             # parse_admin_ids / admin_id_set (env → tuple[int])
   security/
     token_vault.py       # Fernet encrypt/decrypt ProviderCredentials
   digest_utils.py        # resolve_target_date, is_digest_day_allowed
@@ -50,7 +54,8 @@ satellite/
     user_calendar_service.py  # единый фасад для handlers/plan/scheduler/Web App
     operation_log.py       # audit CalDAV-операций
     caldav_client.py       # Mail.ru CalDAV (per-user login/password)
-    events.py, stats.py, selection.py, time_utils.py, ical_parser.py, constants.py
+    events/                # пакет: facade __init__ + _types + _time + _partstat + _filters + _collectors
+    stats.py, selection.py, time_utils.py, ical_parser.py, constants.py
 
   web/                   # пакет: тонкий router + per-endpoint модули
     server.py            # WebAppServer (lifecycle), делегирует роутинг
@@ -105,28 +110,28 @@ satellite/
 | Хаб настроек / дайджест | [`handlers/settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py) (роутер всех `CB_SETTINGS_*` / `CB_ANALYTICS_*`), [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) (экран дайджеста) |
 | Чужие (пошаренные) календари | [`handlers/calendar_foreign.py`](satellite/telegram_bot/handlers/calendar_foreign.py) |
 | Список CalDAV-календарей в UI | [`handlers/calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py) — `fetch_calendars` (→ `CalendarListResult`) и `build_calendar_sources_screen` |
-| Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users.py`](satellite/users.py) |
+| Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users/record.py`](satellite/users/record.py) |
 | URL Web App connect | [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `webapp_connect_url(ctx)` (персональный `/connect/<token>`); store — [`web/connect_token.py`](satellite/web/connect_token.py) |
 | Потоковый ответ (черновик + финал) | [`streaming_delivery.py`](satellite/telegram_bot/streaming_delivery.py), [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `open_streaming_reply` (plan, upcoming, invitations, manage, analytics) |
 | Визуал Telegram (typing, effects, меню) | [`visual.py`](satellite/telegram_bot/visual.py) — `TypingIndicator`, `pick_plan_message_effect`, `set_default_menu_button_for_chat`; HTML — [`html_format.py`](satellite/telegram_bot/html_format.py); профиль бота на старте — [`commands.py`](satellite/telegram_bot/commands.py) `setup_bot_identity` |
 | Расписание дайджеста | [`scheduler.py`](satellite/scheduler.py) + [`subscriptions.py`](satellite/subscriptions.py) |
-| Доступ, заявки, календарь пользователя | [`users.py`](satellite/users.py), шифрование — [`security/token_vault.py`](satellite/security/token_vault.py) |
+| Доступ, заявки, календарь пользователя | [`users/store.py`](satellite/users/store.py) (UserStore) + [`users/record.py`](satellite/users/record.py) (UserRecord, статусы), шифрование — [`security/token_vault.py`](satellite/security/token_vault.py) |
 | Web App connect | handlers + HTTP в [`bot.py`](satellite/telegram_bot/bot.py); env — [`config.py`](satellite/config.py) |
 | Дату дайджеста (mode→дата) | [`digest_utils.py`](satellite/digest_utils.py) |
 | Парсинг .env | [`config.py`](satellite/config.py), образец [`.env.example`](.env.example) |
 | CalDAV / провайдеры | [`calendar/caldav_client.py`](satellite/calendar/caldav_client.py), [`calendar/providers/`](satellite/calendar/providers/), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) |
-| Список / создание событий в боте | [`handlers/calendar_list.py`](satellite/telegram_bot/handlers/calendar_list.py), [`calendar_create.py`](satellite/telegram_bot/handlers/calendar_create.py); формат строк — [`events.py`](satellite/calendar/events.py) |
-| Приглашения (NEEDS-ACTION, ответ в CalDAV) | [`handlers/calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) (горизонт 60 дней вперёд / 14 назад), [`events.py`](satellite/calendar/events.py) (`collect_pending_invitations`, `event_relevant_for_invitations`, `is_pending_invitation_for_user`), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) (`list_events_for_invitations`, `set_attendee_partstat`), [`caldav_client.py`](satellite/calendar/caldav_client.py) (PARTSTAT refresh/update) |
-| «Изменить статус встречи» (любой PARTSTAT) | [`handlers/calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py), [`events.py`](satellite/calendar/events.py) (`collect_manageable_events`) — список + детальный экран по встрече, действия завязаны на тот же `set_attendee_partstat` |
+| Список / создание событий в боте | [`handlers/calendar_list.py`](satellite/telegram_bot/handlers/calendar_list.py), [`calendar_create.py`](satellite/telegram_bot/handlers/calendar_create.py); формат строк — [`events/_collectors.py`](satellite/calendar/events/_collectors.py) (импорт через фасад `satellite.calendar.events`) |
+| Приглашения (NEEDS-ACTION, ответ в CalDAV) | [`handlers/calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) (горизонт 60 дней вперёд / 14 назад), [`events/_collectors.py`](satellite/calendar/events/_collectors.py) (`collect_pending_invitations`, `event_relevant_for_invitations`) + [`events/_partstat.py`](satellite/calendar/events/_partstat.py) (`is_pending_invitation_for_user`), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) (`list_events_for_invitations`, `set_attendee_partstat`), [`caldav_client.py`](satellite/calendar/caldav_client.py) (PARTSTAT refresh/update) |
+| «Изменить статус встречи» (любой PARTSTAT) | [`handlers/calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py), [`events/_collectors.py`](satellite/calendar/events/_collectors.py) (`collect_manageable_events`) — список + детальный экран по встрече, действия завязаны на тот же `set_attendee_partstat` |
 | Ввод времени (дайджест, /create) | [`time_utils.py`](satellite/calendar/time_utils.py); подсказки — [`messages_ru/`](satellite/messages_ru/) |
-| Нумерация встреч (дайджест, /upcoming) | [`event_index_marker`](satellite/calendar/events.py) |
+| Нумерация встреч (дайджест, /upcoming) | [`event_index_marker`](satellite/calendar/events/_filters.py) (импорт через фасад `satellite.calendar.events`) |
 | Web App REST API | [`web/api/calendar.py`](satellite/web/api/calendar.py); регистрация маршрута — [`web/routing.py`](satellite/web/routing.py); сам сервер — [`web/server.py`](satellite/web/server.py) |
 | Сборку текста плана | [`plan_service.py`](satellite/plan_service.py) — callers передают calendar identity |
 | Недельную аналитику (PNG + подпись) | [`analytics/service.py`](satellite/analytics/service.py) (canonical путь; `satellite/analytics_service.py` — shim для back-compat), [`calendar/period_stats.py`](satellite/calendar/period_stats.py), [`calendar/event_kinds.py`](satellite/calendar/event_kinds.py), [`handlers/analytics.py`](satellite/telegram_bot/handlers/analytics.py) (`ActionGuard`, cooldown 45 с) |
 | Дедуп повторных команд/кнопок (два PNG, два плана…) | [`handlers/action_guard.py`](satellite/telegram_bot/handlers/action_guard.py) — `try_acquire` / `release`; синглтоны сбрасывает `tests/conftest.py::_reset_action_guards` |
 | Ответ на встречу (PARTSTAT) | [`handlers/partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py) — общий флоу; [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) и [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — тонкие адаптеры |
 | PNG недельной аналитики | [`analytics/render_card.py`](satellite/analytics/render_card.py), примитивы — [`visual_cards/base.py`](satellite/visual_cards/base.py) |
-| JSON-store мутацию (users / subscriptions) | [`users.py`](satellite/users.py) (`_update_locked`, `UserRecord.{to,from}_json`) и [`subscriptions.py`](satellite/subscriptions.py) (`_upsert_locked`, `DigestSettings.{to,from}_json`); прямой `replace()` не использовать |
+| JSON-store мутацию (users / subscriptions) | [`users/store.py`](satellite/users/store.py) (`_update_locked`, `UserRecord.{to,from}_json`) и [`subscriptions.py`](satellite/subscriptions.py) (`_upsert_locked`, `DigestSettings.{to,from}_json`); прямой `replace()` не использовать |
 | Контекст хендлера (роли) | [`handlers/context.py`](satellite/telegram_bot/handlers/context.py) — `HandlerContext` + view-свойства `.messaging` / `.identity` / `.calendar` / `.scheduling`; для access — `ensure_calendar_*` принимает `chat_id` / `user_id` явно, без `IncomingMessage`-фейков |
 | Диагностика CalDAV с сервера | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) — см. [troubleshooting.md](docs/troubleshooting.md) |
 
@@ -142,12 +147,12 @@ satellite/
 5. **Дата дайджеста** — `resolve_target_date` / `is_digest_day_allowed`.
 6. **Тексты** — [`messages_ru/`](satellite/messages_ru/) / шаблоны seagull/weather.
 7. **Хендлеры не пробрасывают исключения** — safe text из `messages_ru`.
-8. **Атомарная запись JSON-store** — `subscriptions.py` и `users.py`: tmp + fsync + os.replace`.
+8. **Атомарная запись JSON-store** — `subscriptions.py` и `users/store.py`: tmp + fsync + os.replace`.
 9. **`logs/`, `.env`, `venv/`** — не коммитим.
 10. **Команды и кнопки** — только [`recognize_message`](satellite/telegram_bot/handlers/routing.py); любая распознанная команда сбрасывает FSM (`digest_state`, `calendar_state`) в [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py).
 11. **Подписка на дайджест** — `DigestSettings.telegram_user_id` в [`subscriptions.py`](satellite/subscriptions.py); scheduler резолвит пользователя через `UserStore.get`, не через `username`.
 12. **Навигация настроек** — кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` обрабатывает только [`settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py); `settings.py` и `analytics.py` не импортируют друг друга и не имеют lazy-back-импортов в хаб.
-13. **Сбой `UserStore._save_locked`** — поднимает [`UserStorePersistenceError`](satellite/users.py); caller (handler / Web App) ловит на границе и показывает безопасный текст.
+13. **Сбой `UserStore._save_locked`** — поднимает [`UserStorePersistenceError`](satellite/users/store.py); caller (handler / Web App) ловит на границе и показывает безопасный текст.
 14. **Перед коммитом** — `make check` (ruff lint + mypy + py_compile + pytest). Стиль/форматирование — только [`ruff`](pyproject.toml) (lint + format); blackd/isort не используем. Поведение при падении тестов — см. раздел **«Тесты и регрессии»** ниже.
 
 ## Тесты и регрессии (для агентов)
@@ -183,8 +188,8 @@ satellite/
 - Свой парсер времени — только [`normalize_hhmm_input`](satellite/calendar/time_utils.py)
   (UI) и [`parse_hhmm`](satellite/calendar/time_utils.py) (минуты от полуночи;
   внутри делегирует в `normalize_hhmm_input`).
-- Свои маркеры номеров встреч — только [`event_index_marker`](satellite/calendar/events.py)
-  (дайджест и `/upcoming`).
+- Свои маркеры номеров встреч — только [`event_index_marker`](satellite/calendar/events/_filters.py)
+ (дайджест и `/upcoming`); импортировать через фасад `satellite.calendar.events`.
 - Inline render дайджеста вне [`seagull/digest.py`](satellite/seagull/digest.py).
 - Fallback `edit` → `send` в callback-хендлерах — дубли ([`delivery.py`](satellite/telegram_bot/handlers/delivery.py)).
 - Дублировать списки `is_*_request` / `parse_*` в `bot.py` или `dispatch.py` — только `recognize_message`.

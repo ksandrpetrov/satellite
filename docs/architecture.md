@@ -53,7 +53,9 @@ Handlers принимают Telegram-события и не считают ка�
 - `satellite/backup.py` — снапшоты `users.json` / `subscriptions.json` при старте
   (`logs/backups/`, последние 20).
 - `satellite/config.py` — `load_settings`, dataclasses конфигов, парсинг `.env`.
-- `satellite/users.py` — `UserStore`: доступ, заявки, per-user CalDAV в `logs/users.json`.
+- `satellite/users/` — пакет: фасад (`__init__.py`) + `record.py` (`UserRecord`,
+  статусы) + `store.py` (`UserStore`, атомарная запись `logs/users.json`) +
+  `admin.py` (парсинг `ADMIN_TELEGRAM_IDS`).
 - `satellite/security/token_vault.py` — Fernet-шифрование credentials.
 - `satellite/digest_utils.py` — `resolve_target_date`, `is_digest_day_allowed`.
 - `satellite/messages_ru/` — пакет с user-facing текстами и callback-константами.
@@ -94,10 +96,12 @@ telegram_test_command.py
 
 ## Users and Security
 
-- `satellite/users.py` — `UserStore`, `UserRecord`, статусы доступа и календаря.
-  Атомарная запись JSON, thread-safe lock. Не хранит сырые токены и display name
-  календаря (PII). Сбой записи на диск поднимает `UserStorePersistenceError`
-  (а не тихо логируется), чтобы caller показал пользователю безопасный текст.
+- `satellite/users/` — пакет: `record.py` (`UserRecord`, статусы доступа и
+  календаря), `store.py` (`UserStore`, атомарная запись JSON, thread-safe lock,
+  `UserStorePersistenceError` при ошибке диска — caller показывает безопасный
+  текст), `admin.py` (`parse_admin_ids` / `admin_id_set`). Фасад в `__init__.py`
+  re-export'ит публичный API, поэтому импорты `from satellite.users import …`
+  не меняются. Не хранит сырые токены и display name календаря (PII).
 - `satellite/security/token_vault.py` — `TokenVault`, `ProviderCredentials`
   (login + app password). Ключ — `TOKEN_ENCRYPTION_KEY` из env.
 - `satellite/calendar/user_calendar_service.py` — единый фасад connect/list/create/delete
@@ -177,11 +181,22 @@ telegram_test_command.py
 - `satellite/calendar/caldav_client.py` — Mail.ru CalDAV discovery, cache, day
   search, optional PARTSTAT refresh.
 - `satellite/calendar/constants.py` — domain constants (lunch marker, all-day label).
-- `satellite/calendar/events.py` — filters, all-day, declined, meals, PARTSTAT
-  (`is_pending_invitation_for_user`, `event_relevant_for_invitations`,
-  `collect_pending_invitations`, `format_invitation_list_lines`), `event_index_marker`,
-  форматирование `/upcoming`
-  (`format_upcoming_events_lines`).
+- `satellite/calendar/events/` — пакет (раньше один файл `events.py`).
+  Фасад `__init__.py` re-export'ит публичный API, импорты
+  `from satellite.calendar.events import …` не меняются. Раскладка:
+  - `_types.py` — `Event` alias, `PizzaMealKind`, `NUMBER_EMOJI`.
+  - `_time.py` — `parse_iso`, `event_datetime_bounds`, `event_occurs_on`,
+    `event_local_start_date`, `day_bounds`, `format_time_range`,
+    `event_duration_minutes`, `sort_key`, `event_ends_after`.
+  - `_partstat.py` — `is_declined_event_for_user`,
+    `is_pending_invitation_for_user`, `user_partstat`.
+  - `_filters.py` — `is_cancelled_event`, `is_all_day_event`, `is_lunch_event`,
+    `pizza_meal_kind`, `event_index_marker`.
+  - `_collectors.py` — `format_upcoming_day_header`,
+    `build_upcoming_events_groups`, `format_upcoming_events_lines`,
+    `format_single_day_events_lines`, `event_relevant_for_invitations`,
+    `collect_pending_invitations`, `collect_manageable_events`,
+    `format_invitation_list_lines`, `filter_events_for_user`.
 - `satellite/calendar/stats.py` — `NormalizedEvent`, `DayCalendarStats`,
   `normalize_caldav_event`. Default workday `10:00–19:00`, lunch `13:00–14:00`.
 - `satellite/calendar/time_utils.py` — `normalize_hhmm_input` / `parse_hhmm`
