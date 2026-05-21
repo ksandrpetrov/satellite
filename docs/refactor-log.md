@@ -112,6 +112,8 @@ pytest оставался зелёным.
 - Compose с `image: ${SATELLITE_IMAGE}`; шаблон `env.j2` пишет `SATELLITE_IMAGE` в `.env` при
   первичном `make deploy`, дальше Actions сам перезаписывает значение.
 - Старый `release-docker.yml` удалён (заменён `deploy.yml`).
+- Дополнено в тот же день: smoke после build/deploy, `GHCR_TOKEN` fallback — см. разделы
+  «Smoke после сборки…» и «GHCR login без отдельного PAT» ниже.
 
 ## Приглашения: lookback 14 дней (2026-05-21)
 
@@ -213,3 +215,21 @@ pytest оставался зелёным.
   (PEP 562), mypy перестаёт видеть атрибуты.
 - `caldav_client.py`: импорт `DAVClient` и `Event` из конкретных подмодулей
   (`davclient`, `calendarobjectresource`), без runtime `from caldav import Event`.
+- `tests/test_requirements.py` — регрессия на снятие пина; `smoke_container.py` —
+  то же внутри Docker-образа.
+
+## Smoke после сборки и деплоя (2026-05-21)
+
+- `scripts/smoke_container.py` + `docker-smoke-image.sh` — job **build** в
+  `deploy.yml` после push в GHCR.
+- `scripts/smoke-prod.sh` — после rolling deploy (`ci-deploy-remote.sh`);
+  variable `SMOKE_PUBLIC_BASE_URL`; Makefile: `docker-smoke`, `smoke-prod`.
+- `Dockerfile` копирует `scripts/smoke_container.py` в образ для CI smoke.
+- Документация: README, operations, architecture, testing, troubleshooting,
+  configuration (smoke env), deploy/README, AGENTS.md.
+
+## GHCR login без отдельного PAT (2026-05-21)
+
+- `deploy.yml`: `GHCR_TOKEN: secrets.GHCR_PULL_TOKEN || github.token` — rolling
+  deploy на сервере делает `docker login` без обязательного `GHCR_PULL_TOKEN`
+  для пакета этого repo.

@@ -112,6 +112,45 @@ else
 fi
 
 export COMPOSE_PROJECT_NAME
+
+# Защита от свинской миграции с systemd на Docker. Если в /opt/satellite/logs/
+# лежит populated users.json (наследство systemd-сетапа), а именованный volume
+# satellite-logs пустой — контейнер запустится «с нуля» и юзеры исчезнут.
+# Не копируем автоматически (риск перетереть свежие данные в volume), а валим
+# деплой с явным указателем на scripts/migrate-legacy-logs.sh.
+HOST_LOGS_USERS="${DEPLOY_DIR}/logs/users.json"
+if [[ -f "${HOST_LOGS_USERS}" ]]; then
+    VOLUME_NAME="${COMPOSE_PROJECT_NAME}_satellite-logs"
+    if docker volume inspect "${VOLUME_NAME}" >/dev/null 2>&1; then
+        HOST_USERS_COUNT="$(python3 -c "
+import json
+try:
+    d = json.load(open('${HOST_LOGS_USERS}'))
+    print(len(d) if isinstance(d, dict) else 0)
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)"
+        VOLUME_USERS_COUNT="$(docker run --rm -v "${VOLUME_NAME}:/v:ro" python:3.12-alpine python -c "
+import json, os
+p='/v/users.json'
+if not os.path.isfile(p):
+    print(0)
+else:
+    try:
+        d=json.load(open(p))
+        print(len(d) if isinstance(d, dict) else 0)
+    except Exception:
+        print(0)
+" 2>/dev/null || echo 0)"
+        if [[ "${HOST_USERS_COUNT}" -gt 0 && "${VOLUME_USERS_COUNT}" -lt "${HOST_USERS_COUNT}" ]]; then
+            echo "::error::Legacy /opt/satellite/logs/users.json has ${HOST_USERS_COUNT} users, but Docker volume ${VOLUME_NAME} has only ${VOLUME_USERS_COUNT}." >&2
+            echo "::error::Это сценарий миграции systemd→Docker, новый контейнер запустится с пустым стором — авторизация и календари «пропадут»." >&2
+            echo "::error::Выполните на сервере: sudo bash ${DEPLOY_DIR}/scripts/migrate-legacy-logs.sh — затем re-run deploy." >&2
+            exit 1
+        fi
+    fi
+fi
+
 docker compose pull satellite
 docker compose up -d satellite
 

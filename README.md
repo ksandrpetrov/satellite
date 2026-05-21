@@ -83,6 +83,7 @@ python telegram_test_command.py
 python -m pytest
 # или: make test
 make check   # ruff + mypy + py_compile + pytest (перед коммитом)
+make docker-smoke   # после docker build: импорты + /healthz в образе (см. docs/testing.md)
 ```
 
 ## Запуск на сервере
@@ -142,9 +143,10 @@ make deploy
 ```
 
 Образы в GHCR собирает [deploy.yml](.github/workflows/deploy.yml) на каждый push в
-`main` (теги `:sha-<short>` и `:latest`); rolling update на сервер — автоматически
-по SSH. Подробности: [deploy/README.md](deploy/README.md),
-[docs/operations.md](docs/operations.md#docker).
+`main` (теги `:sha-<short>` и `:latest`); перед деплоем CI гоняет **docker smoke**
+в образе, после rolling update — **smoke-prod** с публичного URL. Rolling update
+на сервер — автоматически по SSH. Подробности: [deploy/README.md](deploy/README.md),
+[docs/operations.md](docs/operations.md#docker), [docs/testing.md](docs/testing.md#smoke-образ-и-production-url).
 
 ## Главное про конфиг
 
@@ -179,24 +181,26 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 - [Telegram UX](docs/telegram-ux.md)
 - [Эксплуатация и деплой](docs/operations.md)
 - [Docker-деплой (Ansible)](deploy/README.md)
-- [Тестирование](docs/testing.md)
+- [Тестирование](docs/testing.md) (в т.ч. [smoke образа и prod URL](docs/testing.md#smoke-образ-и-production-url))
 - [Troubleshooting](docs/troubleshooting.md)
 - [Refactor log](docs/refactor-log.md) — фазы рефакторинга и инварианты для агентов
 - [AGENTS.md](AGENTS.md) — карта модулей, инварианты и скрипты для правок кода и AI-агентов
 
 Скрипты установки и диагностики: `scripts/install.sh`, `install-server.sh`,
 `bootstrap-server.sh`, `diagnose_caldav.py`, `diagnose_invitation.py`,
-`ci-deploy-remote.sh` — см. [AGENTS.md](AGENTS.md#скрипты)
-и [operations.md](docs/operations.md#запуск-на-сервере).
+`ci-deploy-remote.sh`, `docker-smoke-image.sh`, `smoke-prod.sh` — см. [AGENTS.md](AGENTS.md#скрипты)
+и [operations.md](docs/operations.md#запуск-на-сервере). Локально: `make docker-smoke`, `make smoke-prod`.
 
 CI/CD:
 
 - [_checks.yml](.github/workflows/_checks.yml) — reusable: ruff (lint + format check), mypy, py_compile, pytest.
 - [test.yml](.github/workflows/test.yml) — только PR (вызывает `_checks.yml`).
-- [deploy.yml](.github/workflows/deploy.yml) — push в `main` или тег `v*`: `_checks.yml` → образ в GHCR → deploy
-  (`:sha-<short>`, на main ещё `:latest`, на теге — semver). Rolling deploy по SSH — только
-  для `main` и ручного **Run workflow**; тег `v*` только публикует образ. Секреты и
-  первичный деплой (Ansible) — [deploy/README.md](deploy/README.md).
+- [deploy.yml](.github/workflows/deploy.yml) — push в `main` или тег `v*`: `_checks.yml` → образ в GHCR →
+  **docker smoke** (`scripts/docker-smoke-image.sh`: импорты, `caldav<3`, `/healthz` в образе) → deploy
+  (`:sha-<short>`, на main ещё `:latest`, на теге — semver). Rolling deploy по SSH — только для `main`
+  и ручного **Run workflow** (healthy + host `/healthz` + `smoke-prod` с публичного URL); тег `v*`
+  только публикует образ. Секреты, variable `SMOKE_PUBLIC_BASE_URL` и первичный деплой (Ansible) —
+  [deploy/README.md](deploy/README.md).
 
 ## Runtime-файлы
 
@@ -223,5 +227,7 @@ CI/CD:
 - Нет погоды: `WEATHER_ENABLED=true` и координаты.
 - Дайджест не приходит: `/settings`, `digest_enabled`, день недели, время,
   `logs/subscriptions.json`.
+- После деплоя или правок nginx: `make smoke-prod` (публичные `/healthz`, `/connect`,
+  `/api/calendar/status`); на сервере сначала `curl http://127.0.0.1:8080/healthz`.
 
 Подробнее: [docs/troubleshooting.md](docs/troubleshooting.md).

@@ -39,9 +39,29 @@ python -m pytest
 
 На каждый push в `main` или тег `v*` workflow
 [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) сначала вызывает тот же
-`_checks.yml`, затем собирает Docker-образ (Python 3.12) в GHCR. Rolling deploy по SSH
+`_checks.yml`, затем собирает Docker-образ (Python 3.12) в GHCR и гоняет
+[`docker-smoke-image.sh`](../scripts/docker-smoke-image.sh) (см. ниже). Rolling deploy по SSH
 выполняется **только** для `main` (и при ручном **Run workflow**); тег `v*` лишь публикует
-semver-образ. Подробности и секреты — [deploy/README.md](../deploy/README.md).
+semver-образ. После деплоя CI вызывает [`smoke-prod.sh`](../scripts/smoke-prod.sh).
+Подробности и секреты — [deploy/README.md](../deploy/README.md).
+
+## Контракт зависимостей (`test_requirements.py`)
+
+[`tests/test_requirements.py`](../tests/test_requirements.py) фиксирует пины в
+`requirements.txt`, в первую очередь `caldav>=2.2,<3` (в 3.x ломаются runtime-импорты
+и mypy). Не ослабляйте assert без осознанной смены контракта CalDAV.
+
+## Smoke (образ и production URL)
+
+| Команда / скрипт | Когда |
+|------------------|-------|
+| `make docker-smoke` | После `docker build` локально: `docker-smoke-image.sh` → `smoke_container.py` |
+| `bash scripts/docker-smoke-image.sh <image-ref>` | CI после push в GHCR; `SMOKE_SKIP_PULL=1` для локального тега |
+| `make smoke-prod` | После деплоя: curl `/healthz`, `/connect`, `/api/calendar/status` снаружи |
+| `SATELLITE_BASE_URL=https://… bash scripts/smoke-prod.sh` | Другой домен (как `SMOKE_PUBLIC_BASE_URL` в Actions) |
+
+`smoke_container.py` проверяет импорт всех модулей `satellite`, подмодули `caldav`,
+и поднимает `WebAppServer` на случайном порту для `GET /healthz` без Telegram.
 
 Если проект временно перенесен, а venv содержит старые absolute shebang-пути,
 можно использовать системный Python с пакетами из venv:

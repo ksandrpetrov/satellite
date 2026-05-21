@@ -194,7 +194,8 @@ ghcr.io/ksandrpetrov/satellite:<semver>      # для тега vX.Y.Z
 
 После первого push сделайте пакет **public**:
 `Settings → Packages → satellite → Package settings → Change visibility` (или
-задайте секрет `GHCR_PULL_TOKEN`, см. [deploy/README.md](../deploy/README.md)).
+задайте секрет `GHCR_PULL_TOKEN` — опционально: без него rolling deploy логинится
+через `github.token` job'а, см. [deploy/README.md](../deploy/README.md)).
 
 Образ собирается на **Python 3.12** (`Dockerfile`); CI-тесты — на 3.11.
 
@@ -262,14 +263,25 @@ Push в `main`, ручной запуск workflow `deploy` (`Actions → deploy
 на сервер **не** выполняется — для выката semver-образа на prod используйте
 **Run workflow** на ветке `main` или дождитесь push в `main`.
 
+Pipeline [`deploy.yml`](../.github/workflows/deploy.yml) после сборки образа гоняет
+[`docker-smoke-image.sh`](../scripts/docker-smoke-image.sh) (импорт всех модулей `satellite`,
+пин `caldav>=2.2,<3`, HTTP `/healthz` внутри контейнера через
+[`smoke_container.py`](../scripts/smoke_container.py)). Локально: `make docker-smoke`.
+
 Скрипт [`ci-deploy-remote.sh`](../scripts/ci-deploy-remote.sh) (тот же, что в Actions):
 нормализует `DEPLOY_HOST` / `DEPLOY_USER` / `SATELLITE_IMAGE` (обрезка CR/LF и
 пробелов по краям — иначе SSH: `hostname contains invalid characters`); при наличии
 legacy `satellite-bot.service` останавливает и отключает unit, чтобы
 освободить `127.0.0.1:<satellite_host_port>`; затем перезаписывает `SATELLITE_IMAGE`
 в `/opt/satellite/.env` на сборку `:sha-<short>`, выполняет `docker compose pull satellite`
-и `docker compose up -d satellite`. Job **deploy** перед SSH проверяет наличие
-секретов `DEPLOY_HOST`, `DEPLOY_USER`, `SSH_PRIVATE_KEY` (без GitHub Environment).
+и `docker compose up -d satellite`, ждёт `healthy`, проверяет `curl http://127.0.0.1:8080/healthz`
+на сервере и [`smoke-prod.sh`](../scripts/smoke-prod.sh) с runner (если
+`SMOKE_PUBLIC_BASE_URL` не пустой; в Actions по умолчанию `https://cassinilab.ru`) —
+публичные `/healthz`, `/connect`, `/api/calendar/status`. Job **deploy** перед SSH
+проверяет наличие секретов `DEPLOY_HOST`, `DEPLOY_USER`, `SSH_PRIVATE_KEY`
+(без GitHub Environment). База для post-deploy smoke: repository variable
+`SMOKE_PUBLIC_BASE_URL` (default `https://cassinilab.ru`); локально —
+`make smoke-prod` или `SATELLITE_BASE_URL=https://… make smoke-prod`.
 
 Секреты репозитория (`Settings → Secrets and variables → Actions`):
 
@@ -279,7 +291,10 @@ legacy `satellite-bot.service` останавливает и отключает 
 | `DEPLOY_USER` | SSH-пользователь |
 | `SSH_PRIVATE_KEY` | приватный ключ SSH (публичный — в `authorized_keys` на сервере) |
 | `SSH_KNOWN_HOSTS` | опционально: `ssh-keyscan -H $DEPLOY_HOST` |
-| `GHCR_PULL_TOKEN` | опционально: PAT с `read:packages` для приватного GHCR-пакета |
+| `GHCR_PULL_TOKEN` | опционально: PAT с `read:packages`; если не задан, deploy передаёт на сервер `github.token` (достаточно для пакета этого репозитория) |
+
+**Variables → Actions** (опционально): `SMOKE_PUBLIC_BASE_URL` — база для post-deploy
+smoke (default `https://cassinilab.ru`).
 
 `logs/` (volume `satellite-logs`), `TOKEN_ENCRYPTION_KEY` и nginx на хосте этот
 путь не трогает — только тег образа бота.
@@ -304,6 +319,15 @@ docker compose ps
 ```
 
 Логи приложения внутри volume: `docker compose exec satellite tail -f /app/logs/bot.log`.
+
+Проверка с сервера и снаружи после деплоя:
+
+```bash
+curl -sS http://127.0.0.1:8080/healthz   # на хосте
+make smoke-prod                          # с ноутбука (SATELLITE_BASE_URL при другом домене)
+```
+
+См. [testing.md — Smoke](testing.md#smoke-образ-и-production-url), [troubleshooting.md](troubleshooting.md#упал-docker-smoke-job-build-или-smoke-prod-job-deploy).
 
 Резервная копия перед переносом: volume `satellite-logs` (или каталог после
 `docker volume inspect`) и файл `/opt/satellite/.env` (включая `TOKEN_ENCRYPTION_KEY`).

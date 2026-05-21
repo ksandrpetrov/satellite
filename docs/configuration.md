@@ -275,6 +275,18 @@ LOG_LEVEL=INFO
 Отдельных env-переменных нет. Menu Button в BotFather использует только
 `WEBAPP_BASE_URL` без токена — там авторизация идёт через `initData`.
 
+## Smoke и CI (не в `.env` бота)
+
+Эти переменные **не** читает `load_settings` и не нужны в production `.env` на сервере.
+
+| Переменная | Где | Назначение |
+|------------|-----|------------|
+| `SATELLITE_BASE_URL` | локально, `scripts/smoke-prod.sh` | Публичный origin без `/connect` (default `https://cassinilab.ru`). Проверяет `/healthz`, `/connect`, `/api/calendar/status`. |
+| `SMOKE_PUBLIC_BASE_URL` | GitHub Actions variable, `ci-deploy-remote.sh` | То же для post-deploy smoke после rolling deploy. Пустое значение — public smoke пропускается. В [`deploy.yml`](../.github/workflows/deploy.yml) default `https://cassinilab.ru`. |
+
+Локально: `make smoke-prod`, `SATELLITE_BASE_URL=https://… make smoke-prod`.
+Образ после сборки: `make docker-smoke` — см. [testing.md](testing.md#smoke-образ-и-production-url).
+
 ## Файлы, которые нельзя коммитить
 
 - `.env`;

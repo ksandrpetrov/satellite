@@ -236,6 +236,8 @@ python -m ruff format satellite tests             # make format
 python -m mypy satellite                          # make typecheck (блокирующий гейт)
 find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 python -m py_compile  # make compile
 make check                                        # lint + typecheck + compile + test (full)
+make docker-smoke                                 # smoke образа: импорты + /healthz (см. docs/testing.md)
+make smoke-prod                                   # curl публичного /healthz, /connect, /api/… после деплоя
 python telegram_test_command.py                   # make run
 ```
 
@@ -263,7 +265,8 @@ TLS и reverse proxy на 443 — ваш существующий nginx на х�
 | [`scripts/bootstrap-server.sh`](scripts/bootstrap-server.sh) | apt + clone + `install-server.sh` на чистом хосте |
 | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) | CalDAV с сервера без Telegram (см. troubleshooting) |
 | [`scripts/diagnose_invitation.py`](scripts/diagnose_invitation.py) | PARTSTAT / pending без Telegram (`--user-id`, `--summary`, опц. `--accept`; lookback 14 д — как в боте) |
-| [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy: trim секретов SSH/host → stop/disable legacy `satellite-bot.service` → `SATELLITE_IMAGE` в `.env` → `compose pull/up` → wait healthy + host `/healthz` → опц. [`smoke-prod.sh`](scripts/smoke-prod.sh) |
+| [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy: trim секретов SSH/host → stop/disable legacy `satellite-bot.service` → детект legacy `logs/users.json` vs пустой volume → `SATELLITE_IMAGE` в `.env` → `compose pull/up` → wait healthy + host `/healthz` → опц. [`smoke-prod.sh`](scripts/smoke-prod.sh) |
+| [`scripts/migrate-legacy-logs.sh`](scripts/migrate-legacy-logs.sh) | Однократный перенос `/opt/satellite/logs/` (systemd) в volume `satellite_satellite-logs` (Docker) с `chown` под satellite uid внутри образа; идемпотентен, делает rescue-копию |
 | [`scripts/docker-smoke-image.sh`](scripts/docker-smoke-image.sh) | CI/local: `docker run` → [`smoke_container.py`](scripts/smoke_container.py) (импорты, caldav&lt;3, HTTP /healthz) |
 | [`scripts/smoke-prod.sh`](scripts/smoke-prod.sh) | Публичные curl-проверки `/healthz`, `/connect`, `/api/calendar/status` после деплоя |
 
@@ -336,3 +339,26 @@ production, ngrok/Cloudflare Tunnel в dev). Проксируйте `/connect` �
 по `key_fingerprint` (sha256[0:8]) видно, что `TOKEN_ENCRYPTION_KEY` не сменился.
 Если хоть один approved-пользователь не расшифровывается текущим ключом,
 [`bot.py`](satellite/telegram_bot/bot.py) пишет `CRITICAL Encryption self-check failed`.
+Если стор пустой (`users=0, subs=0`), но в `logs/backups/` уже есть `users.json.*.bak`,
+[`bot.py::_warn_if_users_lost`](satellite/telegram_bot/bot.py) кричит `WARNING Persistence is empty …` —
+скорее всего, это миграция systemd→Docker без переноса данных в volume (см. ниже).
+
+#### Миграция systemd → Docker (один раз)
+
+systemd-сетап ([`scripts/install-server.sh`](scripts/install-server.sh)) хранил
+`users.json` / `subscriptions.json` / `backups/` в `/opt/satellite/logs/` **на хосте**.
+Docker-compose ([`deploy/docker-compose.yml`](deploy/docker-compose.yml)) маунтит
+именованный volume `satellite_satellite-logs` → `/app/logs`. При первом `compose up`
+volume пустой — контейнер не видит legacy-данные, юзеры «пропадают».
+
+Защита:
+
+1. [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) перед `compose up` сравнивает
+   количество юзеров на хосте и в volume; если host > volume — **валит deploy** с указателем
+   на `scripts/migrate-legacy-logs.sh`.
+2. [`scripts/migrate-legacy-logs.sh`](scripts/migrate-legacy-logs.sh) — одношаговый перенос:
+   rescue-копия volume в `/root/satellite-rescue-<ts>/`, `cp` из `/opt/satellite/logs/` в volume,
+   `chown` под uid пользователя `satellite` внутри образа, `compose up` + ожидание healthy.
+   Идемпотентен; `FORCE=1` чтобы перетереть непустой volume.
+3. [`bot.py::_warn_if_users_lost`](satellite/telegram_bot/bot.py) ловит сценарий «volume
+   пустой, но backups уже есть» — последняя линия защиты, если детектор в (1) обойдут.

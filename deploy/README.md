@@ -27,7 +27,8 @@ Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на 
    Перед SSH job проверяет, что заданы секреты `DEPLOY_HOST`, `DEPLOY_USER`, `SSH_PRIVATE_KEY`.
    Тег `v*` job **deploy** не запускает — см. [troubleshooting](../docs/troubleshooting.md#автодеплой-github-actions-и-docker-на-сервере).
 
-Пакет в GHCR после первой сборки сделайте **public** (или задайте `GHCR_PULL_TOKEN`, см. ниже):
+Пакет в GHCR после первой сборки сделайте **public** (или задайте `GHCR_PULL_TOKEN` —
+опционально: без него deploy передаёт на сервер `github.token`, см. таблицу секретов):
 `Settings → Packages → satellite → Package settings → Change visibility`.
 
 ### Первый деплой без образа в GHCR
@@ -52,7 +53,7 @@ satellite_image_source: ghcr
 | `DEPLOY_USER` | SSH-пользователь (`root` или deploy-user) |
 | `SSH_PRIVATE_KEY` | приватный ключ SSH (публичный — в `authorized_keys` на сервере) |
 | `SSH_KNOWN_HOSTS` | опционально: вывод `ssh-keyscan -H <DEPLOY_HOST>` |
-| `GHCR_PULL_TOKEN` | опционально: PAT с `read:packages` для приватного пакета GHCR |
+| `GHCR_PULL_TOKEN` | опционально: PAT с `read:packages`; если не задан, job **deploy** передаёт на сервер `github.token` (достаточно для пакета этого репозитория) |
 
 **Variables → Actions** (опционально):
 
@@ -121,6 +122,7 @@ DEPLOY_HOST=<IP-или-hostname-сервера> \
 DEPLOY_USER=root \
 SSH_PRIVATE_KEY="$(cat ~/.ssh/satellite_deploy)" \
 SATELLITE_IMAGE=ghcr.io/ksandrpetrov/satellite:sha-abc1234 \
+SMOKE_PUBLIC_BASE_URL=https://cassinilab.ru \
   bash scripts/ci-deploy-remote.sh
 ```
 
@@ -151,7 +153,8 @@ make docker-up    # docker compose up -d --build
 make docker-logs  # docker compose logs -f satellite
 ```
 
-Health: `curl http://127.0.0.1:8080/healthz`. Чтобы Telegram WebApp работал
+Health: `curl http://127.0.0.1:8080/healthz` или `make docker-smoke` (импорты + `/healthz`
+в собранном образе). Чтобы Telegram WebApp работал
 снаружи, поверх 8080 нужен HTTPS-туннель (`ngrok http 8080` или Cloudflare Tunnel)
 и `WEBAPP_BASE_URL=https://<публичный-домен>/connect` в `.env`.
 

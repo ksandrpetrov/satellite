@@ -161,6 +161,52 @@ WEBAPP_BASE_URL=...
 - Логи бота: `docker compose -f /opt/satellite/docker-compose.yml logs -f satellite`.
 - Логи nginx: `sudo journalctl -u nginx -f` (или `/var/log/nginx/error.log`).
 
+### После деплоя пропали юзеры / авторизация / календари (systemd → Docker)
+
+**Симптом.** После первого Docker-деплоя бот отвечает заново, но всех approved-юзеров
+«забыл», `users.json` внутри контейнера крошечный (664 B вместо ~2 КБ), в логе:
+
+```text
+WARNING Persistence is empty (users=0, subs=0) but /app/logs/backups contains users.json.*.bak …
+```
+
+Это **не потеря данных**, а классическая миграция-сирота: systemd писал в
+`/opt/satellite/logs/` на хосте, Docker маунтит именованный volume
+`satellite_satellite-logs` → `/app/logs`, и при первом `compose up` volume **пустой**.
+Legacy-файлы целы на хосте.
+
+**Проверка:**
+
+```bash
+ls -la /opt/satellite/logs/users.json                # должен существовать
+docker volume inspect satellite_satellite-logs       # должен существовать
+sudo find /var/lib/docker/volumes/satellite_satellite-logs/_data -name 'users.json' -exec wc -c {} +
+```
+
+**Восстановление** (всё делает скрипт; останавливает контейнер, переливает данные,
+делает `chown` под uid пользователя `satellite` внутри образа, поднимает контейнер
+и ждёт `healthy`):
+
+```bash
+sudo bash /opt/satellite/scripts/migrate-legacy-logs.sh
+```
+
+Скрипт создаёт rescue-копию текущего volume в `/root/satellite-rescue-<timestamp>/`
+до того, как что-то менять. Если в volume уже больше юзеров, чем на хосте, скрипт
+ничего не делает (нечего восстанавливать); для принудительного перетирания —
+`FORCE=1 sudo bash scripts/migrate-legacy-logs.sh`.
+
+**Профилактика.** [`scripts/ci-deploy-remote.sh`](../scripts/ci-deploy-remote.sh) перед
+`compose up` сравнивает `users.json` на хосте и в volume. Если на хосте больше —
+deploy job падает с указателем на `migrate-legacy-logs.sh`, контейнер с пустым
+стором не поднимется поверх живого.
+
+**Если ключ шифрования также сменился** (`CRITICAL Encryption self-check failed`
+после переноса) — `status=approved` сохранится, но календарь каждому подключившему
+придётся пройти заново через Web App; зашифрованные `encrypted_credentials`
+текущим ключом не расшифровать (логин/пароль в `users.json` не лежат — см.
+инвариант №2 в [AGENTS.md](../AGENTS.md)).
+
 ### Локальный запуск через ngrok/Cloudflare Tunnel
 
 - `make env && make docker-up` — поднимает один контейнер бота с пробросом порта 8080.
@@ -355,8 +401,10 @@ Rolling update из Actions только подтягивает образ и п
 
 ### `docker compose pull` / `unauthorized` (GHCR)
 
-Пакет в GHCR приватный — задайте секрет `GHCR_PULL_TOKEN` (PAT с `read:packages`)
-или сделайте пакет **public** (`Settings → Packages → satellite`).
+Пакет в GHCR приватный. По умолчанию rolling deploy логинится на сервере через
+`github.token` job'а (достаточно для образа **этого** репозитория). Если pull всё
+равно падает — задайте секрет `GHCR_PULL_TOKEN` (PAT с `read:packages`) или сделайте
+пакет **public** (`Settings → Packages → satellite`).
 
 ### `bind: address already in use` на `127.0.0.1:8080`
 
@@ -377,6 +425,19 @@ cd /opt/satellite && docker compose up -d satellite
 Проверьте, что workflow `deploy` завершился зелёным, в `/opt/satellite/.env` актуальный
 `SATELLITE_IMAGE=ghcr.io/...:sha-<short>`, контейнер пересоздан:
 `docker compose ps satellite`, `docker compose logs --tail=50 satellite`.
+
+### Упал docker smoke (job build) или smoke-prod (job deploy)
+
+**Build — `Smoke Docker image`:** образ не импортируется, внутри установлен `caldav` 3.x
+или `/healthz` не отвечает. Локально: `make docker-smoke` или
+`bash scripts/docker-smoke-image.sh ghcr.io/ksandrpetrov/satellite:sha-<short>`.
+Смотрите вывод `smoke_container.py` (первые строки `smoke_container: FAIL …`).
+
+**Deploy — public smoke:** runner не получил `{"status":"ok"}` на `https://<domain>/healthz`
+(часто nginx отдаёт HTML главной — нет `location = /healthz` на порт бота),
+`/connect` не 200, или `/api/calendar/status` не 401. На сервере сначала
+`curl http://127.0.0.1:8080/healthz`, затем `make smoke-prod` с ноутбука.
+Variable `SMOKE_PUBLIC_BASE_URL` — если домен не `cassinilab.ru`.
 
 ## Тесты не запускаются после переноса папки
 

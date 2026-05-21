@@ -8,6 +8,7 @@ import signal
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ..backup import snapshot_all
@@ -46,6 +47,40 @@ log = logging.getLogger(__name__)
 _ERROR_BACKOFF_INITIAL_SEC = 1.0
 _ERROR_BACKOFF_MAX_SEC = 30.0
 _ERROR_BACKOFF_MULTIPLIER = 2.0
+
+
+def warn_if_users_lost(*, logs_dir: Path, users_total: int, subs_total: int) -> bool:
+    """Кричит WARNING, если стор пустой, но рядом лежат снапшоты `users.json.*.bak`.
+
+    Сценарий: миграцию systemd → Docker сделали без переноса `/opt/satellite/logs/`
+    в именованный volume. Контейнер видит пустую папку, спокойно стартует и начинает
+    «новую жизнь»; legacy-данные на хосте остались, но больше не видны. Если в
+    `backups/` уже есть снапшоты `users.json.*.bak` — раньше юзеры существовали,
+    значит, стор обнулили. Молчать тут нельзя.
+
+    Возвращает True, если warning был испущен (для тестов и сигнализации
+    наверх в будущем; сейчас вызывающий код игнорирует).
+    """
+    if users_total > 0 or subs_total > 0:
+        return False
+    backups_dir = logs_dir / "backups"
+    try:
+        had_users_backups = any(
+            item.name.startswith("users.json.") and item.name.endswith(".bak")
+            for item in backups_dir.iterdir()
+        )
+    except OSError:
+        had_users_backups = False
+    if not had_users_backups:
+        return False
+    log.warning(
+        "Persistence is empty (users=0, subs=0) but %s contains users.json.*.bak — "
+        "store likely reset (legacy systemd → Docker volume migration?). "
+        "Restore the latest snapshot or run scripts/migrate-legacy-logs.sh; "
+        "see docs/troubleshooting.md.",
+        backups_dir,
+    )
+    return True
 
 
 class TelegramBot:
@@ -168,6 +203,11 @@ class TelegramBot:
             self._subscriptions_path,
             _encryption_key_fingerprint(self._settings.security.encryption_key),
             snapshots or "[]",
+        )
+        warn_if_users_lost(
+            logs_dir=self._users_path.parent,
+            users_total=len(users),
+            subs_total=len(subs_all),
         )
 
     def _verify_encryption_key_against_existing_users(self) -> None:
