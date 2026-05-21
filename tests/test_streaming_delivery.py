@@ -69,13 +69,22 @@ def test_push_throttles_rapid_small_updates() -> None:
     assert tg.send_message_draft.call_count <= 1
 
 
-def test_dismiss_clears_draft() -> None:
+def test_dismiss_does_not_resend_empty_draft() -> None:
+    """Регрессия: в draft-режиме ``dismiss()`` НЕ шлёт ``sendMessageDraft("")``.
+
+    На Bot API 10.0+ пустой ``text`` рисует нативный «Thinking…» placeholder.
+    Если вызвать его в ``dismiss()`` после реальной доставки (например,
+    ``sendPhoto`` в недельной аналитике), Telegram выводит фантомный «…»
+    баббл под фотографией и держит его весь 30-секундный TTL черновика —
+    пользователь видит вторую «Чайка думает» индикацию уже после готового
+    отчёта. Поэтому в draft-ветке dismiss НЕ дёргает ``sendMessageDraft``;
+    предыдущий статус-черновик Telegram гасит сам по TTL.
+    """
     tg = _telegram()
     stream = open_streaming_reply(tg, 500, "⏳", draft_id=3)
+    initial_calls = tg.send_message_draft.call_count
     stream.dismiss()
-    last = tg.send_message_draft.call_args
-    assert last is not None
-    assert last[0][2] == ""
+    assert tg.send_message_draft.call_count == initial_calls
 
 
 def test_dismiss_deletes_legacy_loading_message() -> None:

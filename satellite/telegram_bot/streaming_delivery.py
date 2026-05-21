@@ -266,24 +266,21 @@ class StreamingReply:
     def dismiss(self) -> None:
         """Завершить сессию без финального текста (например, перед sendPhoto).
 
-        В draft-режиме сбрасывает черновик пустым кадром. В legacy — удаляет
-        loading-сообщение через ``deleteMessage``. Best-effort.
+        В legacy-режиме удаляем loading-сообщение через ``deleteMessage``.
+        В draft-режиме намеренно НЕ дёргаем ``sendMessageDraft``: на Bot API
+        10.0+ пустой ``text`` рендерится как нативный «Thinking…» placeholder
+        (тот же сценарий, что и в ``open("")``). После реальной доставки
+        результата (``sendPhoto`` в аналитике) это даёт фантомный «…» баббл
+        под фото, который висит весь 30-секундный TTL черновика. Старый
+        статус-черновик («📊 Чайка сводит неделю…») Telegram сам погасит
+        по TTL — пользователь его уже не увидит, потому что внимание на
+        свежей фотке. Best-effort.
         """
         if self._closed:
             return
         self._closed = True
         self._stop_typing()
         if self._mode == "draft":
-            try:
-                self._telegram.send_message_draft(
-                    self._chat_id,
-                    self._draft_id,
-                    "" if self._empty_text_supported else " ",
-                    message_thread_id=self._message_thread_id,
-                    parse_mode=self._parse_mode,
-                )
-            except Exception as exc:  # noqa: BLE001 - best-effort
-                log.debug("Draft dismiss failed: %s", exc)
             return
         if self._loading_message_id is not None:
             try:
