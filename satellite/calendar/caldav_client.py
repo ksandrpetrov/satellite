@@ -362,9 +362,7 @@ class CalDAVService:
         out: list[Event] = []
         for handle in handles:
             try:
-                events_iter = self._iter_calendar_range_search(
-                    handle, range_start, range_end
-                )
+                events_iter = self._iter_calendar_range_search(handle, range_start, range_end)
             except Exception as exc:  # noqa: BLE001
                 log.warning(
                     "CalDAV range search failed url=%s: %s",
@@ -407,15 +405,12 @@ class CalDAVService:
                         start=range_start, end=range_end, event=True, expand=expand
                     )
                 except TypeError:
-                    return handle.obj.date_search(
-                        start=range_start, end=range_end, expand=expand
-                    )
+                    return handle.obj.date_search(start=range_start, end=range_end, expand=expand)
             except ValueError as exc:
                 last_value_error = exc
                 if expand:
                     log.warning(
-                        "CalDAV range search expand=True failed url=%s: %s; "
-                        "retrying expand=False",
+                        "CalDAV range search expand=True failed url=%s: %s; retrying expand=False",
                         _redact_url(handle.url),
                         exc,
                     )
