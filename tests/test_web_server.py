@@ -9,10 +9,11 @@ import socket
 import time
 import urllib.error
 import urllib.request
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -284,7 +285,8 @@ def test_list_events_when_not_connected(started_server):
 def test_list_events_upcoming_view(started_server):
     _server, users, calendar, base = started_server
     _approve_user(users, 402, with_calendar=True)
-    today = date.today()
+    # Same tz as WebAppServerConfig.tz_name in started_server (not date.today() — flaky in UTC CI).
+    today = datetime.now(tz=ZoneInfo("Europe/Moscow")).date()
     calendar.list_events = MagicMock(
         return_value=[
             {
