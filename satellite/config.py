@@ -46,7 +46,6 @@ PLACEHOLDER_TELEGRAM_BOT_TOKEN = "123456:your-bot-token"
 PLACEHOLDER_WEBAPP_BASE_URL = "https://your-domain.example/connect"
 DEFAULT_WEBAPP_BASE_URL = "https://cassinilab.ru/connect"
 
-
 def is_valid_webapp_base_url(url: str) -> bool:
     """Публичный HTTPS URL для кнопки Web App, не путь к файлу в репозитории."""
     normalized = url.strip()
