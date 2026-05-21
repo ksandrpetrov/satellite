@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import time
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any, cast
@@ -24,7 +23,26 @@ INVITATION_HORIZON_DAYS = 60
 INVITATION_LOOKBACK_DAYS = 14
 MAX_INVITATIONS = 12
 
+log = logging.getLogger(__name__)
+
 Event = dict[str, Any]
+
+
+def _summarize_event_for_log(ev: Event, login: str) -> dict[str, Any]:
+    """Минимальный пейлоад для server-side debug: даты, статус, attendees-blob."""
+    from .calendar.events._partstat import is_pending_invitation_for_user, user_partstat
+
+    return {
+        "summary": str(ev.get("summary") or "")[:80],
+        "dtstart": str(ev.get("dtstart") or "")[:25],
+        "dtend": str(ev.get("dtend") or "")[:25],
+        "url_tail": str(ev.get("url") or "")[-60:],
+        "user_partstat": user_partstat(ev, login),
+        "is_pending": is_pending_invitation_for_user(ev, login),
+        "attendees_count": len(ev.get("attendees") or []),
+        "attendees_sample": [str(a)[:120] for a in (ev.get("attendees") or [])[:3]],
+        "status": str(ev.get("status") or ""),
+    }
 
 
 @dataclass(frozen=True)
@@ -117,36 +135,34 @@ def load_pending_invitations_screen(
     )
     pending, truncated = collect_pending_from_events(events, login, tz, now=moment)
     # #region agent log
-    try:
-        summaries = [str(e.get("summary") or "")[:40] for e in pending[:5]]
-        with open(
-            "/Users/aleksandr/Developer/satellite/.cursor/debug-2d45ee.log",
-            "a",
-            encoding="utf-8",
-        ) as _df:
-            _df.write(
-                json.dumps(
-                    {
-                        "sessionId": "2d45ee",
-                        "hypothesisId": "H1-H4",
-                        "location": "invitations_view.py:load_pending",
-                        "message": "pending_invitations_screen",
-                        "data": {
-                            "user_id": user_id,
-                            "events_fetched": len(events),
-                            "pending_count": len(pending),
-                            "truncated": truncated,
-                            "first_pending": summaries,
-                            "login_domain": login.split("@")[-1] if "@" in login else "",
-                        },
-                        "timestamp": int(time.time() * 1000),
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-    except OSError:
-        pass
+    horizon_lo = (moment - timedelta(days=INVITATION_LOOKBACK_DAYS)).date()
+    horizon_hi = (moment + timedelta(days=INVITATION_HORIZON_DAYS)).date()
+    log.warning(
+        "DEBUG_2d45ee INVITATIONS_SCREEN user_id=%s events=%d pending=%d truncated=%s "
+        "horizon=[%s..%s] login_domain=%s pending_summaries=%s",
+        user_id,
+        len(events),
+        len(pending),
+        truncated,
+        horizon_lo.isoformat(),
+        horizon_hi.isoformat(),
+        login.split("@")[-1] if "@" in login else "",
+        [str(e.get("summary") or "")[:60] for e in pending[:8]],
+    )
+    needle = "кто есть кто"
+    suspects = [ev for ev in events if needle in str(ev.get("summary") or "").casefold()]
+    for ev in suspects[:3]:
+        log.warning(
+            "DEBUG_2d45ee INVITATIONS_SUSPECT user_id=%s payload=%s",
+            user_id,
+            _summarize_event_for_log(ev, login),
+        )
+    if not suspects:
+        log.warning(
+            "DEBUG_2d45ee INVITATIONS_SUSPECT_NOT_FOUND user_id=%s needle=%r",
+            user_id,
+            needle,
+        )
     # #endregion
     today = moment.date()
     text, keyboard = screen_from_pending(

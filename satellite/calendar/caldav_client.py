@@ -532,33 +532,16 @@ class CalDAVService:
                 ev["status"] = status
         # #region agent log
         if invitation_verify and moment is not None:
-            try:
-                import json as _json
-
-                with open(
-                    "/Users/aleksandr/Developer/satellite/.cursor/debug-2d45ee.log",
-                    "a",
-                    encoding="utf-8",
-                ) as _df:
-                    _df.write(
-                        _json.dumps(
-                            {
-                                "sessionId": "2d45ee",
-                                "hypothesisId": "H1",
-                                "location": "caldav_client.py:_enrich_events_partstat",
-                                "message": "partstat_refresh_done",
-                                "data": {
-                                    "refreshed": refresh_count,
-                                    "total_events": len(events),
-                                },
-                                "timestamp": int(time.time() * 1000),
-                            },
-                            ensure_ascii=False,
-                        )
-                        + "\n"
-                    )
-            except OSError:
-                pass
+            log.warning(
+                "DEBUG_2d45ee PARTSTAT_REFRESH_DONE refreshed=%d/%d total_events=%d budget_left=%.2fs",
+                refresh_count,
+                self._partstat_refresh_limit,
+                len(events),
+                max(
+                    0.0,
+                    self._partstat_refresh_budget_sec - (time.monotonic() - refresh_started),
+                ),
+            )
         # #endregion
 
     def _set_attendee_partstat_once(
