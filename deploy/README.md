@@ -13,14 +13,17 @@ Reverse proxy и TLS для `cassinilab.ru` — ваш существующий 
 Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на каждый push в `main`
 или тег `v*` (отдельный workflow [`test.yml`](../.github/workflows/test.yml) — только на PR):
 
-1. **test** — ruff (lint + format check), py_compile, pytest.
+1. **test** — reusable `_checks.yml`: ruff (lint + format check), mypy, py_compile, pytest.
 2. **build** — Docker-образ в GHCR: `:sha-<short>` (всегда), `:latest` (только `main`),
-   semver-теги (только `v*`).
+   semver-теги (только `v*`); затем **smoke** (`scripts/docker-smoke-image.sh` →
+   импорты, `caldav<3`, HTTP `/healthz` внутри образа).
 3. **deploy** — SSH на сервер (`scripts/ci-deploy-remote.sh`): нормализация
    `DEPLOY_HOST`/`DEPLOY_USER`/`SATELLITE_IMAGE`; при наличии legacy
    `satellite-bot.service` — остановить и отключить unit (освободить порт на хосте);
    обновить `SATELLITE_IMAGE` в `.env`, `docker compose pull satellite`,
-   `docker compose up -d satellite`. Только для push в `main` и ручного `workflow_dispatch`.
+   `docker compose up -d satellite`, дождаться `healthy`, `curl` host `/healthz`,
+   затем `scripts/smoke-prod.sh` с публичного URL (по умолчанию `https://cassinilab.ru`).
+   Только для push в `main` и ручного `workflow_dispatch`.
    Перед SSH job проверяет, что заданы секреты `DEPLOY_HOST`, `DEPLOY_USER`, `SSH_PRIVATE_KEY`.
    Тег `v*` job **deploy** не запускает — см. [troubleshooting](../docs/troubleshooting.md#автодеплой-github-actions-и-docker-на-сервере).
 
@@ -50,6 +53,14 @@ satellite_image_source: ghcr
 | `SSH_PRIVATE_KEY` | приватный ключ SSH (публичный — в `authorized_keys` на сервере) |
 | `SSH_KNOWN_HOSTS` | опционально: вывод `ssh-keyscan -H <DEPLOY_HOST>` |
 | `GHCR_PULL_TOKEN` | опционально: PAT с `read:packages` для приватного пакета GHCR |
+
+**Variables → Actions** (опционально):
+
+| Variable | Назначение |
+|----------|------------|
+| `SMOKE_PUBLIC_BASE_URL` | База для post-deploy smoke (default `https://cassinilab.ru`). Нужен nginx `location = /healthz` на бота — иначе deploy job упадёт на ложном 200 от статики. |
+
+Локально после деплоя: `make smoke-prod` или `SATELLITE_BASE_URL=https://… make smoke-prod`.
 
 ## Перед деплоем
 

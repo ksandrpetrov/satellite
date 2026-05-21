@@ -6,7 +6,7 @@ VENV_PIP := $(VENV)/bin/pip
 ENTRY := telegram_test_command.py
 DOCKER_IMAGE ?= satellite:dev
 
-.PHONY: help install install-dev install-server deploy venv env fernet-key run test compile lint format typecheck check clean update docker-build docker-up docker-down docker-logs
+.PHONY: help install install-dev install-server deploy venv env fernet-key run test compile lint format typecheck check clean update docker-build docker-up docker-down docker-logs docker-smoke smoke-prod
 
 help:
 	@echo "Targets:"
@@ -27,6 +27,8 @@ help:
 	@echo "  make docker-up      docker compose up -d (локальный stack)"
 	@echo "  make docker-down    docker compose down"
 	@echo "  make docker-logs    docker compose logs -f satellite"
+	@echo "  make docker-smoke   smoke собранного образа (import + /healthz)"
+	@echo "  make smoke-prod     проверка публичного URL (SATELLITE_BASE_URL)"
 	@echo "  make update         git pull + pip install -r requirements.txt"
 	@echo "  make clean          удалить venv и кэши"
 
@@ -90,6 +92,12 @@ docker-down:
 
 docker-logs:
 	docker compose logs -f satellite
+
+docker-smoke: docker-build
+	SMOKE_SKIP_PULL=1 bash scripts/docker-smoke-image.sh $(DOCKER_IMAGE)
+
+smoke-prod:
+	bash scripts/smoke-prod.sh
 
 update:
 	git pull --ff-only

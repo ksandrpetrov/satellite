@@ -233,7 +233,7 @@ source venv/bin/activate
 python -m pytest                                  # make test
 python -m ruff check satellite tests              # make lint
 python -m ruff format satellite tests             # make format
-python -m mypy satellite                          # make typecheck (информативно)
+python -m mypy satellite                          # make typecheck (блокирующий гейт)
 find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 python -m py_compile  # make compile
 make check                                        # lint + typecheck + compile + test (full)
 python telegram_test_command.py                   # make run
@@ -247,8 +247,8 @@ python telegram_test_command.py                   # make run
 [deploy/README.md](deploy/README.md));
 **Docker (local)** — `make env && make docker-up` (см. корневой `docker-compose.yml`).
 
-CI: [`.github/workflows/test.yml`](.github/workflows/test.yml) (только PR: ruff lint + format check, mypy, py_compile, pytest);
-[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — push в `main` или тег `v*`: ruff + py_compile + pytest → образ в GHCR → deploy;
+CI: reusable [`.github/workflows/_checks.yml`](.github/workflows/_checks.yml) (ruff lint + format check, mypy, py_compile, pytest);
+[`.github/workflows/test.yml`](.github/workflows/test.yml) — только PR; [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — push в `main` или тег `v*`: checks → образ в GHCR → **docker smoke** → deploy (healthy + smoke-prod);
 rolling deploy по SSH (`scripts/ci-deploy-remote.sh`) — только для `main` и `workflow_dispatch`
 (тег `v*` лишь пушит semver-образ). Первичный деплой (`.env`, `docker-compose.yml`, образ) — `make deploy` (Ansible);
 TLS и reverse proxy на 443 — ваш существующий nginx на хосте, не из стека.
@@ -263,7 +263,9 @@ TLS и reverse proxy на 443 — ваш существующий nginx на х�
 | [`scripts/bootstrap-server.sh`](scripts/bootstrap-server.sh) | apt + clone + `install-server.sh` на чистом хосте |
 | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) | CalDAV с сервера без Telegram (см. troubleshooting) |
 | [`scripts/diagnose_invitation.py`](scripts/diagnose_invitation.py) | PARTSTAT / pending без Telegram (`--user-id`, `--summary`, опц. `--accept`; lookback 14 д — как в боте) |
-| [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy: trim секретов SSH/host → stop/disable legacy `satellite-bot.service` → `SATELLITE_IMAGE` в `.env` → `compose pull/up satellite` (Actions и локально) |
+| [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy: trim секретов SSH/host → stop/disable legacy `satellite-bot.service` → `SATELLITE_IMAGE` в `.env` → `compose pull/up` → wait healthy + host `/healthz` → опц. [`smoke-prod.sh`](scripts/smoke-prod.sh) |
+| [`scripts/docker-smoke-image.sh`](scripts/docker-smoke-image.sh) | CI/local: `docker run` → [`smoke_container.py`](scripts/smoke_container.py) (импорты, caldav&lt;3, HTTP /healthz) |
+| [`scripts/smoke-prod.sh`](scripts/smoke-prod.sh) | Публичные curl-проверки `/healthz`, `/connect`, `/api/calendar/status` после деплоя |
 
 ## Web App
 

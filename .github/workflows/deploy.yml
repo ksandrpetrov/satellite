@@ -84,6 +84,9 @@ jobs:
           IMAGE_LC="$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
           echo "ref=${REGISTRY}/${IMAGE_LC}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
+      - name: Smoke Docker image
+        run: bash scripts/docker-smoke-image.sh "${{ steps.image.outputs.ref }}"
+
   deploy:
     needs: build
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
@@ -116,4 +119,5 @@ jobs:
           GHCR_USER: ${{ github.actor }}
           # PAT — для чужого registry/орга; иначе job token (read packages этого repo).
           GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || github.token }}
+          SMOKE_PUBLIC_BASE_URL: ${{ vars.SMOKE_PUBLIC_BASE_URL || 'https://cassinilab.ru' }}
         run: bash scripts/ci-deploy-remote.sh

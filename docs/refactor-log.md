@@ -171,8 +171,9 @@ pytest оставался зелёным.
 
 ## Синхронизация docs с CI и Docker-деплоем (2026-05-21)
 
-- Единое описание job **test** в `deploy.yml` (ruff lint + format check, без mypy) —
-  README, AGENTS, architecture, testing.
+- Единое описание job **test** в `deploy.yml` и PR-гейта — reusable `_checks.yml`
+  (ruff lint + format + mypy + py_compile + pytest); README, AGENTS, architecture,
+  testing, deploy/README, operations.
 - Секреты `DEPLOY_HOST` / trim SSH — operations, deploy/README, troubleshooting.
 - CalDAV-диагностика: разделение systemd (`venv` в `/opt/satellite`) vs Docker
   (только compose + volume; скрипты — из отдельного клона или с ноутбука).
@@ -205,3 +206,10 @@ pytest оставался зелёным.
   refactor-log.md синхронизированы с новой раскладкой.
 - `pyproject.toml`: убраны устаревшие per-file-ignores под удалённые shim'ы;
   добавлены под фасады `users/__init__.py` и `calendar/events/__init__.py`.
+
+## caldav 2.x и явные импорты (2026-05-21)
+
+- `requirements.txt`: `caldav>=2.2,<3` — в 3.x `DAVClient`/`Event` стали lazy
+  (PEP 562), mypy перестаёт видеть атрибуты.
+- `caldav_client.py`: импорт `DAVClient` и `Event` из конкретных подмодулей
+  (`davclient`, `calendarobjectresource`), без runtime `from caldav import Event`.

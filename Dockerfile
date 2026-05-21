@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY satellite/ satellite/
 COPY telegram_test_command.py ./
+COPY scripts/smoke_container.py scripts/
 
 RUN useradd --system --create-home --home-dir /app --shell /usr/sbin/nologin satellite \
     && mkdir -p /app/logs \

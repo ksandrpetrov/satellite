@@ -17,6 +17,8 @@
 #   SSH_KNOWN_HOSTS        — содержимое known_hosts; без него — accept-new
 #   GHCR_USER, GHCR_TOKEN  — для приватного пакета: docker login ghcr.io
 #                            на сервере перед pull
+#   SMOKE_PUBLIC_BASE_URL  — (опц.) https://cassinilab.ru — curl /healthz и /connect
+#                            с runner после деплоя (нужен nginx location /healthz)
 
 set -euo pipefail
 
@@ -112,8 +114,48 @@ fi
 export COMPOSE_PROJECT_NAME
 docker compose pull satellite
 docker compose up -d satellite
+
+echo "Waiting for container health (up to 120s)…" >&2
+healthy=0
+for _ in $(seq 1 60); do
+    if docker compose ps satellite 2>/dev/null | grep -q '(healthy)'; then
+        healthy=1
+        break
+    fi
+    if docker compose ps satellite 2>/dev/null | grep -qE '(unhealthy|Exited)'; then
+        echo "Container is unhealthy or exited:" >&2
+        docker compose ps satellite >&2 || true
+        docker compose logs --tail=120 satellite >&2 || true
+        exit 1
+    fi
+    sleep 2
+done
+if [[ "${healthy}" -ne 1 ]]; then
+    echo "Timed out waiting for healthy container:" >&2
+    docker compose ps satellite >&2 || true
+    docker compose logs --tail=120 satellite >&2 || true
+    exit 1
+fi
+
+health_body="$(curl -fsS --max-time 10 http://127.0.0.1:8080/healthz)"
+if [[ "${health_body}" != '{"status":"ok"}' ]]; then
+    echo "Unexpected /healthz on host: ${health_body}" >&2
+    docker compose logs --tail=80 satellite >&2 || true
+    exit 1
+fi
+echo "Host /healthz OK" >&2
 docker compose ps satellite
 REMOTE
+}
+
+remote_smoke_public() {
+    local base_url
+    base_url="$(strip_ws "${SMOKE_PUBLIC_BASE_URL:-}")"
+    if [[ -z "${base_url}" ]]; then
+        return 0
+    fi
+    log "Public smoke ${base_url}…"
+    SATELLITE_BASE_URL="${base_url}" bash "$(dirname "$0")/smoke-prod.sh"
 }
 
 main() {
@@ -125,6 +167,7 @@ main() {
     setup_ssh
     log "Deploy ${SATELLITE_IMAGE} → ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}"
     remote_update
+    remote_smoke_public
     log "Done"
 }
 

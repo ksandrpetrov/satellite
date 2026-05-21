@@ -154,6 +154,10 @@ WEBAPP_BASE_URL=...
   [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example),
   затем `sudo nginx -t && sudo systemctl reload nginx`.
 - Сначала `curl http://127.0.0.1:8080/healthz` на сервере: если не 200, чините бота, не nginx.
+- Снаружи: `make smoke-prod` (или `bash scripts/smoke-prod.sh`) — проверяет `/healthz`,
+  `/connect` и `/api/calendar/status`. Если `https://…/healthz` отдаёт HTML главной сайта
+  вместо `{"status":"ok"}`, в nginx нет `location = /healthz` на порт бота — см. example-конфиг.
+- CI после деплоя гоняет тот же smoke; упавший deploy job = не говорите коллегам «всё ок».
 - Логи бота: `docker compose -f /opt/satellite/docker-compose.yml logs -f satellite`.
 - Логи nginx: `sudo journalctl -u nginx -f` (или `/var/log/nginx/error.log`).
 

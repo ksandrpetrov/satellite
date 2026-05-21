@@ -165,7 +165,7 @@ Callback data: префикс `inv:` (`CB_INV_*` в [`messages_ru/_core.py`](../
 ## Create event
 
 `/create` (или кнопка «➕ Создать событие») запускает пошаговый FSM
-(`calendar_state.py`):
+([`handlers/calendar_state.py`](../satellite/telegram_bot/handlers/calendar_state.py)):
 
 1. название;
 2. дата (`ДД.ММ.ГГГГ`, «сегодня», «завтра»);
@@ -252,7 +252,8 @@ Callback data хаба: `CB_SETTINGS_*` / `CB_ANALYTICS_*` в [`messages_ru/_cor
 - state очищается кнопками `Назад` и `Закрыть`;
 - команды и кнопки клавиатуры выходят из state.
 
-FSM создания события (`calendar_state`) не пересекается с digest time state.
+FSM создания события (`handlers/calendar_state`) не пересекается с digest time
+state (`handlers/digest_state`).
 
 ## Streaming delivery
 

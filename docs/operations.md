@@ -251,9 +251,10 @@ Playbook ставит Docker Engine, кладёт `docker-compose.yml` и `.env`
 
 #### Автодеплой из GitHub Actions
 
-Перед merge в `main` тесты на PR гоняет отдельный workflow
-[`.github/workflows/test.yml`](../.github/workflows/test.yml) (ruff + mypy + pytest);
-push в `main` — только [`deploy.yml`](../.github/workflows/deploy.yml) (test + build + deploy).
+Перед merge в `main` на PR гоняется
+[`.github/workflows/test.yml`](../.github/workflows/test.yml) → reusable
+[`_checks.yml`](../.github/workflows/_checks.yml). Push в `main` — тот же
+`_checks.yml` внутри [`deploy.yml`](../.github/workflows/deploy.yml), затем build + deploy.
 
 Push в `main`, ручной запуск workflow `deploy` (`Actions → deploy → Run workflow`)
 или merge в `main` после релизного тега делает rolling update без `make deploy`.
