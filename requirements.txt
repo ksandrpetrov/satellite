@@ -1,4 +1,5 @@
-caldav>=1.3
+# <3: в 3.x DAVClient/Event — lazy PEP 562 (__getattr__ -> object), mypy ломается.
+caldav>=2.2,<3
 cryptography>=42.0
 icalendar>=5.0
 python-dotenv>=1.0

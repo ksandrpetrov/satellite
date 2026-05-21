@@ -12,7 +12,8 @@ from typing import Any
 from uuid import uuid4
 
 import requests
-from caldav import DAVClient
+from caldav.calendarobjectresource import Event as CaldavEvent
+from caldav.davclient import DAVClient
 from caldav.lib.error import DAVError
 from icalendar import Calendar as IcsCalendar
 from icalendar import Event as IcsEvent
@@ -773,8 +774,6 @@ class CalDAVService:
         )
 
     def _get_event_object(self, event_url: str) -> Any:
-        from caldav import Event as CaldavEvent
-
         return CaldavEvent(client=self._dav_client(), url=event_url)
 
     def _partstat_refresh_budget_left(self, started_at: float) -> bool:

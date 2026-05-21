@@ -25,19 +25,17 @@ python -m pytest
 # или: make test
 ```
 
-В CI на **pull request** ([`.github/workflows/test.yml`](../.github/workflows/test.yml)) —
-три job'а на Python 3.11:
+В CI на **pull request** ([`.github/workflows/test.yml`](../.github/workflows/test.yml))
+и перед **deploy** ([`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml))
+один reusable workflow [`.github/workflows/_checks.yml`](../.github/workflows/_checks.yml)
+на Python 3.11:
 
 - **ruff** — `ruff check` и `ruff format --check` (блокирующий);
-- **mypy** — `mypy satellite` (информативный, `continue-on-error: true`);
-- **pytest** — `py_compile` всех модулей, затем `pytest -q`.
+- **mypy** — `mypy satellite` (блокирующий);
+- **py_compile** — все модули `satellite/` и `tests/`;
+- **pytest** — `pytest -q`.
 
 Перед коммитом локально: `make check` (= lint + typecheck + compile + test).
-
-На каждый push в `main` или тег `v*` workflow
-[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) гоняет ruff
-(`check` + `format --check`), `py_compile` и `pytest` (без отдельного job mypy —
-он только в [`test.yml`](../.github/workflows/test.yml))
 и собирает Docker-образ (Python 3.12) в GHCR. Rolling deploy по SSH выполняется **только**
 для `main` (и при ручном **Run workflow**); тег `v*` лишь публикует semver-образ.
 Подробности и секреты — [deploy/README.md](../deploy/README.md).
@@ -213,7 +211,7 @@ python -m pytest tests/test_weather.py
 ```bash
 make lint        # ruff check satellite tests
 make format      # ruff format satellite tests
-make typecheck   # mypy satellite (информативно, как в CI)
+make typecheck   # mypy satellite (блокирующий гейт, как в CI)
 make compile     # py_compile всех .py
 make check       # lint + typecheck + compile + test
 ```
