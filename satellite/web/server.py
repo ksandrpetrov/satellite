@@ -34,7 +34,14 @@ from ..calendar.providers.base import (
 )
 from ..calendar.providers.registry import PROVIDER_IDS, PROVIDER_MAILRU, PROVIDER_YANDEX
 from ..calendar.user_calendar_service import UserCalendarService
+from ..config import PlanConfig
 from ..security.token_vault import ProviderCredentials
+from ..share_service import (
+    SHARE_KIND_ANALYTICS,
+    SHARE_KIND_PLAN,
+    SHARE_KIND_UPCOMING,
+    build_share_png,
+)
 from ..users import USER_STATUS_APPROVED, UserStore, UserStorePersistenceError
 from .connect_token import ConnectTokenStore
 from .init_data import InitDataError, validate_init_data
@@ -43,10 +50,12 @@ log = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _INDEX_FILE = _STATIC_DIR / "connect.html"
+_SHARE_FILE = _STATIC_DIR / "share.html"
 _MAX_BODY_BYTES = 64 * 1024
 _EVENTS_DEFAULT_DAYS = 14
 _UPCOMING_VIEW_DAYS = 7
 _CONNECT_TOKEN_PATH_RE = re.compile(r"^[A-Za-z0-9_-]{20,128}$")
+_SHARE_KINDS = frozenset({SHARE_KIND_PLAN, SHARE_KIND_UPCOMING, SHARE_KIND_ANALYTICS})
 
 
 @dataclass(frozen=True)
@@ -56,6 +65,7 @@ class WebAppServerConfig:
     bot_token: str
     tz_name: str = "Europe/Moscow"
     connect_tokens: ConnectTokenStore | None = None
+    plan_config: PlanConfig | None = None
 
 
 class WebAppServer:
@@ -72,6 +82,7 @@ class WebAppServer:
         self._calendar = calendar_service
         self._users = users
         self._connect_tokens = config.connect_tokens or ConnectTokenStore()
+        self._plan_config = config.plan_config or PlanConfig()
         self._tz: tzinfo = _safe_zone(config.tz_name)
         self._thread: threading.Thread | None = None
         self._httpd: ThreadingHTTPServer | None = None
@@ -109,6 +120,7 @@ class WebAppServer:
         calendar = self._calendar
         users = self._users
         connect_tokens = self._connect_tokens
+        plan_config = self._plan_config
         bot_token = self._config.bot_token
         tz = self._tz
 
@@ -122,11 +134,28 @@ class WebAppServer:
             def do_GET(self) -> None:  # noqa: N802
                 path = urlparse(self.path).path
                 path_token = _connect_token_from_path(path)
-                if path in {"/", "/connect", "/connect/", "/index.html"} or path_token:
+                share_token = _share_token_from_path(path)
+                if path in {"/", "/connect", "/connect/", "/index.html"} or (
+                    path_token and "/share/" not in path
+                ):
                     _serve_connect_html(self, _INDEX_FILE, path_token=path_token)
+                    return
+                if path in {"/share", "/share/"} or share_token:
+                    _serve_share_html(self, _SHARE_FILE, path_token=share_token)
                     return
                 if path == "/healthz":
                     _json_response(self, HTTPStatus.OK, {"status": "ok"})
+                    return
+                if path == "/api/share/card":
+                    _handle_share_card(
+                        self,
+                        calendar,
+                        users,
+                        bot_token,
+                        connect_tokens,
+                        plan_config,
+                        tz,
+                    )
                     return
                 if path == "/api/calendar/status":
                     _handle_status(self, calendar, users, bot_token, connect_tokens)
@@ -188,6 +217,16 @@ def _connect_token_from_path(path: str) -> str | None:
     return token
 
 
+def _share_token_from_path(path: str) -> str | None:
+    normalized = (path or "").rstrip("/")
+    if not normalized.startswith("/share/") or normalized == "/share":
+        return None
+    token = normalized.split("/share/", 1)[1].split("/", 1)[0].strip()
+    if not token or not _CONNECT_TOKEN_PATH_RE.fullmatch(token):
+        return None
+    return token
+
+
 def _serve_connect_html(
     handler: BaseHTTPRequestHandler,
     path: Path,
@@ -222,6 +261,46 @@ def _serve_connect_html(
         "script-src 'self' https://telegram.org 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; connect-src 'self'; "
+        "frame-ancestors 'self' https://web.telegram.org https://*.web.telegram.org "
+        "https://telegram.org https://*.telegram.org",
+    )
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def _serve_share_html(
+    handler: BaseHTTPRequestHandler,
+    path: Path,
+    *,
+    path_token: str | None = None,
+) -> None:
+    if not path.is_file():
+        _json_response(handler, HTTPStatus.NOT_FOUND, {"error": "not_found"})
+        return
+    body = path.read_bytes()
+    if path_token:
+        inject = (
+            "<script>window.__SATELLITE_CONNECT_TOKEN__="
+            + json.dumps(path_token, ensure_ascii=False)
+            + ";</script>\n  "
+        )
+        marker = b"<script>"
+        if marker in body:
+            body = body.replace(marker, inject.encode("utf-8") + marker, 1)
+        else:
+            body = inject.encode("utf-8") + body
+    handler.send_response(HTTPStatus.OK)
+    handler.send_header("Content-Type", "text/html; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("Referrer-Policy", "no-referrer")
+    handler.send_header(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "script-src 'self' https://telegram.org 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; connect-src 'self'; "
         "frame-ancestors 'self' https://web.telegram.org https://*.web.telegram.org "
         "https://telegram.org https://*.telegram.org",
     )
@@ -276,6 +355,9 @@ def _extract_connect_token(
     from_path = _connect_token_from_path(parsed_path.path) or ""
     if from_path:
         return from_path
+    from_share = _share_token_from_path(parsed_path.path) or ""
+    if from_share:
+        return from_share
     qs = parse_qs(parsed_path.query)
     from_query = (qs.get("t") or [""])[0].strip()
     if from_query and _CONNECT_TOKEN_PATH_RE.fullmatch(from_query):
@@ -745,6 +827,81 @@ def _serialize_event(event: dict) -> dict:
         "status": event.get("status"),
         "all_day": bool(event.get("all_day")),
     }
+
+
+def _handle_share_card(
+    handler: BaseHTTPRequestHandler,
+    calendar: UserCalendarService,
+    users: UserStore,
+    bot_token: str,
+    connect_tokens: ConnectTokenStore,
+    plan_config: PlanConfig,
+    tz: tzinfo,
+) -> None:
+    try:
+        user_id = _validated_user(handler, users, bot_token, connect_tokens)
+    except _AbortRequest:
+        return
+    record = users.get(user_id)
+    if record is None or not record.has_calendar:
+        _json_response(handler, HTTPStatus.CONFLICT, {"error": "not_connected"})
+        return
+    qs = parse_qs(urlparse(handler.path).query)
+    kind = (qs.get("kind", [SHARE_KIND_PLAN])[0] or "").strip().lower()
+    if kind not in _SHARE_KINDS:
+        _json_response(handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_kind"})
+        return
+    mode = (qs.get("mode", [""])[0] or "").strip().lower() or None
+    days_raw = (qs.get("days", [""])[0] or "").strip()
+    days = _parse_positive_int(days_raw, default=_UPCOMING_VIEW_DAYS) if days_raw else None
+    try:
+        png = build_share_png(
+            kind=kind,
+            telegram_user_id=user_id,
+            tz=tz,
+            calendar_service=calendar,
+            users=users,
+            plan_config=plan_config,
+            mode=mode,
+            days=days,
+        )
+    except CalendarNotConnectedError:
+        _json_response(handler, HTTPStatus.CONFLICT, {"error": "not_connected"})
+        return
+    except CalendarProviderError as exc:
+        _json_response(
+            handler,
+            HTTPStatus.BAD_GATEWAY,
+            {"error": exc.error_code, "message": str(exc)},
+        )
+        return
+    except ValueError as exc:
+        _json_response(
+            handler, HTTPStatus.BAD_REQUEST, {"error": "invalid_request", "message": str(exc)}
+        )
+        return
+    except Exception:  # noqa: BLE001
+        log.exception("Share card build failed user_id=%s kind=%s", user_id, kind)
+        _json_response(handler, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "build_failed"})
+        return
+    names = {
+        SHARE_KIND_PLAN: "chaika-plan.png",
+        SHARE_KIND_UPCOMING: "chaika-upcoming.png",
+        SHARE_KIND_ANALYTICS: "chaika-analytics.png",
+    }
+    _png_response(handler, png, filename=names.get(kind, "chaika.png"))
+
+
+def _png_response(
+    handler: BaseHTTPRequestHandler, body: bytes, *, filename: str
+) -> None:
+    handler.send_response(HTTPStatus.OK)
+    handler.send_header("Content-Type", "image/png")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Content-Disposition", f'inline; filename="{filename}"')
+    handler.end_headers()
+    handler.wfile.write(body)
 
 
 def _json_response(

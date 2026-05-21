@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...messages_ru import (
     ERR_CALDAV_UNAVAILABLE_TEXT,
+    SHARE_KIND_UPCOMING,
     UPCOMING_EMPTY_HTML,
     UPCOMING_FETCH_STATUS,
     upcoming_events_day_sections,
@@ -15,7 +16,7 @@ from ...messages_ru import (
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingMessage
 from ..visual import is_private_chat, pick_upcoming_message_effect
-from .delivery import open_streaming_reply
+from .delivery import open_streaming_reply, share_reply_markup
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
         return
     stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
     stream.push(UPCOMING_FETCH_STATUS)
+    day_sections: list[str] = []
 
     try:
         today = datetime.now(tz=ctx.tz).date()
@@ -54,4 +56,12 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
         log.error("Upcoming list failed user_id=%s: %s", msg.user_id, exc.error_code)
         text = ERR_CALDAV_UNAVAILABLE_TEXT
     effect = pick_upcoming_message_effect(text) if is_private_chat(msg.chat_id) else None
-    stream.finish(text, message_effect_id=effect)
+    markup = None
+    if day_sections:
+        markup = share_reply_markup(
+            ctx,
+            msg.user_id,
+            kind=SHARE_KIND_UPCOMING,
+            days=_UPCOMING_DAYS,
+        )
+    stream.finish(text, message_effect_id=effect, reply_markup=markup)

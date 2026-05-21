@@ -8,9 +8,10 @@
 from __future__ import annotations
 
 import logging
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from ...config import WebAppConfig
+from ...messages_ru import build_share_keyboard
 from ...messages_ru import ERR_GENERIC_HANDLER_TEXT
 from ..api import TelegramError
 from ..streaming_delivery import StreamingReply, open_streaming_reply as _open_streaming_reply
@@ -122,6 +123,62 @@ def webapp_connect_url(
         return url
     # Путь + hash: Telegram иногда открывает только /connect без query/path.
     return f"{url}/{token.strip()}#t={quote(token.strip(), safe='')}"
+
+
+def webapp_share_base_url(webapp: WebAppConfig) -> str:
+    """Публичный URL страницы ``/share`` (без токена)."""
+    base = (webapp.base_url or "").rstrip("/")
+    if not base:
+        return ""
+    if base.endswith("/connect"):
+        base = base[: -len("/connect")]
+    return f"{base}/share"
+
+
+def webapp_share_url(
+    ctx: HandlerContext,
+    telegram_user_id: int | None,
+    *,
+    kind: str,
+    mode: str | None = None,
+    days: int | None = None,
+) -> str:
+    """URL Web App шаринга. Параметры в hash — Telegram не режет query у ``web_app``."""
+    url = webapp_share_base_url(ctx.webapp)
+    if not url:
+        return ""
+    fragment_params: dict[str, str] = {"kind": kind}
+    if mode:
+        fragment_params["mode"] = mode
+    if days is not None:
+        fragment_params["days"] = str(days)
+    fragment = urlencode(fragment_params)
+    if telegram_user_id is None:
+        return f"{url}#{fragment}"
+    token = ctx.connect_tokens.issue(telegram_user_id)
+    if not isinstance(token, str) or not token.strip():
+        return f"{url}#{fragment}"
+    token = token.strip()
+    return f"{url}/{token}#{fragment}"
+
+
+def share_reply_markup(
+    ctx: HandlerContext,
+    telegram_user_id: int | None,
+    *,
+    kind: str,
+    mode: str | None = None,
+    days: int | None = None,
+) -> dict | None:
+    """Inline «Поделиться» под значимым ответом."""
+    share_url = webapp_share_url(
+        ctx,
+        telegram_user_id,
+        kind=kind,
+        mode=mode,
+        days=days,
+    )
+    return build_share_keyboard(share_url)
 
 
 def notify_handler_failure(ctx: HandlerContext, chat_id: int | None) -> None:

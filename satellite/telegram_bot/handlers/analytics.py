@@ -25,10 +25,12 @@ from ...messages_ru import (
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from ..visual import EFFECT_SPARKLES, is_private_chat
+from ...messages_ru import SHARE_KIND_ANALYTICS
 from .delivery import (
     edit_callback_message,
     open_streaming_reply,
     safe_answer_callback,
+    share_reply_markup,
 )
 
 log = logging.getLogger(__name__)
@@ -97,12 +99,14 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         return
 
     effect = EFFECT_SPARKLES if is_private_chat(cb.chat_id) else None
+    markup = share_reply_markup(ctx, cb.user_id, kind=SHARE_KIND_ANALYTICS)
     try:
         ctx.telegram.send_photo(
             cb.chat_id,
             png,
             caption=caption,
             message_effect_id=effect,
+            reply_markup=markup,
         )
     except TelegramError as exc:
         log.error(

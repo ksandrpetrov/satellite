@@ -238,6 +238,7 @@ class TelegramClient:
         show_caption_above_media: bool = False,
         message_thread_id: int | None = None,
         message_effect_id: str | None = None,
+        reply_markup: dict | list | str | None = None,
     ) -> dict[str, Any]:
         files = {"photo": ("analytics.png", photo, "image/png")}
         data: dict[str, Any] = {"chat_id": chat_id}
@@ -251,6 +252,12 @@ class TelegramClient:
             data["message_thread_id"] = message_thread_id
         if message_effect_id:
             data["message_effect_id"] = message_effect_id
+        if reply_markup is not None:
+            data["reply_markup"] = (
+                json.dumps(reply_markup, ensure_ascii=False)
+                if isinstance(reply_markup, (dict, list))
+                else reply_markup
+            )
         call_kw = {
             "files": files,
             "timeout": _SEND_MESSAGE_TIMEOUT_SEC,
