@@ -5,6 +5,7 @@
 
   vars:
     satellite_image: "{{ ghcr_registry }}/{{ ghcr_image }}:{{ image_tag }}"
+    satellite_repo_root: "{{ playbook_dir | dirname | dirname }}"
     webapp_base_url: "https://{{ domain }}/connect"
     certbot_staging_flag: "{{ '--staging' if certbot_staging else '' }}"
 
@@ -141,6 +142,44 @@
         - { src: dynamic-routers.yml.j2, dest: traefik/dynamic/routers.yml }
       notify: Restart stack
 
+    - name: Remove previous satellite build context
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}/image-build"
+        state: absent
+      when: satellite_image_source == 'build'
+
+    - name: Create satellite build directory
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}/image-build"
+        state: directory
+        mode: "0750"
+      when: satellite_image_source == 'build'
+
+    - name: Copy satellite Docker build context files
+      ansible.builtin.copy:
+        src: "{{ satellite_repo_root }}/{{ item }}"
+        dest: "{{ deploy_dir }}/image-build/{{ item }}"
+        mode: preserve
+      loop:
+        - Dockerfile
+        - requirements.txt
+        - telegram_test_command.py
+      when: satellite_image_source == 'build'
+
+    - name: Copy satellite package sources
+      ansible.builtin.copy:
+        src: "{{ satellite_repo_root }}/satellite/"
+        dest: "{{ deploy_dir }}/image-build/satellite/"
+        mode: preserve
+      when: satellite_image_source == 'build'
+
+    - name: Build satellite image on server
+      ansible.builtin.command:
+        cmd: docker build -t {{ satellite_image }} .
+        chdir: "{{ deploy_dir }}/image-build"
+      changed_when: true
+      when: satellite_image_source == 'build'
+
     - name: Login to GHCR (private package)
       ansible.builtin.shell: |
         set -euo pipefail
@@ -149,20 +188,26 @@
       no_log: true
       changed_when: true
       when:
+        - satellite_image_source == 'ghcr'
         - (ghcr_pull_user | default('') | length) > 0
         - (ghcr_pull_token | default('') | length) > 0
 
-    - name: Pull container images
+    - name: Pull infrastructure container images
       ansible.builtin.command:
-        cmd: docker compose pull
+        cmd: docker compose pull traefik nginx-acme certbot
         chdir: "{{ deploy_dir }}"
       environment:
         COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
-      register: compose_pull
       changed_when: true
-      failed_when:
-        - compose_pull.rc != 0
-      ignore_errors: false
+
+    - name: Pull satellite image from GHCR
+      ansible.builtin.command:
+        cmd: docker compose pull satellite
+        chdir: "{{ deploy_dir }}"
+      environment:
+        COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
+      changed_when: true
+      when: satellite_image_source == 'ghcr'
 
     - name: Start Traefik and ACME webroot (HTTP)
       ansible.builtin.command:

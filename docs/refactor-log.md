@@ -98,9 +98,10 @@ callback_data, HTTP-ответы) не менялся; baseline pytest-набо�
 
 ## GitHub Actions автодеплой (2026-05-21)
 
-- `.github/workflows/deploy.yml`: test → образ в GHCR (`:sha-<short>` + `:latest` на main) →
-  SSH rolling deploy (`scripts/ci-deploy-remote.sh`). Триггеры: push в `main`, тег `v*`,
-  `workflow_dispatch`. Деплой только для `main` и ручного запуска.
+- `.github/workflows/deploy.yml`: test → образ в GHCR (`:sha-<short>`; `:latest` на main;
+  semver на теге `v*`) → SSH rolling deploy (`scripts/ci-deploy-remote.sh`) только для
+  `main` и `workflow_dispatch`. Workflow целиком также триггерится тегом `v*`, но job deploy
+  на теге не запускается.
 - Compose с `image: ${SATELLITE_IMAGE}`; шаблон `env.j2` пишет `SATELLITE_IMAGE` в `.env` при
   первичном `make deploy`, дальше Actions сам перезаписывает значение.
 - Старый `release-docker.yml` удалён (заменён `deploy.yml`).

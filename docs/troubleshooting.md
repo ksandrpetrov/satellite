@@ -105,12 +105,25 @@ WEBAPP_BASE_URL=...
   Если скрипт падает на сервере, но на Mac работает — смотрите `logs/bot.log` (сеть/VPN/firewall). Если скрипт OK, а Web App нет — проверьте одобрение доступа в `logs/users.json` и что Web App открыт из бота.
 - `HIDE_ALL_DAY_EVENTS` / declined PARTSTAT не скрывают все события;
 - приглашения не появляются в `/invitations`: в ICS должен быть ваш `mailto:` с
-  `PARTSTAT=NEEDS-ACTION` (иногда Mail.ru отдаёт ATTENDEE только в GET — см.
-  PARTSTAT refresh в `caldav_client.py`); список смотрит до 60 дней вперёд и
-  14 дней назад — очень старые неотвеченные не попадут; ответ «Не удалось обновить»
-  — смотрите `logs/bot.log` (`PARTSTAT_UPDATE_FAILED`);
-  диагностика без Telegram: `python scripts/diagnose_invitation.py --user-id <id>`
-  (или `CALDAV_LOGIN` / `CALDAV_APP_PASSWORD`, как у `diagnose_caldav.py`);
+  `PARTSTAT=NEEDS-ACTION` или `DELEGATED` (иногда Mail.ru отдаёт ATTENDEE только в GET — см.
+  PARTSTAT refresh в `caldav_client.py`); бот смотрит до **60 дней вперёд** и **14 дней назад**
+  (не более **12** пунктов); недавно завершённые без ответа остаются в списке. Очень старые
+  неотвеченные не попадут. Ответ «Не удалось обновить» — `logs/bot.log`
+  (`PARTSTAT_UPDATE_FAILED`).
+  Диагностика без Telegram — [`scripts/diagnose_invitation.py`](../scripts/diagnose_invitation.py)
+  (тот же lookback 14 д при фильтре `collect_pending_invitations`):
+
+  ```bash
+  cd /opt/satellite && source venv/bin/activate
+  python scripts/diagnose_invitation.py --user-id <telegram_id>
+  python scripts/diagnose_invitation.py --user-id <id> --summary "Standup"
+  # опционально реальный ACCEPTED в CalDAV:
+  python scripts/diagnose_invitation.py --user-id <id> --summary "Standup" --accept
+  ```
+
+  Без `--user-id`: `CALDAV_LOGIN` + `CALDAV_APP_PASSWORD` (как у `diagnose_caldav.py`).
+  Скрипт для CalDAV-запроса берёт окно шире, чем UI бота (90 дней вперёд), но pending
+  отбирает с `lookback_days=14`, как `/invitations`.
 - `LOG_LEVEL=DEBUG` для деталей CalDAV в `logs/bot.log`.
 
 ## Web App не открывается

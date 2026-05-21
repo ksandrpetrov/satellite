@@ -324,5 +324,11 @@ The bot logs operational failures but sends users only safe, non-technical messa
   (`make deploy`), Traefik терминирует TLS и проксирует `/connect` и
   `/api/*` в контейнер (`WEBAPP_HOST=0.0.0.0`, volume `satellite-logs` → `/app/logs`).
 
+**CI/CD (Docker):** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на
+push в `main` или тег `v*` — test, сборка в GHCR (`:sha-<short>`; `:latest` на main;
+semver на теге). Rolling update контейнера бота на сервере (`scripts/ci-deploy-remote.sh`,
+переменная `SATELLITE_IMAGE` в `.env`) — только для `main` и `workflow_dispatch`;
+`logs/` и `TOKEN_ENCRYPTION_KEY` pipeline не трогает.
+
 Состояние (`users.json`, `subscriptions.json`, offset, lock) всегда в `logs/`.
 Подробности: [operations.md](operations.md), [deploy/README.md](../deploy/README.md).

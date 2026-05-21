@@ -3,15 +3,32 @@
 ## CI/CD: GitHub Actions под ключ
 
 Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на каждый push в `main`
-(а также на тег `v*`):
+или тег `v*`:
 
 1. **test** — ruff (lint + format check), py_compile, pytest.
-2. **build** — Docker-образ в GHCR с тегами `:sha-<short>` (immutable) и `:latest` (только для main).
+2. **build** — Docker-образ в GHCR: `:sha-<short>` (всегда), `:latest` (только `main`),
+   semver-теги (только `v*`).
 3. **deploy** — SSH на сервер: обновить `SATELLITE_IMAGE` в `.env`, `docker compose pull satellite`,
-   `docker compose up -d satellite`. Только для `main` и ручного `workflow_dispatch`.
+   `docker compose up -d satellite`. **Только** для push в `main` и ручного `workflow_dispatch`
+   (тег `v*` образ публикует, на сервер не катит — для релиза на prod используйте **Run workflow**
+   или дождитесь merge в `main`).
 
 Пакет в GHCR после первой сборки сделайте **public** (или задайте `GHCR_PULL_TOKEN`, см. ниже):
 `Settings → Packages → satellite → Package settings → Change visibility`.
+
+### Первый деплой без образа в GHCR
+
+В [`ansible/group_vars/all.yml`](ansible/group_vars/all.yml) по умолчанию
+`satellite_image_source: build` — playbook **собирает образ на сервере** из
+исходников репозитория (не тянет `ghcr.io/.../satellite:latest`).
+
+После того как GitHub Actions хотя бы раз запушил образ в GHCR, переключите:
+
+```yaml
+satellite_image_source: ghcr
+```
+
+и снова `make deploy` (или дальше только push в `main` — Actions сам обновит бота).
 
 ### Секреты для деплоя (Settings → Secrets and variables → Actions)
 

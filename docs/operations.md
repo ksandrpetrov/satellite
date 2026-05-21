@@ -177,8 +177,8 @@ sudo SATELLITE_DIR=/srv/satellite SATELLITE_BRANCH=stable \
 
 #### Образ
 
-Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на каждый push в `main`
-(и тег `v*`) собирает образ и пушит в GHCR:
+Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на push в `main`
+или тег `v*` собирает образ и пушит в GHCR:
 
 ```text
 ghcr.io/ksandrpetrov/satellite:sha-<short>   # immutable per-commit
@@ -234,8 +234,13 @@ Playbook ставит Docker Engine, кладёт конфиги в `deploy_dir`
 
 #### Автодеплой из GitHub Actions
 
-Push в `main` или ручной запуск workflow `deploy` (`Actions → deploy → Run workflow`)
-делает rolling update без `make deploy`. Workflow перезаписывает `SATELLITE_IMAGE`
+Push в `main`, ручной запуск workflow `deploy` (`Actions → deploy → Run workflow`)
+или merge в `main` после релизного тега делает rolling update без `make deploy`.
+Тег `v*` запускает тот же workflow (test + build + semver в GHCR), но job **deploy**
+на сервер **не** выполняется — для выката semver-образа на prod используйте
+**Run workflow** на ветке `main` или дождитесь push в `main`.
+
+Workflow перезаписывает `SATELLITE_IMAGE`
 в `/opt/satellite/.env` на сборку `:sha-<short>`, выполняет `docker compose pull satellite`
 и `docker compose up -d satellite`.
 

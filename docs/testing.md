@@ -34,11 +34,12 @@ python -m pytest
 
 Перед коммитом локально: `make check` (= lint + typecheck + compile + test).
 
-На каждый push в `main` (и тег `v*`) [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
-гоняет ruff + py_compile + pytest (без отдельного job mypy — он только в
-[`test.yml`](../.github/workflows/test.yml)), собирает Docker-образ (Python 3.12) в GHCR
-и для `main` сам обновляет образ на сервере по SSH. Подробности и секреты —
-[deploy/README.md](../deploy/README.md).
+На каждый push в `main` или тег `v*` workflow
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) гоняет ruff + py_compile +
+pytest (без отдельного job mypy — он только в [`test.yml`](../.github/workflows/test.yml))
+и собирает Docker-образ (Python 3.12) в GHCR. Rolling deploy по SSH выполняется **только**
+для `main` (и при ручном **Run workflow**); тег `v*` лишь публикует semver-образ.
+Подробности и секреты — [deploy/README.md](../deploy/README.md).
 
 Если проект временно перенесен, а venv содержит старые absolute shebang-пути,
 можно использовать системный Python с пакетами из venv:

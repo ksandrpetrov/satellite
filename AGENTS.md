@@ -211,9 +211,10 @@ python telegram_test_command.py                   # make run
 **Docker (local)** — `make env && make docker-up` (см. корневой `docker-compose.yml`).
 
 CI: [`.github/workflows/test.yml`](.github/workflows/test.yml) (PR + push: ruff, mypy, py_compile, pytest);
-[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — на push в `main` и тег `v*`: test → образ в GHCR →
-rolling deploy на сервер по SSH (`scripts/ci-deploy-remote.sh`). Первичный стек (Traefik/Certbot/.env) —
-`make deploy` (Ansible), см. [`deploy/README.md`](deploy/README.md).
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — push в `main` или тег `v*`: test → образ в GHCR;
+rolling deploy по SSH (`scripts/ci-deploy-remote.sh`) — только для `main` и `workflow_dispatch`
+(тег `v*` лишь пушит semver-образ). Первичный стек (Traefik/Certbot/.env) — `make deploy` (Ansible),
+см. [`deploy/README.md`](deploy/README.md).
 
 ## Скрипты
 
@@ -223,8 +224,8 @@ rolling deploy на сервер по SSH (`scripts/ci-deploy-remote.sh`). Пе�
 | [`scripts/install-server.sh`](scripts/install-server.sh) | systemd на VPS (`/opt/satellite`) |
 | [`scripts/bootstrap-server.sh`](scripts/bootstrap-server.sh) | apt + clone + `install-server.sh` на чистом хосте |
 | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) | CalDAV с сервера без Telegram (см. troubleshooting) |
-| [`scripts/diagnose_invitation.py`](scripts/diagnose_invitation.py) | PARTSTAT / список pending-приглашений без Telegram |
-| [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy образа на сервер (GitHub Actions и локально) |
+| [`scripts/diagnose_invitation.py`](scripts/diagnose_invitation.py) | PARTSTAT / pending без Telegram (`--user-id`, `--summary`, опц. `--accept`; lookback 14 д — как в боте) |
+| [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy: `SATELLITE_IMAGE` в `.env` на сервере → `compose pull/up satellite` (Actions и локально) |
 
 ## Web App
 

@@ -15,7 +15,8 @@ Production Telegram-бот для календарных дайджестов и
 - Команды `td`, `tm`, `dat`.
 - Команды меню `/today`, `/tomorrow`, `/aftertomorrow`, `/after_tomorrow`.
 - `/upcoming` — ближайшие события на 7 дней.
-- `/invitations` — ответ на приглашения (ACCEPTED / DECLINED / TENTATIVE в CalDAV).
+- `/invitations` — ответ на приглашения (`NEEDS-ACTION` / `DELEGATED`; горизонт
+  60 дней вперёд и 14 назад, до 12 пунктов; ACCEPTED / DECLINED / TENTATIVE в CalDAV).
 - `/manage` — изменить статус встречи на неделе (любой PARTSTAT).
 - `/create` — пошаговое создание события в календаре.
 - `/start`, `/help`, `/settings`, `/connect`.
@@ -186,8 +187,9 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 CI/CD:
 
 - [test.yml](.github/workflows/test.yml) — ruff, mypy, py_compile, pytest (PR + push).
-- [deploy.yml](.github/workflows/deploy.yml) — push в `main` / тег `v*`: test → образ в GHCR →
-  rolling deploy на сервер по SSH (одна кнопка ▶ для ручного запуска). Настройка секретов и
+- [deploy.yml](.github/workflows/deploy.yml) — push в `main` или тег `v*`: test → образ в GHCR
+  (`:sha-<short>`, на main ещё `:latest`, на теге — semver). Rolling deploy по SSH — только
+  для `main` и ручного **Run workflow**; тег `v*` только публикует образ. Секреты и
   первичный стек — [deploy/README.md](deploy/README.md).
 
 ## Runtime-файлы

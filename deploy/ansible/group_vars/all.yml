@@ -10,12 +10,14 @@ domain: cassinilab.ru
 certbot_email: admin@example.com
 certbot_staging: false
 
-# --- Образ из GHCR (публикуется workflow deploy.yml) ---
+# --- Образ бота ---
+# satellite_image_source:
+#   build — собрать на сервере из исходников (первый деплой, пока в GHCR нет образа)
+#   ghcr  — pull из GHCR (после push в main / GitHub Actions)
+satellite_image_source: build
 ghcr_registry: ghcr.io
 ghcr_image: ksandrpetrov/satellite
-# Тег образа для первичного деплоя: latest, semver или sha-<commit>.
-# После первичного деплоя image на сервере обновляет GitHub Actions
-# (перезаписывает SATELLITE_IMAGE в .env), и playbook не вызывают каждый push.
+# Тег образа: latest, semver или sha-<commit> (должен совпадать с SATELLITE_IMAGE в .env).
 image_tag: latest
 
 # Для приватного пакета GHCR (или до того, как сделаете пакет public):
