@@ -8,7 +8,8 @@ name: deploy
 #   DEPLOY_USER       — SSH-пользователь (например, root)
 #   SSH_PRIVATE_KEY   — приватный ключ SSH (публичный — в authorized_keys на сервере)
 #   SSH_KNOWN_HOSTS   — (опц.) вывод `ssh-keyscan -H <DEPLOY_HOST>`
-#   GHCR_PULL_TOKEN   — (опц.) PAT с read:packages, если пакет GHCR приватный
+#   GHCR_PULL_TOKEN   — (опц.) PAT с read:packages; если не задан, deploy использует
+#                       GITHUB_TOKEN (достаточно для пакета этого репозитория)
 #
 # Первичный деплой (.env, docker-compose.yml, образ бота) делается
 # один раз с ноутбука: `make deploy` (Ansible). После этого pipeline сам
@@ -133,5 +134,6 @@ jobs:
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
           SATELLITE_IMAGE: ${{ needs.build.outputs.image_ref }}
           GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          # PAT — для чужого registry/орга; иначе job token (read packages этого repo).
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || github.token }}
         run: bash scripts/ci-deploy-remote.sh
