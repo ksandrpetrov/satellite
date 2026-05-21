@@ -106,6 +106,7 @@ python -m pytest tests/test_weather.py
 
 **Users / security** (по мере появления тестов):
 
+- пакет [`satellite/users/`](../satellite/users/) (`record.py`, `store.py`, `admin.py`);
 - `UserStore` — атомарная запись, статусы, заявки, `has_calendar`;
 - `TokenVault` — encrypt/decrypt, неверный ключ;
 - `parse_admin_ids`.
@@ -129,13 +130,16 @@ python -m pytest tests/test_weather.py
 
 **Events / upcoming** (`test_events.py`, `test_calendar_foreign.py`):
 
+- реализация в пакете [`satellite/calendar/events/`](../satellite/calendar/events/)
+  (фасад `satellite.calendar.events`; раскладка — `_filters`, `_collectors`, …);
 - `format_upcoming_events_lines` — нумерация `1️⃣`… как в дайджесте.
 
 **Invitations** (`test_calendar_invitations.py`, PARTSTAT в `test_events.py`,
 `test_seagull_digest.py`, `test_caldav_candidates.py`):
 
-- `is_pending_invitation_for_user`, `event_relevant_for_invitations`,
-  `collect_pending_invitations` (в т.ч. lookback 14 дней для завершённых без ответа);
+- `is_pending_invitation_for_user` (`_partstat.py`), `event_relevant_for_invitations`,
+  `collect_pending_invitations` (`_collectors.py`; в т.ч. lookback 14 дней для
+  завершённых без ответа);
 - роутинг `/invitations`, streaming open (`open_streaming_reply`) и CalDAV
   `set_attendee_partstat` (mock provider).
 

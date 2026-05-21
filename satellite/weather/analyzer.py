@@ -12,6 +12,21 @@ from ..calendar.time_utils import parse_hhmm
 from .models import CurrentWeatherSnapshot, HourlyWeather, WeatherSummary
 
 
+def _to_int_or_none(value: object) -> int | None:
+    """OpenMeteo может вернуть процент осадков как float — приводим к int.
+
+    Поле ``WeatherSummary.max_precipitation_probability`` типизировано как ``int``
+    (это процент), а агрегаторы выше возвращают ``float | int | None``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    return None
+
+
 def _hour_to_datetime(time_str: str, tz_name: str) -> datetime:
     zi = ZoneInfo(tz_name)
     raw = time_str.replace("Z", "+00:00")
@@ -272,21 +287,21 @@ def build_weather_summary(
     return WeatherSummary(
         location_name=location_name,
         date_label=date_label,
-        min_temperature=window_agg.get("min_temperature"),  # type: ignore[arg-type]
-        max_temperature=window_agg.get("max_temperature"),  # type: ignore[arg-type]
-        avg_temperature=window_agg.get("avg_temperature"),  # type: ignore[arg-type]
-        min_apparent_temperature=window_agg.get("min_apparent_temperature"),  # type: ignore[arg-type]
-        max_apparent_temperature=window_agg.get("max_apparent_temperature"),  # type: ignore[arg-type]
-        avg_apparent_temperature=window_agg.get("avg_apparent_temperature"),  # type: ignore[arg-type]
-        max_precipitation_probability=day_agg.get("max_precipitation_probability"),  # type: ignore[arg-type]
-        total_rain=day_agg.get("total_rain"),  # type: ignore[arg-type]
-        total_snowfall=day_agg.get("total_snowfall"),  # type: ignore[arg-type]
-        max_wind_speed=day_agg.get("max_wind_speed"),  # type: ignore[arg-type]
+        min_temperature=window_agg.get("min_temperature"),
+        max_temperature=window_agg.get("max_temperature"),
+        avg_temperature=window_agg.get("avg_temperature"),
+        min_apparent_temperature=window_agg.get("min_apparent_temperature"),
+        max_apparent_temperature=window_agg.get("max_apparent_temperature"),
+        avg_apparent_temperature=window_agg.get("avg_apparent_temperature"),
+        max_precipitation_probability=_to_int_or_none(day_agg.get("max_precipitation_probability")),
+        total_rain=day_agg.get("total_rain"),
+        total_snowfall=day_agg.get("total_snowfall"),
+        max_wind_speed=day_agg.get("max_wind_speed"),
         warnings=tuple(warnings_list),
         current_temperature=cur_temp,
         current_apparent_temperature=cur_app,
-        day_max_temperature=day_agg.get("max_temperature"),  # type: ignore[arg-type]
-        day_max_apparent_temperature=day_agg.get("max_apparent_temperature"),  # type: ignore[arg-type]
+        day_max_temperature=day_agg.get("max_temperature"),
+        day_max_apparent_temperature=day_agg.get("max_apparent_temperature"),
         current_surface_pressure=cur_pres,
     )
 

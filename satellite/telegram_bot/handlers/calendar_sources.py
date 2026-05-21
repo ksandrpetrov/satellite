@@ -49,6 +49,8 @@ def handle_open_calendar_sources(ctx: HandlerContext, msg: IncomingMessage) -> N
         return
     if screen.status is not CalendarSourcesScreenStatus.SCREEN:
         return
+    if screen.text is None or screen.keyboard is None:
+        return
     ctx.telegram.send_message(msg.chat_id, screen.text, reply_markup=screen.keyboard)
     log.info("Opened calendar sources: user_id=%s", msg.user_id)
 

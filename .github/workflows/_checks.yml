@@ -1,0 +1,39 @@
+name: checks
+
+# Reusable workflow: единая «проверочная» стадия (ruff lint + format + mypy +
+# py_compile + pytest). Вызывается из test.yml (на PR) и из deploy.yml (на push
+# в main / тег v*). Раньше эти шаги дублировались в двух местах и легко
+# расходились — например, deploy.yml не проверял `ruff format`, и неотформа-
+# тированный код мог уехать в main без шанса быть пойманным.
+
+on:
+  workflow_call:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Ruff lint
+        run: python -m ruff check satellite tests
+      - name: Ruff format check
+        run: python -m ruff format --check satellite tests
+      - name: Mypy
+        run: python -m mypy satellite
+      - name: Compile check
+        run: |
+          find satellite tests -name '*.py' ! -name '._*' -print0 \
+            | xargs -0 python -m py_compile
+      - name: Pytest
+        run: python -m pytest -q

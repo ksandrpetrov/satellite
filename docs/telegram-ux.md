@@ -119,7 +119,9 @@ Legacy-тексты старой клавиатуры тоже распозна�
 7 дней вперёд (до 30 штук), сгруппированный по дням с текущего дня
 («Сегодня», «Завтра», далее «Пт, 22.05» и т.д.). Отменённые события скрываются.
 Встречи внутри дня нумеруются так же, как в дайджесте: `1️⃣`…`🔟`, далее
-`11.` и т.д. (`event_index_marker` в `calendar/events.py`). Сценарий:
+`11.` и т.д. (`event_index_marker` в
+[`calendar/events/_filters.py`](../satellite/calendar/events/_filters.py),
+импорт через `satellite.calendar.events`). Сценарий:
 `open_streaming_reply` → `UserCalendarService.list_events` → финальный список;
 см. [Streaming delivery](#streaming-delivery). Повтор
 `/upcoming` в cooldown — молча (`ActionGuard`, 15 с).
@@ -130,7 +132,8 @@ Legacy-тексты старой клавиатуры тоже распозна�
 встречи, где у пользователя `PARTSTAT` = `NEEDS-ACTION` или `DELEGATED`, на горизонте
 до 60 дней вперёд и до 14 дней назад (не более 12 пунктов). Уже принятые/отклонённые
 скрываются; недавно завершённые, но без ответа, остаются в списке
-(`collect_pending_invitations` в `calendar/events.py`).
+(`collect_pending_invitations` в
+[`calendar/events/_collectors.py`](../satellite/calendar/events/_collectors.py)).
 
 Сценарий открытия — `open_streaming_reply` → статус «📨 Чайка собирает приглашения…»
 → `UserCalendarService.list_events_for_invitations` → `collect_pending_invitations`

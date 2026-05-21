@@ -165,7 +165,7 @@ def draw_surface_card(
 
 def text_width(draw: ImageDraw.ImageDraw, text: str, font) -> int:
     bbox = draw.textbbox((0, 0), text, font=font)
-    return bbox[2] - bbox[0]
+    return int(bbox[2] - bbox[0])
 
 
 def draw_pill(

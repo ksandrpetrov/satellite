@@ -97,9 +97,8 @@ def handle_connect_calendar_button(ctx: HandlerContext, msg: IncomingMessage) ->
     if not webapp_url:
         send(ctx, msg.chat_id, CALENDAR_NOT_CONNECTED_HTML)
         return
-    reconnect = bool(
-        msg.user_id and ctx.users.get(msg.user_id) and ctx.users.get(msg.user_id).has_calendar
-    )
+    record = ctx.users.get(msg.user_id) if msg.user_id is not None else None
+    reconnect = bool(record and record.has_calendar)
     intro = CALENDAR_RECONNECT_INTRO_HTML if reconnect else CALENDAR_NOT_CONNECTED_HTML
     ctx.telegram.send_message(
         msg.chat_id,

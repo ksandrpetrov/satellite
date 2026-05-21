@@ -306,7 +306,7 @@ class TelegramBot:
             log.info("Executor shut down; deferring update_id=%s", msg.update_id)
             return
 
-        future.add_done_callback(lambda _fut, _msg=msg: self._on_message_done(_msg))
+        future.add_done_callback(lambda _fut: self._on_message_done(msg))
 
     def _dispatch_callback(self, ctx: HandlerContext, update: dict, update_id: int) -> None:
         cb = extract_callback_query(update)
@@ -320,9 +320,7 @@ class TelegramBot:
             log.info("Executor shut down; deferring callback update_id=%s", cb.update_id)
             return
 
-        future.add_done_callback(
-            lambda _fut, _cb=cb: self._offset_tracker.mark_completed(_cb.update_id)
-        )
+        future.add_done_callback(lambda _fut: self._offset_tracker.mark_completed(cb.update_id))
 
     def _run_message_handler(self, ctx: HandlerContext, msg: IncomingMessage) -> None:
         lock = self._chat_locks.acquire(msg.chat_id)

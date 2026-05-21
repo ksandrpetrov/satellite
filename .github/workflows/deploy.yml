@@ -35,27 +35,7 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-      - run: python -m pip install --upgrade pip && pip install -r requirements.txt -r requirements-dev.txt
-      - name: Ruff lint
-        run: python -m ruff check satellite tests
-      - name: Ruff format check
-        run: python -m ruff format --check satellite tests
-      - name: Compile check
-        run: |
-          find satellite tests -name '*.py' ! -name '._*' -print0 \
-            | xargs -0 python -m py_compile
-      - name: Pytest
-        run: python -m pytest -q
+    uses: ./.github/workflows/_checks.yml
 
   build:
     needs: test

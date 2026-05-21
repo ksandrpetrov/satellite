@@ -23,12 +23,13 @@ pytest оставался зелёным.
    refresh UI. Извлекли `handlers/partstat_flow.py`; `calendar_invitations.py`
    и `calendar_manage.py` стали тонкими адаптерами (свои тексты и
    `PartstatFlow`-конфиг).
-4. **Single mutator в `users.py` и `subscriptions.py`** — 13 mutator-методов
+4. **Single mutator в `UserStore` и `SubscriptionStore`** — 13 mutator-методов
    повторяли `lock → get → replace(updated_at=now, ...) → save`. Ввели
    `UserStore._update_locked(uid, **fields)` /
    `_update_locked_with(uid, fn)` и `SubscriptionStore._upsert_locked`.
    Сериализация ушла в `UserRecord.{to,from}_json` /
-   `DigestSettings.{to,from}_json`.
+   `DigestSettings.{to,from}_json`. (На момент фазы код жил в одном `users.py`;
+   позже вынесен в пакет `satellite/users/` — см. раздел ниже.)
 5. **Data-driven routing** — `handlers/dispatch.py` и `handlers/routing.py`
    перешли с `isinstance`/`if-elif` цепочек на таблицы: `_MESSAGE_ROUTES`,
    `_CALLBACK_ROUTERS`, `_RECOGNIZERS`. Хелпер `_button_or_command`
@@ -46,10 +47,11 @@ pytest оставался зелёным.
 8. **Чистка `telegram_bot/`** —
    - `api.py`: 3 метода `setMyName/Description/ShortDescription` свелись к
      wrapper'ам над общим `_set_my(method_name, **fields)`.
-   - `analytics_service.py` переехал в `analytics/service.py` (back-compat
-     shim остался).
-   - `telegram_bot/{calendar,digest}_state.py` переехали в `handlers/`;
-     старые пути — re-export shim'ы.
+   - `analytics_service.py` переехал в `analytics/service.py` (shim удалён
+     в Фазе 11 — все импорты обновлены на canonical путь).
+   - `telegram_bot/{calendar,digest}_state.py` переехали в `handlers/`
+     (shim'ы удалены в Фазе 11; canonical путь —
+     `satellite.telegram_bot.handlers.{calendar,digest}_state`).
    - В `calendar_create.py` удалили синтетическую обёртку `do_create()` —
      `try/except` теперь напрямую вокруг вызова.
 9. **Tooling: ruff + mypy + pre-commit + CI** —
@@ -58,14 +60,15 @@ pytest оставался зелёным.
     - `.pre-commit-config.yaml`: ruff (auto-fix), ruff-format, mypy.
     - `Makefile`: `make lint`, `make format`, `make typecheck`,
       `make check` = `lint + typecheck + compile + test`.
-    - CI (`.github/workflows/test.yml`): отдельные jobs `ruff` (блокирующий) и
-      `mypy` (информативный, `continue-on-error: true`), плюс `pytest`.
-      Strict mypy планируется подключать модуль за модулем по мере очистки.
+    - CI (`.github/workflows/_checks.yml`): reusable workflow с ruff (lint +
+      format), mypy, py_compile, pytest. Все стадии блокирующие.
+      `test.yml` (PR) и `deploy.yml` (push в main / тег `v*`) вызывают этот
+      reusable, дублирования больше нет.
 10. **Документация** — AGENTS.md и docs/ синхронизированы с canonical-путями
     (`visual_cards/base`, `partstat_flow`, `action_guard`,
     single mutator, data-driven routing, `messages_ru/`, `analytics/service`,
     `make check`, `logs/backups/`). Этот файл — чек-лист для будущих
-    рефакторингов.
+    рефакторингов. Пакеты `users/`, `calendar/events/` — отдельный раздел ниже.
 11. **Guard недельной аналитики** — изначально `_AnalyticsRunGuard` в
     `handlers/analytics.py`; позже обобщён в `ActionGuard`
     (`handlers/action_guard.py`) и подключён к plan, upcoming, invitations,
@@ -88,14 +91,12 @@ pytest оставался зелёным.
 
 - mypy strict пока выключен — план: включать модуль за модулем
   (`web/`, `calendar/providers/`, `plan_service.py`, `scheduler.py`),
-  предварительно проставив аннотации.
-- `messages_ru/_core.py` ещё монолит (1272 строки). Фаза 8 ограничилась
+  предварительно проставив аннотации. Базовый mypy уже блокирующий в CI
+  (0 ошибок на момент Фазы 11).
+- `messages_ru/_core.py` ещё монолит (1199 строк). Фаза 8 ограничилась
   превращением файла в пакет; разбиение по сценариям (`calendar/`, `digest/`,
   `settings/`, ...) сделано не было — но фасад готов к этому без миграции
   импортов.
-- `analytics_service.py`, `telegram_bot/{calendar,digest}_state.py` — shim'ы
-  для back-compat. Когда все внешние импорты перейдут на canonical-пути,
-  shim'ы можно удалить.
 
 ## GitHub Actions автодеплой (2026-05-21)
 
@@ -156,6 +157,18 @@ pytest оставался зелёным.
 - Документация: AGENTS.md, architecture.md, configuration.md, telegram-ux.md,
   troubleshooting.md, operations.md, README.md.
 
+## Пакеты `users/` и `calendar/events/` (2026-05-21)
+
+- `satellite/users.py` → `satellite/users/`: `record.py` (`UserRecord`, статусы),
+  `store.py` (`UserStore`, атомарная запись), `admin.py` (`parse_admin_ids`);
+  фасад `__init__.py` re-export'ит публичный API.
+- `satellite/calendar/events.py` → `satellite/calendar/events/`: `_types`,
+  `_time`, `_partstat`, `_filters`, `_collectors`; фасад `__init__.py`.
+- Импорты `from satellite.users import …` и
+  `from satellite.calendar.events import …` без изменений (handlers, тесты, Web App).
+- Документация: AGENTS.md, architecture.md, configuration.md (уже был пакет),
+  telegram-ux.md, testing.md, refactor-log.
+
 ## Синхронизация docs с CI и Docker-деплоем (2026-05-21)
 
 - Единое описание job **test** в `deploy.yml` (ruff lint + format check, без mypy) —
@@ -163,3 +176,32 @@ pytest оставался зелёным.
 - Секреты `DEPLOY_HOST` / trim SSH — operations, deploy/README, troubleshooting.
 - CalDAV-диагностика: разделение systemd (`venv` в `/opt/satellite`) vs Docker
   (только compose + volume; скрипты — из отдельного клона или с ноутбука).
+
+## Фаза 11: mypy clean, reusable CI, удаление shim'ов (2026-05-21)
+
+- **mypy 0 ошибок** на 106 модулях. Раньше был `continue-on-error: true` —
+  гейт не работал, накопилось 59 ошибок в 18 файлах. Точечные правки по
+  файлам: `Event = Mapping[str, Any]` (расширили contravariantly), типизация
+  `dict[str, Any]` для `call_kw` в `TelegramClient`, `_to_int_or_none`
+  для precipitation probability, явные `(int, int, int)` tuple для draw_pill,
+  локальный capture `user_id = cb.user_id` в nested `build()` функциях,
+  None-checks для `screen.text` / `screen.keyboard`, `# type: ignore[attr-defined]`
+  для динамического маркера `_satellite_managed` на logging-handler.
+  Переименование `SubscriptionStore.list()` → `list_active()` (имя
+  shadow'ило builtin `list` в type-hint'ах класса).
+- **Reusable CI** (`.github/workflows/_checks.yml`): один workflow для ruff
+  (lint + format) + mypy + py_compile + pytest. `test.yml` (PR) и `deploy.yml`
+  (push в main / тег `v*`) вызывают его через `uses: ./...`. Раньше шаги
+  жили в двух местах; в `deploy.yml` забыли `ruff format --check`, поэтому
+  неотформатированный `config.py` спокойно уехал в `main`. Гейт mypy теперь
+  блокирующий.
+- **Удалены shim-модули**: `satellite/analytics_service.py`,
+  `satellite/telegram_bot/calendar_state.py`,
+  `satellite/telegram_bot/digest_state.py`. Внутри проекта на них никто не
+  опирался; три теста обновлены на canonical путь
+  (`satellite.telegram_bot.handlers.{calendar,digest}_state`,
+  `satellite.analytics.service`).
+- **Документация**: AGENTS.md, architecture.md, configuration.md,
+  refactor-log.md синхронизированы с новой раскладкой.
+- `pyproject.toml`: убраны устаревшие per-file-ignores под удалённые shim'ы;
+  добавлены под фасады `users/__init__.py` и `calendar/events/__init__.py`.

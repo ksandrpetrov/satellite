@@ -23,10 +23,6 @@ from satellite.messages_ru import (
     REPLY_KEYBOARD_REMOVE,
 )
 from satellite.telegram_bot.api import TelegramError
-from satellite.telegram_bot.calendar_state import (
-    STATE_CREATE_TITLE,
-    CalendarFlowState,
-)
 from satellite.telegram_bot.handlers import (
     HandlerContext,
     IncomingMessage,
@@ -38,6 +34,10 @@ from satellite.telegram_bot.handlers import (
     parse_command_mode,
     parse_subscription_action,
     recognize_message,
+)
+from satellite.telegram_bot.handlers.calendar_state import (
+    STATE_CREATE_TITLE,
+    CalendarFlowState,
 )
 from satellite.telegram_bot.handlers.routing import (
     CalendarSourcesCommand,

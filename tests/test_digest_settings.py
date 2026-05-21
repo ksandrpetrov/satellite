@@ -49,7 +49,6 @@ from satellite.subscriptions import (
     DigestSettings,
     SubscriptionStore,
 )
-from satellite.telegram_bot.digest_state import DigestStateStore
 from satellite.telegram_bot.handlers import (
     IncomingCallback,
     IncomingMessage,
@@ -57,6 +56,7 @@ from satellite.telegram_bot.handlers import (
     handle_message,
     is_digest_settings_request,
 )
+from satellite.telegram_bot.handlers.digest_state import DigestStateStore
 
 # --- time validation -------------------------------------------------------
 

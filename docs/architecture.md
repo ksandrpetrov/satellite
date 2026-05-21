@@ -155,11 +155,9 @@ telegram_test_command.py
 - `satellite/telegram_bot/message_editing.py` — `edit_callback_message`, fallback
   при неудачном edit (refresh PARTSTAT, хаб настроек).
 - `satellite/telegram_bot/handlers/digest_state.py` — in-memory state for digest
-  time input (canonical путь; `telegram_bot/digest_state.py` оставлен как
-  back-compat shim).
+  time input.
 - `satellite/telegram_bot/handlers/calendar_state.py` — FSM создания события,
-  dedup callbacks (canonical путь; `telegram_bot/calendar_state.py` —
-  back-compat shim).
+  dedup callbacks.
 - `satellite/telegram_bot/handlers/partstat_flow.py` — общий PARTSTAT-флоу
   (lookup события + `set_attendee_partstat` + toast + refresh), shared между
   `calendar_invitations.py` и `calendar_manage.py`.
@@ -214,14 +212,15 @@ Important invariants:
 - `satellite/plan_service.py` — `PlanBuilder` (CalDAV → filter → optional weather
   → render). `PlanBuilder` не читает `users.json`; callers pass calendar identity
   and construct per-user `UserCalendarService` when needed.
-- `satellite/analytics/service.py` — `build_week_analytics` (canonical; shim
-  `satellite/analytics_service.py` — back-compat).
+- `satellite/analytics/service.py` — `build_week_analytics`.
 - `satellite/analytics/render_card.py`, `caption.py` — PNG и подпись недельного отчёта.
 - `satellite/visual_cards/base.py` — общие примитивы отрисовки (шрифты DejaVu, палитра).
 - `satellite/seagull/digest.py` — `prepare_seagull_stats`, `render_digest_from_stats`.
 - `satellite/seagull/rules.py` — text fragments from metrics.
 - `satellite/seagull/render.py` — Telegram HTML, escaping, truncation;
-  маркеры встреч через `event_index_marker` из `calendar/events.py`;
+  маркеры встреч через `event_index_marker` из
+  [`calendar/events/_filters.py`](../satellite/calendar/events/_filters.py)
+  (импорт через фасад `satellite.calendar.events`);
   неподтверждённые приглашения — `⚠️` вместо номера (`is_pending`).
 - `satellite/seagull/templates.py` — text templates.
 

@@ -741,7 +741,7 @@ def build_settings_hub_keyboard(
     """
     from ..telegram_bot.html_format import build_copy_text_button
 
-    rows: list[list[dict[str, str | dict[str, str]]]] = [
+    rows: list[list[dict[str, object]]] = [
         [{"text": "🔔 Дайджест", "callback_data": CB_SETTINGS_DIGEST}],
     ]
     if has_calendar:

@@ -38,9 +38,8 @@ ignore = [
 "satellite/telegram_bot/handlers/__init__.py" = ["F401"]
 "satellite/messages_ru/__init__.py" = ["F401", "F403"]
 "satellite/messages_ru/_core.py" = ["E", "W"]
-"satellite/telegram_bot/calendar_state.py" = ["F401", "F403"]
-"satellite/telegram_bot/digest_state.py" = ["F401", "F403"]
-"satellite/analytics_service.py" = ["F401", "F403"]
+"satellite/users/__init__.py" = ["F401"]
+"satellite/calendar/events/__init__.py" = ["F401"]
 "tests/**" = ["B", "SIM", "F841"]
 
 [tool.ruff.format]
@@ -55,10 +54,9 @@ warn_redundant_casts = true
 show_error_codes = true
 files = ["satellite"]
 
-# Strict-режим планируется ввести точечно — на ядро (providers, web, plan,
-# scheduler). На момент Фазы 10 они ещё не полностью аннотированы; запускаем
-# mypy информативно (см. CI: continue-on-error), strict подключаем модуль за
-# модулем по мере очистки. См. docs/refactor-log.md, шаг 10.
+# mypy теперь блокирующий гейт CI (см. .github/workflows/_checks.yml). Если
+# где-то нужно подавить ложный позитив — точечный `# type: ignore[<code>]`
+# с комментарием «почему».
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -224,6 +224,9 @@ def _open_calendar_sources_from_callback(ctx: HandlerContext, cb: IncomingCallba
     if screen.status is not CalendarSourcesScreenStatus.SCREEN:
         safe_answer_callback(ctx, cb)
         return
+    if screen.text is None or screen.keyboard is None:
+        safe_answer_callback(ctx, cb)
+        return
     edit_callback_message(ctx, cb, screen.text, screen.keyboard)
     safe_answer_callback(ctx, cb)
     log.info("Opened calendar sources from hub: user_id=%s", cb.user_id)

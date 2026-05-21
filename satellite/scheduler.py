@@ -124,7 +124,7 @@ class DigestScheduler:
 
     def tick(self) -> int:
         """Один логический шаг. Возвращает количество успешно отправленных дайджестов."""
-        subscriptions = self._subscriptions.list()
+        subscriptions = self._subscriptions.list_active()
         if not subscriptions:
             return 0
         due = 0

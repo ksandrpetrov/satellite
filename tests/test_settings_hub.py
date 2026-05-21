@@ -37,13 +37,13 @@ from satellite.messages_ru import (
     build_settings_hub_keyboard,
 )
 from satellite.subscriptions import SubscriptionStore
-from satellite.telegram_bot.digest_state import DigestStateStore
 from satellite.telegram_bot.handlers import (
     IncomingCallback,
     IncomingMessage,
     handle_callback_query,
     handle_message,
 )
+from satellite.telegram_bot.handlers.digest_state import DigestStateStore
 from satellite.users import USER_STATUS_APPROVED
 
 _WEBAPP = "https://example.com/connect"

@@ -197,7 +197,7 @@ class TelegramClient:
                 if isinstance(reply_markup, (dict, list))
                 else reply_markup
             )
-        call_kw = {
+        call_kw: dict[str, Any] = {
             "timeout": _SEND_MESSAGE_TIMEOUT_SEC,
             "max_retries": _SEND_MESSAGE_MAX_RETRIES,
         }
@@ -248,7 +248,7 @@ class TelegramClient:
                 if isinstance(reply_markup, (dict, list))
                 else reply_markup
             )
-        call_kw = {
+        call_kw: dict[str, Any] = {
             "files": files,
             "timeout": _SEND_MESSAGE_TIMEOUT_SEC,
             "max_retries": _SEND_MESSAGE_MAX_RETRIES,
@@ -332,7 +332,7 @@ class TelegramClient:
                 if isinstance(reply_markup, (dict, list))
                 else reply_markup
             )
-        call_kw = {
+        call_kw: dict[str, Any] = {
             "timeout": _EDIT_MESSAGE_TIMEOUT_SEC,
             "max_retries": _EDIT_MESSAGE_MAX_RETRIES,
         }

@@ -46,7 +46,10 @@ def setup_logging(
         stderr_handler = logging.StreamHandler(stream=sys.stderr)
         stderr_handler.setFormatter(formatter)
         stderr_handler.addFilter(noise_filter)
-        stderr_handler._satellite_managed = True
+        # Динамический маркер: позволяет идемпотентному setup_logging узнавать
+        # «свои» хендлеры при повторном вызове. У stdlib-хендлера такого
+        # атрибута нет — поэтому type: ignore (вариант с setattr ловит ruff B010).
+        stderr_handler._satellite_managed = True  # type: ignore[attr-defined]
         root.addHandler(stderr_handler)
 
         if log_file:
@@ -55,7 +58,7 @@ def setup_logging(
             file_handler = logging.FileHandler(log_path, encoding="utf-8")
             file_handler.setFormatter(formatter)
             file_handler.addFilter(noise_filter)
-            file_handler._satellite_managed = True
+            file_handler._satellite_managed = True  # type: ignore[attr-defined]
             root.addHandler(file_handler)
 
     for name in quiet_loggers:

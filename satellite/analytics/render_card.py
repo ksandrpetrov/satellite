@@ -160,10 +160,18 @@ def _draw_sparkline_card(
     )
 
     badge_text = f"{trend_arrow}  {trend_label}"
-    pill_fill = tuple(min(255, c + (255 - c) * 85 // 100) for c in trend_color)
+
+    def _lighten(c: int) -> int:
+        return min(255, c + (255 - c) * 85 // 100)
+
+    pill_fill: tuple[int, int, int] = (
+        _lighten(trend_color[0]),
+        _lighten(trend_color[1]),
+        _lighten(trend_color[2]),
+    )
     badge_pad_x, badge_pad_y = 18, 10
     badge_tw = vc.text_width(draw, badge_text, font_badge)
-    badge_th = font_badge.size + 4
+    badge_th = int(getattr(font_badge, "size", 16)) + 4
     badge_w = badge_tw + badge_pad_x * 2
     badge_h = badge_th + badge_pad_y * 2
     badge_x = right - badge_w

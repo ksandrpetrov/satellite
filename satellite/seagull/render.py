@@ -99,13 +99,13 @@ def _meal_stats_lines_from_normalized(
         "dinner": PLAN_STATS_DINNER,
     }
     lines: list[str] = []
-    for kind in ("breakfast", "lunch", "dinner"):
-        group = by_kind[kind]
+    for slot in ("breakfast", "lunch", "dinner"):
+        group = by_kind[slot]
         if not group:
             continue
         merged = merge_intervals([(e.start_minutes, e.end_minutes) for e in group])
         interval = ", ".join(f"{format_hhmm(s)} – {format_hhmm(e)}" for s, e in merged)
-        lines.append(templates[kind].format(interval=interval))
+        lines.append(templates[slot].format(interval=interval))
     return lines
 
 
@@ -113,7 +113,7 @@ def render_daily_digest(
     stats: DayCalendarStats,
     texts: SeagullTexts,
     *,
-    meal_footer_events: tuple[NormalizedEvent, ...] = (),
+    meal_footer_events: Sequence[NormalizedEvent] = (),
     escape_html: bool = True,
     weather_line: str | None = None,
 ) -> str:

@@ -63,10 +63,11 @@ def handle_open_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
 
 
 def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
-    if cb.user_id is None or cb.chat_id is None:
+    user_id = cb.user_id
+    if user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
-    if not ensure_calendar_connected(ctx, chat_id=cb.chat_id, user_id=cb.user_id):
+    if not ensure_calendar_connected(ctx, chat_id=cb.chat_id, user_id=user_id):
         safe_answer_callback(ctx, cb)
         return
     if not _analytics_run_guard.try_acquire(cb.chat_id, _ANALYTICS_ACTION):
@@ -87,7 +88,7 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         def build() -> tuple[bytes, str]:
             today = datetime.now(tz=ctx.tz).date()
             return build_week_analytics(
-                telegram_user_id=cb.user_id,
+                telegram_user_id=user_id,
                 reference_date=today,
                 tz=ctx.tz,
                 calendar_service=ctx.calendar_service,

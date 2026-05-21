@@ -166,10 +166,11 @@ def _handle_pick(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
 
 
 def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
-    if cb.user_id is None or cb.chat_id is None:
+    user_id = cb.user_id
+    if user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
-    result = _foreign_calendars(ctx, cb.user_id)
+    result = _foreign_calendars(ctx, user_id)
     if not result.ok:
         safe_answer_callback(ctx, cb, text=FOREIGN_CALENDARS_REFRESH_FAIL_TEXT)
         return
@@ -194,7 +195,7 @@ def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
 
     def build() -> str:
         events = ctx.calendar_service.list_events(
-            cb.user_id,
+            user_id,
             start_date=target_date,
             end_date=target_date,
             tz=ctx.tz,

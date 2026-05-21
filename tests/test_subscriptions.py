@@ -78,7 +78,7 @@ def test_load_from_corrupt_file_does_not_crash(tmp_path: Path):
     path = tmp_path / "subs.json"
     path.write_text("not valid json")
     store = SubscriptionStore(path)
-    assert store.list() == []
+    assert store.list_active() == []
     store.subscribe(7, "alex")
     assert store.is_subscribed(7)
 
@@ -89,7 +89,7 @@ def test_list_returns_all_subscriptions(tmp_path: Path):
     store.subscribe(2, "b")
     store.subscribe(3, "c")
     store.unsubscribe(2)
-    chat_ids = {sub.chat_id for sub in store.list()}
+    chat_ids = {sub.chat_id for sub in store.list_active()}
     assert chat_ids == {1, 3}
 
 

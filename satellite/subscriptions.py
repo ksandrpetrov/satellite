@@ -320,8 +320,14 @@ class SubscriptionStore:
             self._items[chat_id] = replace(existing, last_digest_sent_date=iso)
             self._save_locked()
 
-    def list(self) -> list[DigestSettings]:
-        """Только активные подписчики (digest_enabled=True). Совместимо с прошлым API."""
+    def list_active(self) -> list[DigestSettings]:
+        """Только активные подписчики (digest_enabled=True).
+
+        Раньше назывался ``list()``, но это shadow'ит builtin ``list`` в
+        типовых аннотациях класса, из-за чего mypy ломался на ``list_all() ->
+        list[DigestSettings]``. Переименовано без back-compat: внутри проекта
+        вызовы обновлены, тесты — тоже.
+        """
         with self._lock:
             return [s for s in self._items.values() if s.digest_enabled]
 

@@ -96,7 +96,6 @@ satellite/
     api.py, message_editing.py, streaming_delivery.py, visual.py, commands.py
     offset_store.py, offset_tracker.py
     concurrency.py, instance_lock.py
-    # shims (back-compat): calendar_state.py, digest_state.py — re-export из handlers/
 ```
 
 ## Где менять что (типичные правки)
@@ -127,7 +126,7 @@ satellite/
 | Нумерация встреч (дайджест, /upcoming) | [`event_index_marker`](satellite/calendar/events/_filters.py) (импорт через фасад `satellite.calendar.events`) |
 | Web App REST API | [`web/api/calendar.py`](satellite/web/api/calendar.py); регистрация маршрута — [`web/routing.py`](satellite/web/routing.py); сам сервер — [`web/server.py`](satellite/web/server.py) |
 | Сборку текста плана | [`plan_service.py`](satellite/plan_service.py) — callers передают calendar identity |
-| Недельную аналитику (PNG + подпись) | [`analytics/service.py`](satellite/analytics/service.py) (canonical путь; `satellite/analytics_service.py` — shim для back-compat), [`calendar/period_stats.py`](satellite/calendar/period_stats.py), [`calendar/event_kinds.py`](satellite/calendar/event_kinds.py), [`handlers/analytics.py`](satellite/telegram_bot/handlers/analytics.py) (`ActionGuard`, cooldown 45 с) |
+| Недельную аналитику (PNG + подпись) | [`analytics/service.py`](satellite/analytics/service.py), [`calendar/period_stats.py`](satellite/calendar/period_stats.py), [`calendar/event_kinds.py`](satellite/calendar/event_kinds.py), [`handlers/analytics.py`](satellite/telegram_bot/handlers/analytics.py) (`ActionGuard`, cooldown 45 с) |
 | Дедуп повторных команд/кнопок (два PNG, два плана…) | [`handlers/action_guard.py`](satellite/telegram_bot/handlers/action_guard.py) — `try_acquire` / `release`; синглтоны сбрасывает `tests/conftest.py::_reset_action_guards` |
 | Ответ на встречу (PARTSTAT) | [`handlers/partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py) — общий флоу; [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) и [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — тонкие адаптеры |
 | PNG недельной аналитики | [`analytics/render_card.py`](satellite/analytics/render_card.py), примитивы — [`visual_cards/base.py`](satellite/visual_cards/base.py) |
@@ -208,7 +207,7 @@ satellite/
 - `isinstance(..., RecognizedFoo)` / `if/elif` для роутинга команд и callback'ов — только таблицы `_MESSAGE_ROUTES` / `_CALLBACK_ROUTERS` в [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py).
 - `_msg_from_cb` или фабрикация `IncomingMessage` ради `ensure_calendar_connected` — функция принимает `chat_id` / `user_id` напрямую.
 - `do_create()` или подобные обёртки в хендлерах ради единственного `try/except` — снимать без потери поведения.
-- Импорт `from satellite.analytics_service import ...` — canonical путь теперь [`satellite.analytics.service`](satellite/analytics/service.py); shim оставлен только для back-compat.
+- Импорт `from satellite.analytics_service import ...` — canonical путь теперь [`satellite.analytics.service`](satellite/analytics/service.py); shim удалён, обновите импорт.
 - Подгонять тест под код «чтобы pytest прошёл», не разобравшись в ожидаемом поведении — см. **«Тесты и регрессии»**; тесты для ловли багов, не для зелёного CI.
 
 ## Не трогать без необходимости
