@@ -60,16 +60,6 @@ def connect_token_from_path(path: str) -> str | None:
     return token
 
 
-def share_token_from_path(path: str) -> str | None:
-    normalized = (path or "").rstrip("/")
-    if not normalized.startswith("/share/") or normalized == "/share":
-        return None
-    token = normalized.split("/share/", 1)[1].split("/", 1)[0].strip()
-    if not token or not _CONNECT_TOKEN_PATH_RE.fullmatch(token):
-        return None
-    return token
-
-
 def extract_connect_token(
     handler: BaseHTTPRequestHandler,
     body: dict[str, Any] | None = None,
@@ -85,9 +75,6 @@ def extract_connect_token(
     from_path = connect_token_from_path(parsed_path.path) or ""
     if from_path:
         return from_path
-    from_share = share_token_from_path(parsed_path.path) or ""
-    if from_share:
-        return from_share
     qs = parse_qs(parsed_path.query)
     from_query = (qs.get("t") or [""])[0].strip()
     if from_query and _CONNECT_TOKEN_PATH_RE.fullmatch(from_query):

@@ -71,7 +71,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=satellite_public
-      - traefik.http.routers.satellite-webapp.rule=Host(`cassinilab.ru`) && (PathPrefix(`/connect`) || PathPrefix(`/share`) || PathPrefix(`/api/`))
+      - traefik.http.routers.satellite-webapp.rule=Host(`cassinilab.ru`) && (PathPrefix(`/connect`) || PathPrefix(`/api/`))
       - traefik.http.routers.satellite-webapp.entrypoints=websecure
       - traefik.http.routers.satellite-webapp.tls=true
       - traefik.http.services.satellite-webapp.loadbalancer.server.port=8080

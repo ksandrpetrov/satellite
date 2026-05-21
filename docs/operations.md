@@ -173,7 +173,7 @@ sudo SATELLITE_DIR=/srv/satellite SATELLITE_BRANCH=stable \
 ### Docker (GHCR + Traefik + Certbot)
 
 Альтернатива systemd: стек из четырёх контейнеров на сервере, HTTPS и маршруты
-`/connect`, `/share` и `/api/*` → Web App без ручного nginx.
+`/connect` и `/api/*` → Web App без ручного nginx.
 
 #### Образ
 
@@ -217,7 +217,7 @@ Playbook ставит Docker Engine, кладёт конфиги в `deploy_dir`
 
 | Сервис | Назначение |
 |--------|------------|
-| `traefik` | HTTPS: `/connect`, `/share`, `/api/calendar/*`, `/api/share/*` → бот:8080 |
+| `traefik` | HTTPS: `/connect`, `/api/calendar/*` → бот:8080 |
 | `nginx-acme` | Webroot для ACME challenge |
 | `certbot` | Выпуск и продление Let's Encrypt |
 | `satellite` | Бот; `logs/` в volume `satellite-logs` |
@@ -388,9 +388,8 @@ curl -sS http://127.0.0.1:8080/healthz
 `WEBAPP_PORT=8080`, сервис запущен: `systemctl status satellite-bot.service`.
 
 **nginx (systemd, домен cassinilab.ru):** внутрь существующего `server { listen 443 ssl; ... }`
-добавьте прокси на `/connect`, `/share` и API (без `/api/calendar/` форма
-подключения откроется, но сохранение пароля вернёт 404; без `/share` и
-`/api/share/` кнопка «Поделиться» не загрузит PNG):
+добавьте прокси на `/connect` и `/api/calendar/` (без `/api/calendar/` форма
+подключения откроется, но сохранение пароля вернёт 404):
 
 ```nginx
 location /connect {
@@ -402,25 +401,7 @@ location /connect {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
 }
-location /share {
-    proxy_pass http://127.0.0.1:8080;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
-}
 location /api/calendar/ {
-    proxy_pass http://127.0.0.1:8080;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
-}
-location /api/share/ {
     proxy_pass http://127.0.0.1:8080;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
@@ -463,15 +444,22 @@ logs/bot.lock
 logs/telegram-offset.json
 logs/subscriptions.json
 logs/users.json
+logs/backups/          # снапшоты users.json и subscriptions.json
 ```
 
 - `telegram-offset.json` — offset long-polling.
 - `subscriptions.json` — настройки дайджеста.
 - `users.json` — статусы доступа и зашифрованные CalDAV-credentials.
+- `backups/` — при каждом старте бота копии `users.json` и `subscriptions.json`
+  (`satellite/backup.py`, последние 20, имя `<file>.YYYYMMDD-HHMMSSZ.bak`).
 - `bot.log` — runtime-логи.
 
-Эти файлы не коммитятся. Резервное копирование `users.json` и `.env`
-(включая `TOKEN_ENCRYPTION_KEY`) обязательно при переносе сервера.
+Эти файлы не коммитятся. При старте в журнале появляется строка
+`Persistence loaded: users total=… approved=… connected=… subscriptions total=…
+active=… key_fingerprint=…` — по `key_fingerprint` (sha256[0:8]) видно, что
+`TOKEN_ENCRYPTION_KEY` не сменился. Резервное копирование `users.json`, `.env`
+(включая `TOKEN_ENCRYPTION_KEY`) и при необходимости `logs/backups/` обязательно
+при переносе сервера.
 
 ## Runtime State (legacy)
 

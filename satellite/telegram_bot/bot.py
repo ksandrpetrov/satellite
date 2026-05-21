@@ -97,7 +97,6 @@ class TelegramBot:
                 bot_token=settings.telegram.bot_token,
                 tz_name=settings.plan.tz_name,
                 connect_tokens=self._connect_tokens,
-                plan_config=settings.plan,
             ),
             calendar_service=self._calendar_service,
             users=self._users,

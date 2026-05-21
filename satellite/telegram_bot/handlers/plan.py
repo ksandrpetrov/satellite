@@ -16,11 +16,10 @@ from ...messages_ru import (
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_DIGEST_BUILD_FAILED_TEXT,
     PLAN_FETCH_STATUS_TEXT,
-    SHARE_KIND_PLAN,
 )
 from ..visual import is_private_chat, pick_plan_message_effect
 from .context import HandlerContext, IncomingMessage, PlanMode
-from .delivery import open_streaming_reply, share_reply_markup
+from .delivery import open_streaming_reply
 
 log = logging.getLogger(__name__)
 
@@ -50,8 +49,7 @@ def handle_plan(ctx: HandlerContext, msg: IncomingMessage, mode: PlanMode) -> No
         return
 
     effect = pick_plan_message_effect(plan_text) if is_private_chat(msg.chat_id) else None
-    markup = share_reply_markup(ctx, msg.user_id, kind=SHARE_KIND_PLAN, mode=mode)
-    stream.finish(plan_text, message_effect_id=effect, reply_markup=markup)
+    stream.finish(plan_text, message_effect_id=effect)
     log.info(
         "Sent %s plan to user_id=%s (update_id=%s)",
         mode,

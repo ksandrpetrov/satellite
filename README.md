@@ -24,8 +24,7 @@ Production Telegram-бот для календарных дайджестов и
 - Inline-хаб настроек: дайджест, выбор календарей для плана, connect/check/disconnect.
 - Выбор нескольких CalDAV-календарей для плана и автодайджеста (`enabled_calendar_urls`).
 - Просмотр пошаренных («чужих») календарей — `/foreign`, кнопка на главной клавиатуре.
-- Web App REST API: список, создание и удаление событий; Web App `/share` —
-  PNG-карточки плана, «ближайших» и недельной аналитики для системного share sheet.
+- Web App REST API: список, создание и удаление событий.
 - Недельная аналитика (PNG + подпись) из хаба настроек.
 - Подписка и отключение дайджеста (`/digest`, `/stopdigest` и экран дайджеста).
 - Настройки дайджеста через inline-кнопки (дни, время, вкл/выкл).
@@ -73,11 +72,12 @@ python telegram_test_command.py
 # или: make run
 ```
 
-Прогон тестов:
+Прогон тестов и статические проверки:
 
 ```bash
 python -m pytest
 # или: make test
+make check   # ruff + mypy + py_compile + pytest (перед коммитом)
 ```
 
 ## Запуск на сервере
@@ -180,7 +180,7 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 `bootstrap-server.sh`, `diagnose_caldav.py` — см. [AGENTS.md](AGENTS.md#скрипты)
 и [operations.md](docs/operations.md#запуск-на-сервере).
 
-CI: [test.yml](.github/workflows/test.yml) (Python 3.11, `pytest`, compile-check);
+CI: [test.yml](.github/workflows/test.yml) (Python 3.11: ruff, mypy, py_compile, pytest);
 образ в GHCR: [release-docker.yml](.github/workflows/release-docker.yml) (на GitHub Release).
 
 ## Runtime-файлы
@@ -191,7 +191,9 @@ CI: [test.yml](.github/workflows/test.yml) (Python 3.11, `pytest`, compile-check
 - `bot.lock`;
 - `telegram-offset.json`;
 - `subscriptions.json` — настройки дайджеста;
-- `users.json` — статус доступа и зашифрованные CalDAV-credentials.
+- `users.json` — статус доступа и зашифрованные CalDAV-credentials;
+- `backups/` — снапшоты `users.json` и `subscriptions.json` на каждый старт бота
+  (последние 20, см. [`satellite/backup.py`](satellite/backup.py)).
 
 `logs/`, `.env`, `venv/` не должны попадать в репозиторий.
 

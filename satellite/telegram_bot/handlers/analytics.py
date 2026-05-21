@@ -18,7 +18,6 @@ from ...messages_ru import (
     CB_ANALYTICS_WORKDAY_10,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_GENERIC_HANDLER_TEXT,
-    SHARE_KIND_ANALYTICS,
     analytics_options_screen_text,
     build_analytics_options_keyboard,
 )
@@ -30,7 +29,6 @@ from .delivery import (
     edit_callback_message,
     open_streaming_reply,
     safe_answer_callback,
-    share_reply_markup,
 )
 
 log = logging.getLogger(__name__)
@@ -99,14 +97,12 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         return
 
     effect = EFFECT_SPARKLES if is_private_chat(cb.chat_id) else None
-    markup = share_reply_markup(ctx, cb.user_id, kind=SHARE_KIND_ANALYTICS)
     try:
         ctx.telegram.send_photo(
             cb.chat_id,
             png,
             caption=caption,
             message_effect_id=effect,
-            reply_markup=markup,
         )
     except TelegramError as exc:
         log.error(

@@ -50,6 +50,14 @@ WEBAPP_BASE_URL=...
 После смены ключа расшифровка старых записей в `logs/users.json` падает —
 пользователям нужно переподключить календарь в Web App.
 
+При старте в `logs/bot.log` строка `Persistence loaded: … key_fingerprint=…`
+показывает отпечаток текущего ключа (sha256[0:8]). Если после деплоя fingerprint
+сменился, а пользователи не переподключали календарь — вероятна смена
+`TOKEN_ENCRYPTION_KEY`. Сообщение `CRITICAL Encryption self-check failed` —
+хотя бы один approved-пользователь с credentials не расшифровывается текущим
+ключом; восстановите старый `.env` из бэкапа или попросите переподключить календарь.
+Снапшоты JSON до правок: `logs/backups/` (см. [operations.md](operations.md#runtime-state)).
+
 ### Другой экземпляр уже работает
 
 Если в логе есть сообщение про lock, уже запущен другой процесс бота.
@@ -113,14 +121,12 @@ WEBAPP_BASE_URL=...
 
 - В контейнере бота обязательно `WEBAPP_HOST=0.0.0.0` (не `127.0.0.1`).
 - `WEBAPP_BASE_URL` должен совпадать с публичным URL: `https://<domain>/connect`.
-- Traefik проксирует `/connect`, `/share` и `/api/*` (calendar + share; см. labels в `docker-compose.yml`).
+- Traefik проксирует `/connect` и `/api/*` (см. labels в `docker-compose.yml`).
 - Healthcheck контейнера: `docker compose ps` → колонка `STATUS` должна показать `healthy`.
 - Проверка с сервера: `curl -sS -o /dev/null -w '%{http_code}\n' https://<domain>/connect` (ожидается **200**, не 404/502).
-- **404 Not Found (nginx)** — в конфиге сайта нет `location` для `/connect`, `/share`,
-  `/api/calendar/` и `/api/share/` на `127.0.0.1:8080`; см.
+- **404 Not Found (nginx)** — в конфиге сайта нет `location` для `/connect` и
+  `/api/calendar/` на `127.0.0.1:8080`; см.
   [`deploy/nginx/satellite-webapp.conf.example`](../deploy/nginx/satellite-webapp.conf.example).
-- **«Поделиться» открывается, PNG не грузится** — чаще всего нет `location /api/share/`
-  (или Traefik без `PathPrefix(`/api/share`)` / `PathPrefix(`/share`)`).
 - Сначала `curl http://127.0.0.1:8080/healthz` на сервере: если не 200, чините бота, не nginx.
 - Логи: `docker compose -f /opt/satellite/docker-compose.yml logs traefik satellite`.
 - Certbot: при ошибке выпуска сертификата смотрите вывод playbook; для отладки —
@@ -168,7 +174,7 @@ journalctl -u satellite-bot.service -n 50 | grep 'Reject WebApp'
 proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
 ```
 
-В `location`: `/connect`, `/share`, `/api/calendar/` и `/api/share/`. Затем
+В `location`: `/connect` и `/api/calendar/`. Затем
 `sudo nginx -t && sudo systemctl reload nginx`.
 
 Начиная с актуальной версии кода, `initData` также передаётся в query (`?initData=...`) — работает даже если заголовок режется.

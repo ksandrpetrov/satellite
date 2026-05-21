@@ -613,15 +613,6 @@ def build_webapp_connect_keyboard(webapp_url: str, *, reconnect: bool = False) -
     }
 
 
-def build_share_keyboard(webapp_url: str) -> dict | None:
-    """Inline-кнопка Web App «Поделиться» — системный share sheet с PNG-карточкой."""
-    if not webapp_url:
-        return None
-    return {
-        "inline_keyboard": [[{"text": BUTTON_SHARE, "web_app": {"url": webapp_url}}]],
-    }
-
-
 def build_approved_main_keyboard() -> dict:
     """Главная клавиатура.
 
@@ -662,12 +653,6 @@ CB_ANALYTICS_RUN = "analytics:run"
 CB_ANALYTICS_WORKDAY_9 = "analytics:wd:9-18"
 CB_ANALYTICS_WORKDAY_10 = "analytics:wd:10-19"
 CB_ANALYTICS_BACK = "analytics:back"
-
-BUTTON_SHARE = "📤 Поделиться"
-
-SHARE_KIND_PLAN = "plan"
-SHARE_KIND_UPCOMING = "upcoming"
-SHARE_KIND_ANALYTICS = "analytics"
 
 CALENDAR_DISCONNECT_TOAST = "Отключено"
 ANALYTICS_SAVED_TOAST = "Сохранено"

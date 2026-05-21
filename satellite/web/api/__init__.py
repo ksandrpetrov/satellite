@@ -1,4 +1,4 @@
-"""REST-хендлеры Web App (``/api/calendar/*``, ``/api/share/*``).
+"""REST-хендлеры Web App (``/api/calendar/*``).
 
 Каждый хендлер принимает ``BaseHTTPRequestHandler`` и :class:`..routing.Deps`,
 сам себе отправляет HTTP-ответ. Боль и обёртки авторизации/маппинга
@@ -13,8 +13,6 @@ from .calendar import (
     handle_list_events,
     handle_status,
 )
-from .share import handle_share_card
-
 __all__ = [
     "handle_connect",
     "handle_create_event",
@@ -22,5 +20,4 @@ __all__ = [
     "handle_disconnect",
     "handle_list_events",
     "handle_status",
-    "handle_share_card",
 ]

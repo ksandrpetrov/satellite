@@ -12,26 +12,26 @@ entrypoints  (telegram_test_command.py)
   -> TelegramBot lifecycle  +  WebAppServer (background thread)
        |                          |
        v                          v
-  telegram_bot/handlers/      web/  (routing -> api/{calendar,share})
+  telegram_bot/handlers/      web/  (routing -> api/calendar)
        \                       /
         \_____ access _______/
                 |
                 v
-  domain services  (users, subscriptions, plan_service, share_service, analytics/service)
+  domain services  (users, subscriptions, plan_service, analytics/service)
                 |
                 v
   calendar/  (user_calendar_service -> providers/{mailru,yandex} -> caldav_client)
                 |
                 v
-  renderers  (seagull/, weather/, share/cards, analytics/render_card)
+  renderers  (seagull/, weather/, analytics/render_card)
                 |
                 v
   visual_cards/base.py  — единственная палитра/шрифты/логотип для всех PNG
 ```
 
-Все user-facing PNG-карточки (план дня, /upcoming, недельная аналитика)
-рендерятся через примитивы [`visual_cards/base.py`](../satellite/visual_cards/base.py).
-Шрифты/палитра/логотип нигде больше не дублируются.
+PNG недельной аналитики рендерится через примитивы
+[`visual_cards/base.py`](../satellite/visual_cards/base.py) и
+[`analytics/render_card.py`](../satellite/analytics/render_card.py).
 
 Handlers принимают Telegram-события и не считают календарную аналитику сами.
 Бизнес-логика живёт в сервисах и чистых модулях.
@@ -50,6 +50,8 @@ Handlers принимают Telegram-события и не считают ка�
 Вспомогательные модули верхнего уровня:
 
 - `satellite/services.py` — `run_bot`.
+- `satellite/backup.py` — снапшоты `users.json` / `subscriptions.json` при старте
+  (`logs/backups/`, последние 20).
 - `satellite/config.py` — `load_settings`, dataclasses конфигов, парсинг `.env`.
 - `satellite/users.py` — `UserStore`: доступ, заявки, per-user CalDAV в `logs/users.json`.
 - `satellite/security/token_vault.py` — Fernet-шифрование credentials.
@@ -113,8 +115,10 @@ telegram_test_command.py
   - `dispatch.py` — message and callback entrypoints, access gating.
   - `access.py` — `/start`, заявки, gating `approved` / `has_calendar`.
   - `admin.py` — `/pending`, approve/reject callbacks.
-  - `settings_hub.py` — inline-хаб «Настройки» (дайджест, календари, connect).
+  - `settings_hub.py` — inline-хаб «Настройки» (дайджест, аналитика, календари,
+    connect); кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` только здесь.
   - `settings.py` — экран настроек дайджеста и callbacks `CB_DIGEST_*`.
+  - `analytics.py` — недельная аналитика (PNG + подпись) из хаба.
   - `calendar_setup.py` — connect / check / disconnect (Web App; check/disconnect
     также из хаба настроек).
   - `calendar_view.py` — общие хелперы списка CalDAV-календарей (fetch, screen lines).
@@ -128,6 +132,7 @@ telegram_test_command.py
   - `plan.py` — command → plan → reply.
   - `subscription.py` — subscribe/unsubscribe.
 - `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing.
+- `satellite/telegram_bot/streaming_delivery.py` — потоковый ответ (черновик → финал).
 - `satellite/telegram_bot/message_editing.py` — edit loading message, fallback.
 - `satellite/telegram_bot/handlers/digest_state.py` — in-memory state for digest
   time input (canonical путь; `telegram_bot/digest_state.py` оставлен как
@@ -177,11 +182,9 @@ Important invariants:
 - `satellite/plan_service.py` — `PlanBuilder` (CalDAV → filter → optional weather
   → render). `PlanBuilder` не читает `users.json`; callers pass calendar identity
   and construct per-user `UserCalendarService` when needed.
-- `satellite/share_service.py` — `build_share_png`. Для `plan` использует
-  `PlanBuilder.build_day_stats` (single source of truth с дайджестом); для
-  `analytics` делегирует в `satellite.analytics.service.build_week_analytics`
-  (canonical путь, см. также shim `satellite/analytics_service.py`).
-- `satellite/share/cards.py` — PNG плана дня и списка «ближайшие» (Apple Health–style).
+- `satellite/analytics/service.py` — `build_week_analytics` (canonical; shim
+  `satellite/analytics_service.py` — back-compat).
+- `satellite/analytics/render_card.py`, `caption.py` — PNG и подпись недельного отчёта.
 - `satellite/visual_cards/base.py` — общие примитивы отрисовки (шрифты DejaVu, палитра).
 - `satellite/seagull/digest.py` — `prepare_seagull_stats`, `render_digest_from_stats`.
 - `satellite/seagull/rules.py` — text fragments from metrics.
@@ -262,9 +265,8 @@ resolve_target_date(DIGEST_MODE, today in user timezone)
 - `satellite/web/parsing.py` — `read_json`, `extract_init_data`, `*_token_from_path`,
   `parse_positive_int`, `parse_date`, `parse_datetime`, `serialize_event`.
 - `satellite/web/auth.py` — `validated_user` (initData + UserStore.approved).
-- `satellite/web/static_pages.py` — единая `serve_html` для `/connect`, `/share`.
-- `satellite/web/api/calendar.py` и `satellite/web/api/share.py` — собственно
-  REST-хендлеры.
+- `satellite/web/static_pages.py` — единая `serve_html` для `/connect`.
+- `satellite/web/api/calendar.py` — REST-хендлеры календаря.
 - `satellite/web/init_data.py` — HMAC-валидация Telegram `initData`
   (`InitDataError` с кодами `no_init_data`, `bad_signature`, `expired`).
 
@@ -288,18 +290,12 @@ resolve_target_date(DIGEST_MODE, today in user timezone)
 | `GET /api/calendar/events?from=&to=` | Список событий |
 | `POST /api/calendar/events` | Создать событие |
 | `DELETE /api/calendar/events/{uid}?url=` | Удалить событие |
-| `GET /share`, `GET /share/{token}` | SPA [`share.html`](../satellite/web/static/share.html) |
-| `GET /api/share/card?kind=&mode=&days=` | PNG для Web App «Поделиться» (`approved` + `has_calendar`) |
-
-`GET /api/share/card`: `kind` — `plan` | `upcoming` | `analytics`; для `plan` —
-`mode` (`today`, `tomorrow`, `day_after_tomorrow`); для `upcoming` — `days` (1–31,
-по умолчанию 7). Те же `initData` и connect-token, что у `/connect`.
 
 `POST /api/calendar/connect` принимает `provider=mailru` (production);
 `yandex` в API возвращает `PROVIDER_NOT_IMPLEMENTED` (backend готов, UI disabled).
 
 HTTPS — задача reverse proxy (Traefik в Docker, nginx/Caddy при systemd).
-Проксируйте `/connect`, `/share` и префиксы `/api/calendar/`, `/api/share/`.
+Проксируйте `/connect` и префикс `/api/calendar/`.
 
 ## Logging
 
@@ -316,7 +312,7 @@ The bot logs operational failures but sends users only safe, non-technical messa
   `logs/` на диске хоста, Web App за внешним nginx/Caddy
   (`WEBAPP_HOST=127.0.0.1`).
 - **Docker** — образ `ghcr.io/ksandrpetrov/satellite`, Ansible playbook
-  (`make deploy`), Traefik терминирует TLS и проксирует `/connect`, `/share` и
+  (`make deploy`), Traefik терминирует TLS и проксирует `/connect` и
   `/api/*` в контейнер (`WEBAPP_HOST=0.0.0.0`, volume `satellite-logs` → `/app/logs`).
 
 Состояние (`users.json`, `subscriptions.json`, offset, lock) всегда в `logs/`.

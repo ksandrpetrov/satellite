@@ -14,7 +14,6 @@ from datetime import tzinfo
 from http.server import BaseHTTPRequestHandler
 
 from ..calendar.user_calendar_service import UserCalendarService
-from ..config import PlanConfig
 from ..users import UserStore
 from .connect_token import ConnectTokenStore
 
@@ -27,7 +26,6 @@ class Deps:
     users: UserStore
     bot_token: str
     connect_tokens: ConnectTokenStore
-    plan_config: PlanConfig
     tz: tzinfo
 
 

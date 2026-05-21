@@ -134,7 +134,7 @@ editMessageText(список + inline-кнопки)
 
 Под каждым событием — **Принять** / **Отклонить** / **Может быть**; ответ пишется
 в CalDAV через `set_attendee_partstat` (Mail.ru — `CalDAVClient.update_attendee_partstat`).
-Callback data: префикс `inv:` (`CB_INV_*` в `messages_ru.py`).
+Callback data: префикс `inv:` (`CB_INV_*` в [`messages_ru/_core.py`](../satellite/messages_ru/_core.py)).
 
 Тот же экран открывается из хаба настроек → **📚 Календари** → **📨 Приглашения**
 (`CB_SETTINGS_INVITATIONS`). «⬅️ В календарь» возвращает в подменю календаря хаба.
@@ -145,23 +145,6 @@ Callback data: префикс `inv:` (`CB_INV_*` в `messages_ru.py`).
 на 7 дней, где можно сменить свой `PARTSTAT` (не только NEEDS-ACTION). Детальный
 экран по встрече, те же CalDAV-операции, что в `/invitations`
 (`set_attendee_partstat`). Callback data: префикс `mng:` (`CB_MANAGE_*`).
-
-## Share (PNG-карточки)
-
-Под планом дня (сегодня / завтра / послезавтра), списком «Ближайшие события»
-и PNG недельной аналитики — inline-кнопка **📤 Поделиться** (`share_reply_markup`
-в [`delivery.py`](../satellite/telegram_bot/handlers/delivery.py)).
-
-1. Открывается Web App `https://<domain>/share/{token}#kind=…&mode=…` (параметры
-   в hash — Telegram часто режет query у `web_app`-кнопок).
-2. Страница [`share.html`](../satellite/web/static/share.html) запрашивает
-   `GET /api/share/card?kind=…` с `initData` (тот же connect-token, что у `/connect`).
-3. Сервер собирает PNG через [`share_service.py`](../satellite/share_service.py):
-   `plan` (метрики дня), `upcoming` (7 дней по умолчанию), `analytics` (недельный отчёт).
-4. Пользователь делится файлом через системный share sheet (`navigator.share`).
-
-`WEBAPP_BASE_URL` остаётся `https://<domain>/connect`; URL шаринга выводится
-как `<origin>/share` (см. `webapp_share_base_url`).
 
 ## Digest and analytics metrics
 
@@ -194,7 +177,7 @@ Callback data: префикс `inv:` (`CB_INV_*` в `messages_ru.py`).
 - **🔌 Подключить / 🔄 Переподключить** — Web App (`WEBAPP_BASE_URL`);
 - **✅ Проверить** / **🗑 Отключить** — только при `has_calendar`.
 
-Callback data хаба: `CB_SETTINGS_*` в `messages_ru.py`. Экран дайджеста —
+Callback data хаба: `CB_SETTINGS_*` / `CB_ANALYTICS_*` в [`messages_ru/_core.py`](../satellite/messages_ru/_core.py). Экран дайджеста —
 `CB_DIGEST_*`.
 
 Каждый callback получает `answerCallbackQuery` best-effort. Неизвестный callback
@@ -284,7 +267,6 @@ warning в лог.
 | `/pending` | `ADMIN_TELEGRAM_IDS` |
 | `/connect` | `approved` |
 | План, upcoming, invitations, manage, create, чужие календари, настройки, подписка | `approved` + `has_calendar` |
-| Web App «Поделиться» | `approved` + `has_calendar` |
 | Выбор календарей для плана (из хаба) | `approved` + `has_calendar` |
 | Check/disconnect (из хаба) | `approved` + `has_calendar` |
 | Web App connect | `approved` (до первого успешного connect) |

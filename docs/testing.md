@@ -25,8 +25,14 @@ python -m pytest
 # или: make test
 ```
 
-В CI (GitHub Actions) используется Python 3.11: compile-check всех модулей,
-затем `pytest -q` (workflow [`.github/workflows/test.yml`](../.github/workflows/test.yml)).
+В CI (GitHub Actions, [`.github/workflows/test.yml`](../.github/workflows/test.yml)) —
+три job'а на Python 3.11:
+
+- **ruff** — `ruff check` и `ruff format --check` (блокирующий);
+- **mypy** — `mypy satellite` (информативный, `continue-on-error: true`);
+- **pytest** — `py_compile` всех модулей, затем `pytest -q`.
+
+Перед коммитом локально: `make check` (= lint + typecheck + compile + test).
 
 Отдельно при публикации GitHub Release собирается Docker-образ и пушится в GHCR
 ([`.github/workflows/release-docker.yml`](../.github/workflows/release-docker.yml);
@@ -147,23 +153,40 @@ python -m pytest tests/test_weather.py
 
 **Scheduler, settings, Telegram, weather** — см. соответствующие `test_*.py`.
 
-**Web App** (`test_web_server.py`, `test_init_data.py`):
+**Web App** (`test_web_server.py`, `test_init_data.py`, `test_web_app_connect.py`):
 
 - `GET /healthz` без auth;
 - gate `approved` для `/api/calendar/*`;
 - HMAC-валидация `initData` (коды ошибок `no_init_data`, `bad_signature`, `expired`);
 - `initData` из заголовка, JSON-тела и query;
-- connect/disconnect и CRUD событий (mock `UserCalendarService`);
-- `GET /api/share/card` и сборка PNG (`test_share_cards.py`, `test_share_delivery.py`).
+- connect/disconnect и CRUD событий (mock `UserCalendarService`).
+
+**Analytics** (`test_analytics_card.py`, `test_analytics_caption.py`,
+`test_analytics_handler.py`, `test_period_stats.py`, `test_event_kinds.py`):
+
+- PNG недельной аналитики;
+- подпись и хендлер аналитики из хаба настроек;
+- `period_stats` / `event_kinds` — фильтры для недельного отчёта.
+
+**Infrastructure** (`test_backup.py`, `test_streaming_delivery.py`,
+`test_settings_hub.py`, `test_calendar_manage.py`, `test_user_access.py`):
+
+- снапшоты `users.json` / `subscriptions.json` при старте;
+- потоковый ответ (черновик → финал);
+- навигация хаба настроек и manage PARTSTAT.
 
 ## Static Checks
 
-В проекте нет закрепленного `pyproject.toml`, `ruff` или `mypy` конфига.
-При локальной установке:
+Конфиг инструментов — [`pyproject.toml`](../pyproject.toml) (`ruff`, `mypy`,
+`pytest`). Dev-зависимости — `requirements-dev.txt`; опционально
+`pre-commit install` (см. [`.pre-commit-config.yaml`](../.pre-commit-config.yaml)).
 
 ```bash
-ruff check .
-mypy .
+make lint        # ruff check satellite tests
+make format      # ruff format satellite tests
+make typecheck   # mypy satellite (информативно, как в CI)
+make compile     # py_compile всех .py
+make check       # lint + typecheck + compile + test
 ```
 
 ## Compile Check

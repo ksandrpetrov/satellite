@@ -44,7 +44,7 @@ cd deploy/ansible && ansible-playbook site.yml
 
 | Сервис | Назначение |
 |--------|------------|
-| `traefik` | HTTPS: `/connect`, `/share`, `/api/calendar/*`, `/api/share/*` → Web App бота |
+| `traefik` | HTTPS: `/connect`, `/api/calendar/*` → Web App бота |
 | `nginx-acme` | Webroot для ACME challenge |
 | `certbot` | Выпуск и продление Let's Encrypt |
 | `satellite` | Бот; данные в volume `satellite-logs` |

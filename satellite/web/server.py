@@ -27,7 +27,6 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..calendar.user_calendar_service import UserCalendarService
-from ..config import PlanConfig
 from ..users import UserStore
 from .api import (
     handle_connect,
@@ -35,11 +34,10 @@ from .api import (
     handle_delete_event,
     handle_disconnect,
     handle_list_events,
-    handle_share_card,
     handle_status,
 )
 from .connect_token import ConnectTokenStore
-from .parsing import connect_token_from_path, request_path, share_token_from_path
+from .parsing import connect_token_from_path, request_path
 from .responses import json_response
 from .routing import Deps, Route, find_route
 from .static_pages import StaticPage, serve_html
@@ -48,10 +46,8 @@ log = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _INDEX_FILE = _STATIC_DIR / "connect.html"
-_SHARE_FILE = _STATIC_DIR / "share.html"
 
 _CONNECT_PAGE = StaticPage(path=_INDEX_FILE, csp_img_src="'self' data:")
-_SHARE_PAGE = StaticPage(path=_SHARE_FILE, csp_img_src="'self' data: blob:")
 
 
 @dataclass(frozen=True)
@@ -61,13 +57,11 @@ class WebAppServerConfig:
     bot_token: str
     tz_name: str = "Europe/Moscow"
     connect_tokens: ConnectTokenStore | None = None
-    plan_config: PlanConfig | None = None
 
 
 # --- routing table ---------------------------------------------------------
 
 API_ROUTES: list[Route] = [
-    Route(method="GET", path="/api/share/card", handler=handle_share_card),
     Route(method="GET", path="/api/calendar/status", handler=handle_status),
     Route(method="GET", path="/api/calendar/events", handler=handle_list_events),
     Route(method="POST", path="/api/calendar/connect", handler=handle_connect),
@@ -99,14 +93,12 @@ class WebAppServer:
         self._calendar = calendar_service
         self._users = users
         self._connect_tokens = config.connect_tokens or ConnectTokenStore()
-        self._plan_config = config.plan_config or PlanConfig()
         self._tz: tzinfo = _safe_zone(config.tz_name)
         self._deps = Deps(
             calendar=self._calendar,
             users=self._users,
             bot_token=self._config.bot_token,
             connect_tokens=self._connect_tokens,
-            plan_config=self._plan_config,
             tz=self._tz,
         )
         self._thread: threading.Thread | None = None
@@ -178,14 +170,8 @@ def _maybe_serve_html_or_health(handler: BaseHTTPRequestHandler) -> bool:
     """Сначала статические страницы и healthz — они GET и не идут через API-таблицу."""
     path = request_path(handler)
     path_token = connect_token_from_path(path)
-    share_token = share_token_from_path(path)
-    if path in {"/", "/connect", "/connect/", "/index.html"} or (
-        path_token and "/share/" not in path
-    ):
+    if path in {"/", "/connect", "/connect/", "/index.html"} or path_token:
         serve_html(handler, _CONNECT_PAGE, path_token=path_token)
-        return True
-    if path in {"/share", "/share/"} or share_token:
-        serve_html(handler, _SHARE_PAGE, path_token=share_token)
         return True
     if path == "/healthz":
         json_response(handler, HTTPStatus.OK, {"status": "ok"})

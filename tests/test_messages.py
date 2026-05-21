@@ -15,6 +15,7 @@ from satellite.messages_ru import (
     button_text_to_mode,
     format_duration_ru,
     normalize_button_text,
+    upcoming_events_day_sections,
     upcoming_events_html,
 )
 
@@ -103,6 +104,27 @@ def test_upcoming_events_html_blockquote_per_day_not_whole_list():
     assert tomorrow_header < block_start
     block_end = html.index("</blockquote>", block_start)
     assert "Завтра" not in html[block_start:block_end]
+
+
+def test_upcoming_events_message_title_spacing():
+    """Заголовок «Ближайшие события» отделён от первого дня одной пустой строкой."""
+    ref = date(2026, 5, 21)
+    events = [
+        _ev(
+            summary="A",
+            dtstart=datetime(2026, 5, 21, 12, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 21, 13, 0, tzinfo=TZ).isoformat(),
+        ),
+        _ev(
+            summary="B",
+            dtstart=datetime(2026, 5, 21, 14, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 21, 15, 0, tzinfo=TZ).isoformat(),
+        ),
+    ]
+    day_sections = upcoming_events_day_sections(events, TZ, ref, days=7)
+    text = "\n\n".join(["🗓 <b>Ближайшие события</b>", *day_sections])
+    assert text.startswith("🗓 <b>Ближайшие события</b>\n\n<b>Сегодня")
+    assert "🗓 <b>Ближайшие события</b>\n\n\n" not in text
 
 
 def test_upcoming_events_html_single_event_day_plain():
