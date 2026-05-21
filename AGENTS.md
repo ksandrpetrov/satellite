@@ -243,8 +243,8 @@ python telegram_test_command.py                   # make run
 [deploy/README.md](deploy/README.md));
 **Docker (local)** — `make env && make docker-up` (см. корневой `docker-compose.yml`).
 
-CI: [`.github/workflows/test.yml`](.github/workflows/test.yml) (только PR: ruff, mypy, py_compile, pytest);
-[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — push в `main` или тег `v*`: test → образ в GHCR → deploy;
+CI: [`.github/workflows/test.yml`](.github/workflows/test.yml) (только PR: ruff lint + format check, mypy, py_compile, pytest);
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — push в `main` или тег `v*`: ruff + py_compile + pytest → образ в GHCR → deploy;
 rolling deploy по SSH (`scripts/ci-deploy-remote.sh`) — только для `main` и `workflow_dispatch`
 (тег `v*` лишь пушит semver-образ). Первичный деплой (`.env`, `docker-compose.yml`, образ) — `make deploy` (Ansible);
 TLS и reverse proxy на 443 — ваш существующий nginx на хосте, не из стека.

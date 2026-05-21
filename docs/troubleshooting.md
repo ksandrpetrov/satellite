@@ -91,7 +91,9 @@ WEBAPP_BASE_URL=...
 - календарь успешно подключён через Web App (`calendar_last_checked_at`);
 - app password Mail.ru с доступом к календарю (не обычный пароль почты);
 - для `@vk.team` / Mailroom: email `имя@vk.team`, сервер `calendar.mail.ru`, токен с правом **Календарь**;
-- при ошибке «Токен не подошёл» на VPS проверьте CalDAV с сервера (без Telegram):
+- при ошибке «Токен не подошёл» проверьте CalDAV без Telegram:
+
+  **systemd** (`install-server.sh`, есть `venv/` и `scripts/`):
 
   ```bash
   cd /opt/satellite && source venv/bin/activate
@@ -102,6 +104,12 @@ WEBAPP_BASE_URL=...
   python scripts/diagnose_caldav.py
   ```
 
+  **Docker** (`make deploy`): в `/opt/satellite` только `docker-compose.yml` и `.env` —
+  `scripts/` в образ не попадает. Смотрите `docker compose logs satellite` и
+  `docker compose exec satellite tail -f /app/logs/bot.log`; для скриптов — временный
+  клон репозитория на сервере (`bash scripts/install.sh --dev` в отдельном каталоге)
+  или диагностика с ноутбука с теми же `CALDAV_*`.
+
   Если скрипт падает на сервере, но на Mac работает — смотрите `logs/bot.log` (сеть/VPN/firewall). Если скрипт OK, а Web App нет — проверьте одобрение доступа в `logs/users.json` и что Web App открыт из бота.
 - `HIDE_ALL_DAY_EVENTS` / declined PARTSTAT не скрывают все события;
 - приглашения не появляются в `/invitations`: в ICS должен быть ваш `mailto:` с
@@ -111,10 +119,11 @@ WEBAPP_BASE_URL=...
   неотвеченные не попадут. Ответ «Не удалось обновить» — `logs/bot.log`
   (`PARTSTAT_UPDATE_FAILED`).
   Диагностика без Telegram — [`scripts/diagnose_invitation.py`](../scripts/diagnose_invitation.py)
-  (тот же lookback 14 д при фильтре `collect_pending_invitations`):
+  (тот же lookback 14 д при фильтре `collect_pending_invitations`; на Docker-сервере —
+  из клона с `venv`, см. CalDAV выше):
 
   ```bash
-  cd /opt/satellite && source venv/bin/activate
+  cd /opt/satellite && source venv/bin/activate   # systemd; для Docker — каталог с install.sh
   python scripts/diagnose_invitation.py --user-id <telegram_id>
   python scripts/diagnose_invitation.py --user-id <id> --summary "Standup"
   # опционально реальный ACCEPTED в CalDAV:

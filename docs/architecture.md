@@ -350,8 +350,8 @@ The bot logs operational failures but sends users only safe, non-technical messa
   контейнера `WEBAPP_HOST=0.0.0.0`, volume `satellite-logs` → `/app/logs`).
 
 **CI/CD (Docker):** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на
-push в `main` или тег `v*` — test, сборка в GHCR (`:sha-<short>`; `:latest` на main;
-semver на теге). Rolling update контейнера бота на сервере (`scripts/ci-deploy-remote.sh`,
+push в `main` или тег `v*` — ruff + `py_compile` + pytest, сборка в GHCR (`:sha-<short>`;
+`:latest` на main; semver на теге). Rolling update контейнера бота на сервере (`scripts/ci-deploy-remote.sh`,
 переменная `SATELLITE_IMAGE` в `.env`) — только для `main` и `workflow_dispatch`;
 `logs/` и `TOKEN_ENCRYPTION_KEY` pipeline не трогает.
 

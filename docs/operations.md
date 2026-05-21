@@ -274,7 +274,7 @@ legacy `satellite-bot.service` останавливает и отключает 
 
 | Секрет | Назначение |
 |--------|------------|
-| `DEPLOY_HOST` | IP/hostname сервера |
+| `DEPLOY_HOST` | IP или hostname (без `https://`, без хвостового `\n` в значении) |
 | `DEPLOY_USER` | SSH-пользователь |
 | `SSH_PRIVATE_KEY` | приватный ключ SSH (публичный — в `authorized_keys` на сервере) |
 | `SSH_KNOWN_HOSTS` | опционально: `ssh-keyscan -H $DEPLOY_HOST` |

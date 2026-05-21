@@ -181,6 +181,7 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 - [Docker-деплой (Ansible)](deploy/README.md)
 - [Тестирование](docs/testing.md)
 - [Troubleshooting](docs/troubleshooting.md)
+- [Refactor log](docs/refactor-log.md) — фазы рефакторинга и инварианты для агентов
 - [AGENTS.md](AGENTS.md) — карта модулей, инварианты и скрипты для правок кода и AI-агентов
 
 Скрипты установки и диагностики: `scripts/install.sh`, `install-server.sh`,
@@ -190,8 +191,8 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 
 CI/CD:
 
-- [test.yml](.github/workflows/test.yml) — ruff, mypy, py_compile, pytest (только PR).
-- [deploy.yml](.github/workflows/deploy.yml) — push в `main` или тег `v*`: test → образ в GHCR → deploy
+- [test.yml](.github/workflows/test.yml) — ruff (lint + format check), mypy, py_compile, pytest (только PR).
+- [deploy.yml](.github/workflows/deploy.yml) — push в `main` или тег `v*`: ruff + py_compile + pytest → образ в GHCR → deploy
   (`:sha-<short>`, на main ещё `:latest`, на теге — semver). Rolling deploy по SSH — только
   для `main` и ручного **Run workflow**; тег `v*` только публикует образ. Секреты и
   первичный деплой (Ansible) — [deploy/README.md](deploy/README.md).

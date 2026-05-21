@@ -155,3 +155,11 @@ pytest оставался зелёным.
   `test_web_server.py::test_status_with_connect_token_without_init_data`.
 - Документация: AGENTS.md, architecture.md, configuration.md, telegram-ux.md,
   troubleshooting.md, operations.md, README.md.
+
+## Синхронизация docs с CI и Docker-деплоем (2026-05-21)
+
+- Единое описание job **test** в `deploy.yml` (ruff lint + format check, без mypy) —
+  README, AGENTS, architecture, testing.
+- Секреты `DEPLOY_HOST` / trim SSH — operations, deploy/README, troubleshooting.
+- CalDAV-диагностика: разделение systemd (`venv` в `/opt/satellite`) vs Docker
+  (только compose + volume; скрипты — из отдельного клона или с ноутбука).
