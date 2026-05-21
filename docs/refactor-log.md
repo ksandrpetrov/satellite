@@ -250,3 +250,10 @@ pytest оставался зелёным.
   а не точную строку тела — иначе ложный fail при `json.dumps` с пробелами при
   живом боте.
 - Документация: operations, troubleshooting.
+
+## Дайджест непринятых: docs sync (2026-05-21)
+
+- Шедулер (`_deliver_pending`) и UI (`/settings` → «📨 Дайджест непринятых встреч»,
+  `pending_digest_*`) работают; в `configuration.md` / `architecture.md` оставалась
+  устаревшая пометка «шедулер/UI пока не шлют».
+- Обновлены: README, configuration, architecture, telegram-ux, troubleshooting.

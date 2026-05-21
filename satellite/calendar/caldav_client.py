@@ -362,14 +362,9 @@ class CalDAVService:
         out: list[Event] = []
         for handle in handles:
             try:
-                try:
-                    events_iter = handle.obj.search(
-                        start=range_start, end=range_end, event=True, expand=True
-                    )
-                except TypeError:
-                    events_iter = handle.obj.date_search(
-                        start=range_start, end=range_end, expand=True
-                    )
+                events_iter = self._iter_calendar_range_search(
+                    handle, range_start, range_end
+                )
             except Exception as exc:  # noqa: BLE001
                 log.warning(
                     "CalDAV range search failed url=%s: %s",
@@ -391,6 +386,44 @@ class CalDAVService:
             )
         out.sort(key=lambda event: event.get("dtstart") or "")
         return out
+
+    def _iter_calendar_range_search(
+        self,
+        handle: CalendarHandle,
+        range_start: datetime,
+        range_end: datetime,
+    ) -> Any:
+        """REPORT/поиск событий в диапазоне; при битом RRULE — fallback expand=False.
+
+        Mail.ru иногда отдаёт recurrence set, который ``icalendar_searcher`` не
+        разворачивает с ``expand=True`` (ValueError). Без fallback весь календарь
+        даёт 0 событий и пустой ``/invitations``.
+        """
+        last_value_error: ValueError | None = None
+        for expand in (True, False):
+            try:
+                try:
+                    return handle.obj.search(
+                        start=range_start, end=range_end, event=True, expand=expand
+                    )
+                except TypeError:
+                    return handle.obj.date_search(
+                        start=range_start, end=range_end, expand=expand
+                    )
+            except ValueError as exc:
+                last_value_error = exc
+                if expand:
+                    log.warning(
+                        "CalDAV range search expand=True failed url=%s: %s; "
+                        "retrying expand=False",
+                        _redact_url(handle.url),
+                        exc,
+                    )
+                    continue
+                raise
+        if last_value_error is not None:
+            raise last_value_error
+        raise CalDAVError("CalDAV range search failed without exception")
 
     def _event_needs_partstat_refresh(self, ev: Event, *, invitation_verify: bool) -> bool:
         """Нужен ли GET на ресурс события для достоверного PARTSTAT."""

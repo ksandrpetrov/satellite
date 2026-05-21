@@ -179,7 +179,10 @@ Callback data: префикс `inv:` (`CB_INV_*` в [`messages_ru/_core.py`](../
 
 `/settings` (кнопка «⚙️ Настройки») открывает inline-хаб (`settings_hub.py`):
 
-- **🔔 Дайджест** — экран настроек дайджеста (`settings.py`);
+- **🔔 Дайджест на сегодня** — план дня: дни, время, вкл/выкл (`settings.py`,
+  `digest_*` в `subscriptions.json`);
+- **📨 Дайджест непринятых встреч** — отдельное расписание напоминаний о
+  `NEEDS-ACTION` / `DELEGATED` (`pending_digest_*`; экран — `CB_PENDING_DIGEST_*`);
 - **📊 Аналитика недели** — экран выбора рабочего дня и построения отчёта
   (`analytics.py`; навигация «Назад» — `CB_ANALYTICS_BACK` в хабе);
 - **📚 Календари** — подменю: приглашения, выбор календарей для плана, connect,
@@ -196,11 +199,24 @@ Callback data хаба: `CB_SETTINGS_*` / `CB_ANALYTICS_*` в [`messages_ru/_cor
 
 ### Digest settings (из хаба)
 
-- статус дайджеста;
+Оба экрана («🔔 Дайджест на сегодня» и «📨 Дайджест непринятых встреч») устроены
+одинаково (`settings.py`, общий код для `digest_*` и `pending_digest_*`):
+
+- статус подписки;
 - дни отправки (`weekdays` / `all_days`);
-- время отправки;
+- время отправки (следующий текст без команды — новое `HH:MM`, см.
+  [Time input](#time-input); FSM — `handlers/digest_state`);
 - кнопка включения или отключения;
-- «Назад» возвращает в хаб настроек.
+- «Назад» / «Закрыть» возвращают в хаб.
+
+**Дайджест плана** (`digest_enabled`, `digest_time`, …) — `PlanBuilder` +
+`DIGEST_MODE` из `.env` (дата: сегодня / завтра / послезавтра).
+
+**Дайджест непринятых** (`pending_digest_enabled`, …) — в заданное время
+шедулер шлёт тот же список и клавиатуру, что `/invitations`
+(`invitations_view.load_pending_invitations_screen`), только если есть хотя бы
+одно неотвеченное приглашение; иначе отправки нет. Повтор в тот же день не
+идёт после успешной доставки (`last_pending_digest_sent_date`).
 
 ## Calendar sources (план и дайджест)
 

@@ -200,7 +200,20 @@ digest_time = 09:00
 digest_timezone = Europe/Moscow
 ```
 
-Персональные значения меняются через `/settings` → «🔔 Дайджест» в хабе настроек.
+Персональные значения меняются через `/settings` в хабе настроек:
+
+- **🔔 Дайджест на сегодня** — план дня (`digest_*`);
+- **📨 Дайджест непринятых встреч** — напоминание о `NEEDS-ACTION` / `DELEGATED`
+  (`pending_digest_*`; тот же экран, что `/invitations`, без streaming).
+
+Дефолты для `pending_digest_*` при создании записи:
+
+```text
+pending_digest_enabled = false
+pending_digest_days = weekdays
+pending_digest_time = 10:00
+pending_digest_timezone = Europe/Moscow
+```
 
 Поля записи в JSON (ключ — `chat_id`):
 
@@ -214,12 +227,17 @@ digest_time        # HH:MM
 digest_timezone    # IANA, напр. Europe/Moscow
 subscribed_at
 last_digest_sent_date
-pending_digest_enabled      # опционально; шедулер/UI пока не шлют
+pending_digest_enabled
 pending_digest_days
 pending_digest_time         # default 10:00 при отсутствии в JSON
 pending_digest_timezone
 last_pending_digest_sent_date
 ```
+
+Шедулер (`scheduler.py`) опрашивает оба расписания независимо. Дайджест
+непринятых отправляется только если в момент срабатывания есть хотя бы одно
+неотвеченное приглашение; иначе тик молча пропускается (без сообщения и без
+обновления `last_pending_digest_sent_date`).
 
 Глобальная переменная:
 

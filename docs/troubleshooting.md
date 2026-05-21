@@ -301,7 +301,7 @@ sudo -u satellite bash -c 'set -a; . /opt/satellite/.env; set +a; \
 
 ## Дайджест не приходит
 
-Проверьте `/settings` → «🔔 Дайджест» и `logs/subscriptions.json`
+Проверьте `/settings` → «🔔 Дайджест на сегодня» и `logs/subscriptions.json`
 (`digest_enabled`, `digest_days`, `digest_time`, `digest_timezone`,
 `telegram_user_id` должен совпадать с записью в `users.json`).
 
@@ -313,6 +313,22 @@ sudo -u satellite bash -c 'set -a; . /opt/satellite/.env; set +a; \
 
 Устаревшие ключи в `.env` (`DIGEST_TIME`, `DIGEST_WEEKDAYS_ONLY`) scheduler не читает.
 Глобально для даты дайджеста остаётся только `DIGEST_MODE`.
+
+## Дайджест непринятых не приходит
+
+Отдельно от плана дня — `/settings` → «📨 Дайджест непринятых встреч» и поля
+`pending_digest_*` в `logs/subscriptions.json` (`pending_digest_enabled`,
+`pending_digest_days`, `pending_digest_time`, `pending_digest_timezone`,
+`telegram_user_id`).
+
+Как и для плана: без `has_calendar` шедулер пропускает пользователя; если
+`last_pending_digest_sent_date` уже сегодня — повторной отправки не будет.
+
+Если в момент срабатывания нет встреч с `NEEDS-ACTION` / `DELEGATED` (тот же
+отбор, что `/invitations`, lookback 14 д / горизонт 60 д вперёд), сообщение
+намеренно не уходит — в логе `Pending digest skipped (empty)`.
+
+Проверка списка без Telegram: [`scripts/diagnose_invitation.py`](../scripts/diagnose_invitation.py).
 
 ## Дайджест пришел дважды
 

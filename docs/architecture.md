@@ -253,7 +253,7 @@ digest_time
 digest_timezone
 subscribed_at
 last_digest_sent_date
-pending_digest_enabled      # опционально в JSON; шедулер/UI пока не шлют
+pending_digest_enabled
 pending_digest_days
 pending_digest_time         # default 10:00
 pending_digest_timezone

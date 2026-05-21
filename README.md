@@ -30,6 +30,8 @@ Production Telegram-бот для календарных дайджестов и
 - Недельная аналитика (PNG + подпись) из хаба настроек.
 - Подписка и отключение дайджеста (`/digest`, `/stopdigest` и экран дайджеста).
 - Настройки дайджеста через inline-кнопки (дни, время, вкл/выкл).
+- Автоматический дайджест непринятых приглашений (отдельное расписание в
+  `/settings` → «📨 Дайджест непринятых встреч»; тот же список, что `/invitations`).
 - Дни отправки: `weekdays` или `all_days`.
 - Время отправки дайджеста (ввод: `09:30`, `9:30`, `9 30` и т.п.), по умолчанию
   `09:00 Europe/Moscow`.
@@ -227,7 +229,8 @@ CI/CD:
   (`calendar_status=connected` в `logs/users.json`).
 - Нет погоды: `WEATHER_ENABLED=true` и координаты.
 - Дайджест не приходит: `/settings`, `digest_enabled`, день недели, время,
-  `logs/subscriptions.json`.
+  `logs/subscriptions.json`; для непринятых — `pending_digest_enabled` и наличие
+  открытых приглашений в момент отправки.
 - После деплоя или правок nginx: `make smoke-prod` (публичные `/healthz`, `/connect`,
   `/api/calendar/status`); на сервере сначала `curl http://127.0.0.1:8080/healthz`.
 
