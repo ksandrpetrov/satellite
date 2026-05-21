@@ -128,8 +128,9 @@ telegram_test_command.py
   - `calendar_foreign.py` — просмотр пошаренных («чужих») календарей.
   - `calendar_list.py` — `/upcoming`, ближайшие 7 дней.
   - `calendar_create.py` — `/create`, пошаговый FSM создания события.
-  - `calendar_invitations.py` — `/invitations`, список NEEDS-ACTION и ответы
-    ACCEPTED / DECLINED / TENTATIVE через CalDAV.
+  - `calendar_invitations.py` — `/invitations`, список NEEDS-ACTION (горизонт
+    60 дней вперёд, 14 назад; недавно завершённые без ответа не скрываются) и
+    ответы ACCEPTED / DECLINED / TENTATIVE через CalDAV.
   - `calendar_manage.py` — `/manage`, смена PARTSTAT по любой встрече на 7 дней.
   - `plan.py` — command → plan → reply.
   - `subscription.py` — subscribe/unsubscribe.
@@ -169,8 +170,9 @@ telegram_test_command.py
   search, optional PARTSTAT refresh.
 - `satellite/calendar/constants.py` — domain constants (lunch marker, all-day label).
 - `satellite/calendar/events.py` — filters, all-day, declined, meals, PARTSTAT
-  (`is_pending_invitation_for_user`, `collect_pending_invitations`,
-  `format_invitation_list_lines`), `event_index_marker`, форматирование `/upcoming`
+  (`is_pending_invitation_for_user`, `event_relevant_for_invitations`,
+  `collect_pending_invitations`, `format_invitation_list_lines`), `event_index_marker`,
+  форматирование `/upcoming`
   (`format_upcoming_events_lines`).
 - `satellite/calendar/stats.py` — `NormalizedEvent`, `DayCalendarStats`,
   `normalize_caldav_event`. Default workday `10:00–19:00`, lunch `13:00–14:00`.

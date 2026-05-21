@@ -122,10 +122,40 @@ def _attendee_line_matches_login(attendee_line: str, login: str) -> bool:
     return any(needle in blob for needle in _login_match_needles(login))
 
 
+def _partstat_from_attendee_line(attendee_line: str) -> str | None:
+    """PARTSTAT из одной строки ATTENDEE или None, если параметра нет."""
+    attendee_norm = (attendee_line or "").casefold()
+    idx = attendee_norm.find("partstat=")
+    if idx < 0:
+        return None
+    tail = attendee_norm[idx + len("partstat=") :]
+    end = len(tail)
+    for sep in (";", ",", ":", " "):
+        pos = tail.find(sep)
+        if 0 <= pos < end:
+            end = pos
+    status = tail[:end].strip().upper()
+    return status or None
+
+
 def is_pending_invitation_for_user(event: Event, login: str) -> bool:
-    """True, если пользователю нужно ответить на приглашение (NEEDS-ACTION / DELEGATED)."""
-    status = user_partstat(event, login)
-    return status in {"NEEDS-ACTION", "DELEGATED"}
+    """True, если пользователю нужно ответить на приглашение (NEEDS-ACTION / DELEGATED).
+
+    В отличие от ``user_partstat``, пессимистичная свёртка по строкам ATTENDEE:
+    если на один mailto несколько записей и хотя бы в одной NEEDS-ACTION —
+    приглашение неотвеченное (``user_partstat`` взял бы «лучший» ACCEPTED).
+    Строки без PARTSTAT не считаем pending — см. ``user_partstat``.
+    """
+    login_norm = (login or "").strip()
+    if not login_norm:
+        return False
+    for attendee in event.get("attendees", []):
+        if not _attendee_line_matches_login(str(attendee), login_norm):
+            continue
+        status = _partstat_from_attendee_line(str(attendee))
+        if status in {"NEEDS-ACTION", "DELEGATED"}:
+            return True
+    return False
 
 
 def user_partstat(event: Event, login: str) -> str | None:
@@ -452,6 +482,28 @@ def event_ends_after(event: Event, tz: tzinfo, *, moment: datetime) -> bool:
     return False
 
 
+def event_relevant_for_invitations(
+    event: Event,
+    tz: tzinfo,
+    *,
+    moment: datetime,
+    lookback_days: int = 0,
+) -> bool:
+    """Встреча ещё идёт или началась не раньше ``lookback_days`` назад (локально).
+
+    Нужна для списка приглашений: неотвеченные встречи за вчера/позавчера не
+    должны пропадать сразу после ``dtend``, пока пользователь не ответил.
+    """
+    if event_ends_after(event, tz, moment=moment):
+        return True
+    if lookback_days <= 0:
+        return False
+    day = event_local_start_date(event, tz)
+    if day is None:
+        return False
+    return day >= moment.date() - timedelta(days=lookback_days)
+
+
 def collect_pending_invitations(
     events: Sequence[Event],
     login: str,
@@ -459,6 +511,7 @@ def collect_pending_invitations(
     *,
     now: datetime,
     max_events: int = 20,
+    lookback_days: int = 0,
 ) -> list[Event]:
     """События, по которым пользователю нужно принять решение, отсортированные по началу."""
     login_norm = (login or "").strip()
@@ -470,7 +523,9 @@ def collect_pending_invitations(
         if (ev.get("url") or "").strip()
         and not is_cancelled_event(ev)
         and is_pending_invitation_for_user(ev, login_norm)
-        and event_ends_after(ev, tz, moment=now)
+        and event_relevant_for_invitations(
+            ev, tz, moment=now, lookback_days=lookback_days
+        )
     ]
     pending.sort(key=lambda ev: sort_key(ev, tz))
     return pending[: max(0, max_events)]

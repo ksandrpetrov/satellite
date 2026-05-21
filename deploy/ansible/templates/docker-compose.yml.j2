@@ -49,7 +49,7 @@ services:
         done
 
   satellite:
-    image: {{ satellite_image }}
+    image: ${SATELLITE_IMAGE}
     restart: unless-stopped
     env_file:
       - .env

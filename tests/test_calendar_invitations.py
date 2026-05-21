@@ -61,6 +61,38 @@ def test_collect_pending_invitations_skips_past_and_accepted():
     assert pending[0]["summary"] == "Pending"
 
 
+def test_collect_pending_invitations_keeps_recent_ended_with_lookback():
+    """Вчерашняя NEEDS-ACTION не должна пропадать сразу после окончания встречи."""
+    now = datetime(2026, 5, 29, 10, 0, tzinfo=TZ)
+    events = [
+        _ev(
+            summary="May26 invite",
+            start="2026-05-26T17:30:00+03:00",
+            end="2026-05-26T18:30:00+03:00",
+        ),
+        _ev(
+            summary="May29 invite",
+            start="2026-05-29T11:00:00+03:00",
+            end="2026-05-29T12:00:00+03:00",
+        ),
+    ]
+    pending = collect_pending_invitations(
+        events, LOGIN, TZ, now=now, max_events=10, lookback_days=14
+    )
+    assert [ev["summary"] for ev in pending] == ["May26 invite", "May29 invite"]
+
+
+def test_is_pending_when_duplicate_attendee_lines_disagree():
+    ev = {
+        **_ev(),
+        "attendees": [
+            "mailto:me@mail.ru;PARTSTAT=ACCEPTED",
+            "mailto:me@mail.ru;PARTSTAT=NEEDS-ACTION",
+        ],
+    }
+    assert is_pending_invitation_for_user(ev, LOGIN)
+
+
 def test_event_callback_token_stable():
     url = "https://calendar.mail.ru/cal/abc.ics"
     assert event_callback_token(url) == event_callback_token(url)

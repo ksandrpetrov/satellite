@@ -74,6 +74,7 @@ def main() -> int:
     login, password, caldav_url = _resolve_credentials(args)
     tz = ZoneInfo(args.tz)
     today = datetime.now(tz=tz).date()
+    start = today - timedelta(days=14)
     end = today + timedelta(days=90)
     needle = (args.summary or "").casefold()
 
@@ -88,7 +89,7 @@ def main() -> int:
     try:
         primary = service.primary_calendar_url()
         events = service.fetch_events_in_range(
-            today,
+            start,
             end,
             tz=tz,
             calendar_url=primary,
@@ -99,7 +100,12 @@ def main() -> int:
         return 2
 
     pending = collect_pending_invitations(
-        events, login, tz, now=datetime.now(tz=tz), max_events=50
+        events,
+        login,
+        tz,
+        now=datetime.now(tz=tz),
+        max_events=50,
+        lookback_days=14,
     )
     print(f"login={login!r} primary={primary}")
     print(f"pending_total={len(pending)}")

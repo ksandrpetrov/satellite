@@ -1,0 +1,123 @@
+name: deploy
+
+# Под ключ: на каждый push в main и на тег v* собирает образ в GHCR и (для main)
+# обновляет образ на сервере + перезапускает контейнер бота.
+#
+# Настройка (один раз) — Settings → Secrets and variables → Actions:
+#   DEPLOY_HOST       — IP/hostname сервера
+#   DEPLOY_USER       — SSH-пользователь (например, root)
+#   SSH_PRIVATE_KEY   — приватный ключ SSH (публичный — в authorized_keys на сервере)
+#   SSH_KNOWN_HOSTS   — (опц.) вывод `ssh-keyscan -H <DEPLOY_HOST>`
+#   GHCR_PULL_TOKEN   — (опц.) PAT с read:packages, если пакет GHCR приватный
+#
+# Первичный деплой стека (Traefik, Certbot, .env, docker-compose.yml) делается
+# один раз с ноутбука: `make deploy` (Ansible). После этого pipeline сам
+# обновляет образ бота через docker compose pull/up на сервере.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - run: python -m pip install --upgrade pip && pip install -r requirements.txt -r requirements-dev.txt
+      - name: Ruff lint
+        run: python -m ruff check satellite tests
+      - name: Ruff format check
+        run: python -m ruff format --check satellite tests
+      - name: Compile check
+        run: |
+          find satellite tests -name '*.py' ! -name '._*' -print0 \
+            | xargs -0 python -m py_compile
+      - name: Pytest
+        run: python -m pytest -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image_ref: ${{ steps.image.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resolve immutable tag
+        id: image
+        run: |
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          echo "ref=${REGISTRY}/${IMAGE_NAME,,}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rolling deploy via SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SATELLITE_IMAGE: ${{ needs.build.outputs.image_ref }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: bash scripts/ci-deploy-remote.sh

@@ -95,3 +95,19 @@ callback_data, HTTP-ответы) не менялся; baseline pytest-набо�
 - `analytics_service.py`, `telegram_bot/{calendar,digest}_state.py` — shim'ы
   для back-compat. Когда все внешние импорты перейдут на canonical-пути,
   shim'ы можно удалить.
+
+## GitHub Actions автодеплой (2026-05-21)
+
+- `.github/workflows/deploy.yml`: test → образ в GHCR (`:sha-<short>` + `:latest` на main) →
+  SSH rolling deploy (`scripts/ci-deploy-remote.sh`). Триггеры: push в `main`, тег `v*`,
+  `workflow_dispatch`. Деплой только для `main` и ручного запуска.
+- Compose с `image: ${SATELLITE_IMAGE}`; шаблон `env.j2` пишет `SATELLITE_IMAGE` в `.env` при
+  первичном `make deploy`, дальше Actions сам перезаписывает значение.
+- Старый `release-docker.yml` удалён (заменён `deploy.yml`).
+
+## Приглашения: lookback 14 дней (2026-05-21)
+
+- `/invitations`: горизонт 60 дней вперёд + 14 дней назад; недавно завершённые
+  встречи с `NEEDS-ACTION`/`DELEGATED` остаются в списке (`event_relevant_for_invitations`
+  + `lookback_days` в `collect_pending_invitations`).
+- Документация UX: [telegram-ux.md](telegram-ux.md); тесты — `test_calendar_invitations.py`.

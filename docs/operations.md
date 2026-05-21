@@ -23,7 +23,7 @@ python telegram_test_command.py
 | Вариант | Когда удобно | Обновление |
 |---------|--------------|------------|
 | **systemd** (`install-server.sh`) | один процесс Python на VPS, свой nginx/Caddy | повторный `install-server.sh` |
-| **Docker** (`make deploy`) | Traefik + Certbot из коробки, образ из GHCR | сменить `image_tag` в Ansible → `make deploy` |
+| **Docker** (`make deploy`) | Traefik + Certbot из коробки, образ из GHCR | push в `main` → [deploy.yml](../.github/workflows/deploy.yml) (rolling update по SSH); стек/секреты — снова `make deploy` |
 
 Общее: один `TELEGRAM_BOT_TOKEN`, один каталог `logs/` с `users.json` и
 `subscriptions.json`. Не смешивайте два варианта на одном сервере с одним токеном.
@@ -177,16 +177,21 @@ sudo SATELLITE_DIR=/srv/satellite SATELLITE_BRANCH=stable \
 
 #### Образ
 
-Workflow [`.github/workflows/release-docker.yml`](../.github/workflows/release-docker.yml)
-срабатывает при **GitHub Release → Published** и пушит в GHCR:
+Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на каждый push в `main`
+(и тег `v*`) собирает образ и пушит в GHCR:
 
 ```text
-ghcr.io/ksandrpetrov/satellite:<semver>
-ghcr.io/ksandrpetrov/satellite:latest
+ghcr.io/ksandrpetrov/satellite:sha-<short>   # immutable per-commit
+ghcr.io/ksandrpetrov/satellite:latest        # только для main
+ghcr.io/ksandrpetrov/satellite:<semver>      # для тега vX.Y.Z
 ```
 
-После первого релиза сделайте пакет **public**:
-`Settings → Packages → satellite → Package settings → Change visibility`.
+Для push в main тот же workflow дальше делает rolling deploy на сервер по SSH —
+см. раздел [Автодеплой из GitHub Actions](#автодеплой-из-github-actions) ниже.
+
+После первого push сделайте пакет **public**:
+`Settings → Packages → satellite → Package settings → Change visibility` (или
+задайте секрет `GHCR_PULL_TOKEN`, см. [deploy/README.md](../deploy/README.md)).
 
 Образ собирается на **Python 3.12** (`Dockerfile`); CI-тесты — на 3.11.
 
@@ -196,7 +201,9 @@ ghcr.io/ksandrpetrov/satellite:latest
 2. [`deploy/ansible/group_vars/all.yml`](../deploy/ansible/group_vars/all.yml):
    - `domain`, `certbot_email`;
    - `telegram_bot_token`, `admin_telegram_ids`;
-   - `image_tag` (`latest` или semver без `v`, например `1.2.0`);
+   - `image_tag` (`latest` или semver без `v`, например `1.2.0`) — только для
+     первичного деплоя; дальше образ на сервере задаёт `SATELLITE_IMAGE` в `.env`
+     (Actions перезаписывает на `:sha-<short>`);
    - `token_encryption_key` — оставьте пустым при первом деплое (playbook сгенерирует Fernet-ключ; при повторном деплое ключ из существующего `.env` на сервере сохраняется).
 3. DNS: A-запись `domain` → IP сервера; порты **80** и **443** открыты.
 4. На машине деплоя: `ansible`, SSH-доступ на сервер.
@@ -225,9 +232,31 @@ Playbook ставит Docker Engine, кладёт конфиги в `deploy_dir`
 В `.env` на сервере Ansible прописывает `WEBAPP_HOST=0.0.0.0` и
 `WEBAPP_BASE_URL=https://<domain>/connect` — см. [configuration.md](configuration.md).
 
-#### Обновление после релиза
+#### Автодеплой из GitHub Actions
 
-1. В `group_vars/all.yml` выставьте `image_tag` на версию релиза.
+Push в `main` или ручной запуск workflow `deploy` (`Actions → deploy → Run workflow`)
+делает rolling update без `make deploy`. Workflow перезаписывает `SATELLITE_IMAGE`
+в `/opt/satellite/.env` на сборку `:sha-<short>`, выполняет `docker compose pull satellite`
+и `docker compose up -d satellite`.
+
+Секреты репозитория (`Settings → Secrets and variables → Actions`):
+
+| Секрет | Назначение |
+|--------|------------|
+| `DEPLOY_HOST` | IP/hostname сервера |
+| `DEPLOY_USER` | SSH-пользователь |
+| `SSH_PRIVATE_KEY` | приватный ключ SSH (публичный — в `authorized_keys` на сервере) |
+| `SSH_KNOWN_HOSTS` | опционально: `ssh-keyscan -H $DEPLOY_HOST` |
+| `GHCR_PULL_TOKEN` | опционально: PAT с `read:packages` для приватного GHCR-пакета |
+
+`logs/` (volume `satellite-logs`), `TOKEN_ENCRYPTION_KEY` и Traefik/Certbot этот
+путь не трогает — только тег образа бота.
+
+#### Полный playbook (когда нужен)
+
+Только при изменении стека (домен, Traefik, Certbot, секреты в `.env`):
+
+1. При необходимости выставьте `image_tag` в `group_vars/all.yml` на конкретный semver.
 2. `make deploy` (playbook сделает `docker compose pull` и перезапуск).
 
 #### Наблюдение и данные

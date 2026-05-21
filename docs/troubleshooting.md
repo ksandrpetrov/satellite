@@ -106,8 +106,11 @@ WEBAPP_BASE_URL=...
 - `HIDE_ALL_DAY_EVENTS` / declined PARTSTAT не скрывают все события;
 - приглашения не появляются в `/invitations`: в ICS должен быть ваш `mailto:` с
   `PARTSTAT=NEEDS-ACTION` (иногда Mail.ru отдаёт ATTENDEE только в GET — см.
-  PARTSTAT refresh в `caldav_client.py`); ответ «Не удалось обновить» — смотрите
-  `logs/bot.log` (`PARTSTAT_UPDATE_FAILED`);
+  PARTSTAT refresh в `caldav_client.py`); список смотрит до 60 дней вперёд и
+  14 дней назад — очень старые неотвеченные не попадут; ответ «Не удалось обновить»
+  — смотрите `logs/bot.log` (`PARTSTAT_UPDATE_FAILED`);
+  диагностика без Telegram: `python scripts/diagnose_invitation.py --user-id <id>`
+  (или `CALDAV_LOGIN` / `CALDAV_APP_PASSWORD`, как у `diagnose_caldav.py`);
 - `LOG_LEVEL=DEBUG` для деталей CalDAV в `logs/bot.log`.
 
 ## Web App не открывается

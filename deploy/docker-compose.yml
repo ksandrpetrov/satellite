@@ -51,7 +51,7 @@ services:
         done
 
   satellite:
-    image: ghcr.io/ksandrpetrov/satellite:latest
+    image: ${SATELLITE_IMAGE}
     restart: unless-stopped
     env_file:
       - .env

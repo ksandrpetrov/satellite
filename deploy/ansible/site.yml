@@ -44,34 +44,62 @@
             )
           }}
 
+    # До любого apt: на сервере мог остаться ручной install Docker (docker.gpg +
+    # .list/.sources). Две записи с разным Signed-By ломают apt update_cache.
+    - name: Remove stale Docker apt sources (conflicting Signed-By)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        shopt -s nullglob
+        rm -f /etc/apt/keyrings/docker.gpg
+        rm -f /etc/apt/sources.list.d/docker.list
+        rm -f /etc/apt/sources.list.d/docker.sources
+        rm -f /etc/apt/sources.list.d/download.docker.com*.list
+        rm -f /etc/apt/sources.list.d/download.docker.com*.sources
+        for f in /etc/apt/sources.list.d/*docker*; do
+          rm -f "$f"
+        done
+      args:
+        executable: /bin/bash
+      changed_when: true
+      when: ansible_facts["os_family"] == "Debian"
+
   tasks:
-    - name: Install Docker packages (Debian/Ubuntu)
+    - name: Install Docker prerequisites (Debian/Ubuntu)
       ansible.builtin.apt:
         name:
           - ca-certificates
           - curl
           - gnupg
         state: present
-        update_cache: true
-      when: ansible_os_family == "Debian"
+        update_cache: false
+      when: ansible_facts["os_family"] == "Debian"
+
+    - name: Ensure /etc/apt/keyrings exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+      when: ansible_facts["os_family"] == "Debian"
 
     - name: Add Docker apt key
       ansible.builtin.get_url:
-        url: https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg
+        url: https://download.docker.com/linux/{{ ansible_facts["distribution"] | lower }}/gpg
         dest: /etc/apt/keyrings/docker.asc
         mode: "0644"
-      when: ansible_os_family == "Debian"
+        force: true
+      when: ansible_facts["os_family"] == "Debian"
 
     - name: Add Docker apt repository
       ansible.builtin.apt_repository:
         repo: >-
-          deb [arch={{ ansible_architecture | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }}
+          deb [arch={{ ansible_facts["architecture"] | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }}
           signed-by=/etc/apt/keyrings/docker.asc]
-          https://download.docker.com/linux/{{ ansible_distribution | lower }}
-          {{ ansible_distribution_release }} stable
+          https://download.docker.com/linux/{{ ansible_facts["distribution"] | lower }}
+          {{ ansible_facts["distribution_release"] }} stable
         filename: docker
         state: present
-      when: ansible_os_family == "Debian"
+        update_cache: true
+      when: ansible_facts["os_family"] == "Debian"
 
     - name: Install Docker Engine and Compose plugin
       ansible.builtin.apt:
@@ -83,7 +111,7 @@
           - docker-compose-plugin
         state: present
         update_cache: true
-      when: ansible_os_family == "Debian"
+      when: ansible_facts["os_family"] == "Debian"
 
     - name: Ensure Docker service is running
       ansible.builtin.service:
@@ -113,13 +141,28 @@
         - { src: dynamic-routers.yml.j2, dest: traefik/dynamic/routers.yml }
       notify: Restart stack
 
+    - name: Login to GHCR (private package)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        printf '%s' "{{ ghcr_pull_token }}" \
+          | docker login {{ ghcr_registry }} -u "{{ ghcr_pull_user }}" --password-stdin
+      no_log: true
+      changed_when: true
+      when:
+        - (ghcr_pull_user | default('') | length) > 0
+        - (ghcr_pull_token | default('') | length) > 0
+
     - name: Pull container images
       ansible.builtin.command:
         cmd: docker compose pull
         chdir: "{{ deploy_dir }}"
       environment:
         COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
+      register: compose_pull
       changed_when: true
+      failed_when:
+        - compose_pull.rc != 0
+      ignore_errors: false
 
     - name: Start Traefik and ACME webroot (HTTP)
       ansible.builtin.command:

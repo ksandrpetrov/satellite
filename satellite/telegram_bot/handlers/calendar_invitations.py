@@ -62,6 +62,7 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 _INVITATION_HORIZON_DAYS = 60
+_INVITATION_LOOKBACK_DAYS = 14
 _MAX_INVITATIONS = 12
 _INVITATIONS_OPEN_ACTION = "invitations:open"
 
@@ -97,12 +98,13 @@ def _fetch_invitation_events(ctx: HandlerContext, user_id: int) -> tuple[list, s
     """Все события на горизонте приглашений (до фильтра NEEDS-ACTION)."""
     now = datetime.now(tz=ctx.tz)
     today = now.date()
+    start = today - timedelta(days=_INVITATION_LOOKBACK_DAYS)
     end = today + timedelta(days=_INVITATION_HORIZON_DAYS)
     connected = ctx.calendar_service.require_connection(user_id)
     login = connected.context.login
     events = ctx.calendar_service.list_events_for_invitations(
         user_id,
-        start_date=today,
+        start_date=start,
         end_date=end,
         tz=ctx.tz,
     )
@@ -117,6 +119,7 @@ def _fetch_pending(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
         ctx.tz,
         now=now,
         max_events=_MAX_INVITATIONS + 1,
+        lookback_days=_INVITATION_LOOKBACK_DAYS,
     )
     truncated = len(pending) > _MAX_INVITATIONS
     if truncated:

@@ -1,18 +1,27 @@
 # Docker-деплой (GHCR + Traefik + Certbot)
 
-## CI: образ при релизе
+## CI/CD: GitHub Actions под ключ
 
-Workflow [`.github/workflows/release-docker.yml`](../.github/workflows/release-docker.yml)
-срабатывает на **GitHub Release → Published**, собирает образ и пушит в
-**GitHub Container Registry**:
+Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на каждый push в `main`
+(а также на тег `v*`):
 
-```text
-ghcr.io/ksandrpetrov/satellite:<semver>
-ghcr.io/ksandrpetrov/satellite:latest
-```
+1. **test** — ruff (lint + format check), py_compile, pytest.
+2. **build** — Docker-образ в GHCR с тегами `:sha-<short>` (immutable) и `:latest` (только для main).
+3. **deploy** — SSH на сервер: обновить `SATELLITE_IMAGE` в `.env`, `docker compose pull satellite`,
+   `docker compose up -d satellite`. Только для `main` и ручного `workflow_dispatch`.
 
-После первого релиза сделайте пакет **public** в GitHub:
+Пакет в GHCR после первой сборки сделайте **public** (или задайте `GHCR_PULL_TOKEN`, см. ниже):
 `Settings → Packages → satellite → Package settings → Change visibility`.
+
+### Секреты для деплоя (Settings → Secrets and variables → Actions)
+
+| Секрет | Назначение |
+|--------|------------|
+| `DEPLOY_HOST` | IP или hostname сервера |
+| `DEPLOY_USER` | SSH-пользователь (`root` или deploy-user) |
+| `SSH_PRIVATE_KEY` | приватный ключ SSH (публичный — в `authorized_keys` на сервере) |
+| `SSH_KNOWN_HOSTS` | опционально: вывод `ssh-keyscan -H <DEPLOY_HOST>` |
+| `GHCR_PULL_TOKEN` | опционально: PAT с `read:packages` для приватного пакета GHCR |
 
 ## Перед деплоем
 
@@ -20,7 +29,7 @@ ghcr.io/ksandrpetrov/satellite:latest
 2. Отредактируйте [`ansible/group_vars/all.yml`](ansible/group_vars/all.yml):
    - `domain`, `certbot_email`
    - `telegram_bot_token`, `admin_telegram_ids`
-   - `image_tag` (например `1.0.0` после релиза или `latest`)
+   - `image_tag` для первичного деплоя (`latest`, semver или `sha-<commit>`)
 3. DNS: A-запись `domain` → IP сервера, порты **80** и **443** открыты.
 4. На машине, с которой запускаете Ansible: `ansible` и SSH-доступ на сервер.
 
@@ -51,10 +60,25 @@ cd deploy/ansible && ansible-playbook site.yml
 
 Каталог на сервере: `/opt/satellite` (меняется через `deploy_dir` в `group_vars`).
 
-## Обновление после нового релиза
+## Обновление образа после первичного деплоя
 
-1. В `group_vars/all.yml` выставьте `image_tag` на версию релиза (без `v`).
-2. Снова: `make deploy`.
+**Автоматически (рекомендуется):** push в `main` → GitHub Actions сам собирает и катит образ,
+делает `docker compose pull/up -d satellite` на сервере. Запустить тот же rolling update
+без коммита — Actions → workflow `deploy` → **Run workflow**.
+
+**Вручную локально** (тот же `scripts/ci-deploy-remote.sh`):
+
+```bash
+DEPLOY_HOST=91.201.114.159 \
+DEPLOY_USER=root \
+SSH_PRIVATE_KEY="$(cat ~/.ssh/satellite_deploy)" \
+SATELLITE_IMAGE=ghcr.io/ksandrpetrov/satellite:sha-abc1234 \
+  bash scripts/ci-deploy-remote.sh
+```
+
+**Полный playbook (Ansible)** нужен только когда меняется стек: домен, Traefik,
+секреты в `.env`, версия Certbot. Тогда: правим `group_vars/all.yml` (при необходимости
+`image_tag` на конкретный semver) и снова `make deploy`.
 
 ## Переменные Ansible (`group_vars/all.yml`)
 
@@ -63,7 +87,7 @@ cd deploy/ansible && ansible-playbook site.yml
 | `domain` | Публичный хост; `WEBAPP_BASE_URL` = `https://<domain>/connect` |
 | `certbot_email` | Email для Let's Encrypt |
 | `certbot_staging` | `true` — staging-сертификаты (отладка) |
-| `image_tag` | Тег образа GHCR (`latest` или semver) |
+| `image_tag` | Тег образа GHCR для **первичного** `make deploy` (`latest` или semver); дальше Actions пишет `SATELLITE_IMAGE` в `.env` |
 | `telegram_bot_token`, `admin_telegram_ids` | Секреты бота |
 | `token_encryption_key` | Пусто при первом деплое — ключ сгенерируется; при повторном сохранится с сервера |
 | `deploy_dir` | Каталог на сервере (default `/opt/satellite`) |

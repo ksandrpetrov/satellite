@@ -126,8 +126,9 @@ loading message → `UserCalendarService.list_events` → edit.
 
 `/invitations` (кнопка «📨 Приглашения», алиасы `/invites`, `/respond`) показывает
 встречи, где у пользователя `PARTSTAT` = `NEEDS-ACTION` или `DELEGATED`, на горизонте
-до 60 дней вперёд (не более 12 пунктов). Прошедшие и уже принятые/отклонённые
-скрываются (`collect_pending_invitations` в `calendar/events.py`).
+до 60 дней вперёд и до 14 дней назад (не более 12 пунктов). Уже принятые/отклонённые
+скрываются; недавно завершённые, но без ответа, остаются в списке
+(`collect_pending_invitations` в `calendar/events.py`).
 
 Сценарий:
 

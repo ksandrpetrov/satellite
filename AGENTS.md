@@ -113,7 +113,7 @@ satellite/
 | Парсинг .env | [`config.py`](satellite/config.py), образец [`.env.example`](.env.example) |
 | CalDAV / провайдеры | [`calendar/caldav_client.py`](satellite/calendar/caldav_client.py), [`calendar/providers/`](satellite/calendar/providers/), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) |
 | Список / создание событий в боте | [`handlers/calendar_list.py`](satellite/telegram_bot/handlers/calendar_list.py), [`calendar_create.py`](satellite/telegram_bot/handlers/calendar_create.py); формат строк — [`events.py`](satellite/calendar/events.py) |
-| Приглашения (NEEDS-ACTION, ответ в CalDAV) | [`handlers/calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py), [`events.py`](satellite/calendar/events.py) (`collect_pending_invitations`, `is_pending_invitation_for_user`), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) (`list_events_for_invitations`, `set_attendee_partstat`), [`caldav_client.py`](satellite/calendar/caldav_client.py) (PARTSTAT refresh/update) |
+| Приглашения (NEEDS-ACTION, ответ в CalDAV) | [`handlers/calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) (горизонт 60 дней вперёд / 14 назад), [`events.py`](satellite/calendar/events.py) (`collect_pending_invitations`, `event_relevant_for_invitations`, `is_pending_invitation_for_user`), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) (`list_events_for_invitations`, `set_attendee_partstat`), [`caldav_client.py`](satellite/calendar/caldav_client.py) (PARTSTAT refresh/update) |
 | «Изменить статус встречи» (любой PARTSTAT) | [`handlers/calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py), [`events.py`](satellite/calendar/events.py) (`collect_manageable_events`) — список + детальный экран по встрече, действия завязаны на тот же `set_attendee_partstat` |
 | Ввод времени (дайджест, /create) | [`time_utils.py`](satellite/calendar/time_utils.py); подсказки — [`messages_ru/`](satellite/messages_ru/) |
 | Нумерация встреч (дайджест, /upcoming) | [`event_index_marker`](satellite/calendar/events.py) |
@@ -210,9 +210,10 @@ python telegram_test_command.py                   # make run
 [deploy/README.md](deploy/README.md));
 **Docker (local)** — `make env && make docker-up` (см. корневой `docker-compose.yml`).
 
-CI: [`.github/workflows/test.yml`](.github/workflows/test.yml). Образ в GHCR:
-[`.github/workflows/release-docker.yml`](.github/workflows/release-docker.yml) (на GitHub Release).
-Деплой Docker: `make deploy` → [`deploy/README.md`](deploy/README.md).
+CI: [`.github/workflows/test.yml`](.github/workflows/test.yml) (PR + push: ruff, mypy, py_compile, pytest);
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — на push в `main` и тег `v*`: test → образ в GHCR →
+rolling deploy на сервер по SSH (`scripts/ci-deploy-remote.sh`). Первичный стек (Traefik/Certbot/.env) —
+`make deploy` (Ansible), см. [`deploy/README.md`](deploy/README.md).
 
 ## Скрипты
 
@@ -222,6 +223,8 @@ CI: [`.github/workflows/test.yml`](.github/workflows/test.yml). Образ в GH
 | [`scripts/install-server.sh`](scripts/install-server.sh) | systemd на VPS (`/opt/satellite`) |
 | [`scripts/bootstrap-server.sh`](scripts/bootstrap-server.sh) | apt + clone + `install-server.sh` на чистом хосте |
 | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) | CalDAV с сервера без Telegram (см. troubleshooting) |
+| [`scripts/diagnose_invitation.py`](scripts/diagnose_invitation.py) | PARTSTAT / список pending-приглашений без Telegram |
+| [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy образа на сервер (GitHub Actions и локально) |
 
 ## Web App
 

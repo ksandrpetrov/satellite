@@ -10,11 +10,20 @@ domain: cassinilab.ru
 certbot_email: admin@example.com
 certbot_staging: false
 
-# --- Образ из GHCR (публикуется workflow release-docker.yml) ---
+# --- Образ из GHCR (публикуется workflow deploy.yml) ---
 ghcr_registry: ghcr.io
 ghcr_image: ksandrpetrov/satellite
-# Тег образа: latest или semver из GitHub Release (например 1.2.3 без префикса v).
+# Тег образа для первичного деплоя: latest, semver или sha-<commit>.
+# После первичного деплоя image на сервере обновляет GitHub Actions
+# (перезаписывает SATELLITE_IMAGE в .env), и playbook не вызывают каждый push.
 image_tag: latest
+
+# Для приватного пакета GHCR (или до того, как сделаете пакет public):
+# заполните оба поля, и playbook выполнит docker login ghcr.io на сервере.
+# Токен — Personal Access Token (classic) c scope read:packages.
+# Оставьте пустыми, если пакет public.
+ghcr_pull_user: ""
+ghcr_pull_token: ""
 
 # --- Секреты приложения (заполните перед деплоем) ---
 telegram_bot_token: "REPLACE_ME"

@@ -34,9 +34,11 @@ python -m pytest
 
 Перед коммитом локально: `make check` (= lint + typecheck + compile + test).
 
-Отдельно при публикации GitHub Release собирается Docker-образ и пушится в GHCR
-([`.github/workflows/release-docker.yml`](../.github/workflows/release-docker.yml);
-образ на Python 3.12). Деплой образа — [deploy/README.md](../deploy/README.md).
+На каждый push в `main` (и тег `v*`) [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
+гоняет ruff + py_compile + pytest (без отдельного job mypy — он только в
+[`test.yml`](../.github/workflows/test.yml)), собирает Docker-образ (Python 3.12) в GHCR
+и для `main` сам обновляет образ на сервере по SSH. Подробности и секреты —
+[deploy/README.md](../deploy/README.md).
 
 Если проект временно перенесен, а venv содержит старые absolute shebang-пути,
 можно использовать системный Python с пакетами из venv:
@@ -130,7 +132,8 @@ python -m pytest tests/test_weather.py
 **Invitations** (`test_calendar_invitations.py`, PARTSTAT в `test_events.py`,
 `test_seagull_digest.py`, `test_caldav_candidates.py`):
 
-- `is_pending_invitation_for_user`, `collect_pending_invitations`;
+- `is_pending_invitation_for_user`, `event_relevant_for_invitations`,
+  `collect_pending_invitations` (в т.ч. lookback 14 дней для завершённых без ответа);
 - роутинг `/invitations` и CalDAV `set_attendee_partstat` (mock provider).
 
 **Calendar selection** (`test_calendar_selection.py`):

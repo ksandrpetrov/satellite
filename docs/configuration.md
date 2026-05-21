@@ -72,6 +72,19 @@ Traefik не достучится до Web App внутри сети Docker. Pla
 [`deploy/.env.example`](../deploy/.env.example) выставляют это автоматически;
 `WEBAPP_BASE_URL` собирается как `https://<domain>/connect`.
 
+**Образ бота на сервере** задаётся переменной `SATELLITE_IMAGE` в `.env` рядом с
+`docker-compose.yml` (сервис `satellite` использует `image: ${SATELLITE_IMAGE}`):
+
+```env
+SATELLITE_IMAGE=ghcr.io/ksandrpetrov/satellite:latest
+```
+
+При первичном `make deploy` Ansible записывает тег из `image_tag` в
+`group_vars/all.yml`. После этого rolling update из GitHub Actions
+([`deploy.yml`](../.github/workflows/deploy.yml)) перезаписывает
+`SATELLITE_IMAGE` на immutable `:sha-<short>` и делает `docker compose pull/up`.
+Остальные ключи в `.env` (включая `TOKEN_ENCRYPTION_KEY`) pipeline не трогает.
+
 ## Валидация при старте
 
 Production-бот (`run_bot` → `load_settings` с `require_*`) перед long-polling:

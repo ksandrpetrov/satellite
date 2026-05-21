@@ -129,15 +129,17 @@ journalctl -u satellite-bot.service -f
 
 ### Альтернатива: Docker (Traefik + Certbot)
 
-Образ публикуется в GHCR на GitHub Release. Деплой одной командой после правки
-`deploy/ansible/inventory.yml` и `deploy/ansible/group_vars/all.yml`:
+Первичный стек — одной командой после правки `deploy/ansible/inventory.yml` и
+`deploy/ansible/group_vars/all.yml`:
 
 ```bash
 make deploy
 ```
 
-Подробности и ручной вариант: [deploy/README.md](deploy/README.md),
-[docs/operations.md](docs/operations.md#запуск-на-сервере).
+Образы в GHCR собирает [deploy.yml](.github/workflows/deploy.yml) на каждый push в
+`main` (теги `:sha-<short>` и `:latest`); rolling update на сервер — автоматически
+по SSH. Подробности: [deploy/README.md](deploy/README.md),
+[docs/operations.md](docs/operations.md#docker-ghcr--traefik--certbot).
 
 ## Главное про конфиг
 
@@ -177,11 +179,16 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 - [AGENTS.md](AGENTS.md) — карта модулей, инварианты и скрипты для правок кода и AI-агентов
 
 Скрипты установки и диагностики: `scripts/install.sh`, `install-server.sh`,
-`bootstrap-server.sh`, `diagnose_caldav.py` — см. [AGENTS.md](AGENTS.md#скрипты)
+`bootstrap-server.sh`, `diagnose_caldav.py`, `diagnose_invitation.py`,
+`ci-deploy-remote.sh` — см. [AGENTS.md](AGENTS.md#скрипты)
 и [operations.md](docs/operations.md#запуск-на-сервере).
 
-CI: [test.yml](.github/workflows/test.yml) (Python 3.11: ruff, mypy, py_compile, pytest);
-образ в GHCR: [release-docker.yml](.github/workflows/release-docker.yml) (на GitHub Release).
+CI/CD:
+
+- [test.yml](.github/workflows/test.yml) — ruff, mypy, py_compile, pytest (PR + push).
+- [deploy.yml](.github/workflows/deploy.yml) — push в `main` / тег `v*`: test → образ в GHCR →
+  rolling deploy на сервер по SSH (одна кнопка ▶ для ручного запуска). Настройка секретов и
+  первичный стек — [deploy/README.md](deploy/README.md).
 
 ## Runtime-файлы
 
