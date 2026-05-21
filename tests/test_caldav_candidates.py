@@ -175,7 +175,7 @@ class _StubCalendarObj:
         self.saved_ical: bytes | None = None
         self.raise_on_save: Exception | None = None
 
-    def save_event(self, ical: bytes) -> None:
+    def add_event(self, ical: bytes) -> None:
         if self.raise_on_save is not None:
             raise self.raise_on_save
         self.saved_ical = ical

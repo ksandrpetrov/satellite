@@ -287,7 +287,7 @@ Push в `main`, ручной запуск workflow `deploy` (`Actions → deploy
 
 Pipeline [`deploy.yml`](../.github/workflows/deploy.yml) после сборки образа гоняет
 [`docker-smoke-image.sh`](../scripts/docker-smoke-image.sh) (импорт всех модулей `satellite`,
-пин `caldav>=2.2,<3`, HTTP `/healthz` внутри контейнера через
+пин `caldav>=3.0,<4`, HTTP `/healthz` внутри контейнера через
 [`smoke_container.py`](../scripts/smoke_container.py)). Локально: `make docker-smoke`.
 
 Скрипт [`ci-deploy-remote.sh`](../scripts/ci-deploy-remote.sh) (тот же, что в Actions):

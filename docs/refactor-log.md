@@ -209,14 +209,16 @@ pytest оставался зелёным.
 - `pyproject.toml`: убраны устаревшие per-file-ignores под удалённые shim'ы;
   добавлены под фасады `users/__init__.py` и `calendar/events/__init__.py`.
 
-## caldav 2.x и явные импорты (2026-05-21)
+## caldav 3.x (2026-05-21)
 
-- `requirements.txt`: `caldav>=2.2,<3` — в 3.x `DAVClient`/`Event` стали lazy
-  (PEP 562), mypy перестаёт видеть атрибуты.
-- `caldav_client.py`: импорт `DAVClient` и `Event` из конкретных подмодулей
-  (`davclient`, `calendarobjectresource`), без runtime `from caldav import Event`.
-- `tests/test_requirements.py` — регрессия на снятие пина; `smoke_container.py` —
-  то же внутри Docker-образа.
+- `requirements.txt`: `caldav>=3.0,<4` (Python 3.10+; CI/Docker уже на 3.11+).
+- `caldav_client.py`: импорт `DAVClient`/`Event` из подмодулей (mypy); API v3 —
+  `get_principal`, `get_calendars`, `get_events`, `search`, `add_event`.
+- `tests/test_requirements.py`, `smoke_container.py` — контракт на пин 3.x.
+
+## caldav 2.x и явные импорты (2026-05-21, superseded)
+
+- Было: `caldav>=2.2,<3`, импорт из подмодулей. Заменено миграцией на 3.x выше.
 
 ## Smoke после сборки и деплоя (2026-05-21)
 

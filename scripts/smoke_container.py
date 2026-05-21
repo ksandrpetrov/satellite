@@ -4,7 +4,7 @@
 Запускается в CI после build (см. scripts/docker-smoke-image.sh) и локально:
   docker build -t satellite:dev . && docker run --rm satellite:dev python scripts/smoke_container.py
 
-Падает при сломанных импортах, caldav 3.x или недоступном /healthz.
+Падает при сломанных импортах, caldav <3 или недоступном /healthz.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ import satellite  # noqa: E402
 
 _REQUIREMENTS = _APP_ROOT / "requirements.txt"
 _CALDAV_IMPORTS = (
+    "caldav",
     "caldav.davclient",
     "caldav.calendarobjectresource",
     "caldav.lib.error",
@@ -46,27 +47,28 @@ def _check_caldav_pin() -> None:
     if not _REQUIREMENTS.is_file():
         _fail(f"requirements not found at {_REQUIREMENTS}")
     text = _REQUIREMENTS.read_text(encoding="utf-8")
-    if not re.search(r"^caldav\s*>=\s*2\.2\s*,\s*<\s*3\s*$", text, re.MULTILINE):
-        _fail("requirements.txt must pin caldav>=2.2,<3")
+    if not re.search(r"^caldav\s*>=\s*3\.\d+\s*,\s*<\s*4\s*$", text, re.MULTILINE):
+        _fail("requirements.txt must pin caldav>=3.x,<4")
     import caldav
 
     version = getattr(caldav, "__version__", "")
     if version:
         major = int(version.split(".", maxsplit=1)[0])
-        if major >= 3:
-            _fail(f"installed caldav {version} is 3.x (need <3)")
+        if major < 3:
+            _fail(f"installed caldav {version} is <3 (need 3.x)")
     _ok(f"caldav pin + installed {version or 'unknown'}")
 
 
 def _check_caldav_import_paths() -> None:
     for name in _CALDAV_IMPORTS:
         importlib.import_module(name)
-    from caldav.calendarobjectresource import Event as CaldavEvent
-    from caldav.davclient import DAVClient
+    from caldav import DAVClient, Event as CaldavEvent
 
     if CaldavEvent is object or DAVClient is object:
-        _fail("caldav lazy exports resolved to object (PEP 562 / 3.x)")
-    _ok("caldav submodule imports")
+        _fail("caldav namespace exports resolved to object")
+    if not isinstance(DAVClient, type) or not isinstance(CaldavEvent, type):
+        _fail("caldav DAVClient/Event are not classes")
+    _ok("caldav imports (namespace + submodules)")
 
 
 def _check_satellite_imports() -> None:

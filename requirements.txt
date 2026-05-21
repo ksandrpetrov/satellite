@@ -1,7 +1,7 @@
-# <3: в 3.x DAVClient/Event — lazy PEP 562 (__getattr__ -> object), mypy ломается.
-caldav>=2.2,<3
-cryptography>=42.0
-icalendar>=5.0
-python-dotenv>=1.0
-requests>=2.31
-Pillow>=10.0
+# 3.x: Python 3.10+; импорт `from caldav import DAVClient, Event`.
+caldav>=3.2,<4
+cryptography>=48.0
+icalendar>=7.1
+python-dotenv>=1.2
+requests>=2.34
+Pillow>=12.0

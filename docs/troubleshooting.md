@@ -444,7 +444,7 @@ cd /opt/satellite && docker compose up -d satellite
 
 ### Упал docker smoke (job build) или smoke-prod (job deploy)
 
-**Build — `Smoke Docker image`:** образ не импортируется, внутри установлен `caldav` 3.x
+**Build — `Smoke Docker image`:** образ не импортируется, внутри установлен `caldav` <3
 или `/healthz` не отвечает. Локально: `make docker-smoke` или
 `bash scripts/docker-smoke-image.sh ghcr.io/ksandrpetrov/satellite:sha-<short>`.
 Смотрите вывод `smoke_container.py` (первые строки `smoke_container: FAIL …`).

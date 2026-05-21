@@ -16,7 +16,7 @@ Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на 
 1. **test** — reusable `_checks.yml`: ruff (lint + format check), mypy, py_compile, pytest.
 2. **build** — Docker-образ в GHCR: `:sha-<short>` (всегда), `:latest` (только `main`),
    semver-теги (только `v*`); затем **smoke** (`scripts/docker-smoke-image.sh` →
-   импорты, `caldav<3`, HTTP `/healthz` внутри образа).
+   импорты, `caldav>=3`, HTTP `/healthz` внутри образа).
 3. **deploy** — SSH на сервер (`scripts/ci-deploy-remote.sh`): нормализация
    `DEPLOY_HOST`/`DEPLOY_USER`/`SATELLITE_IMAGE`; при наличии legacy
    `satellite-bot.service` — остановить и отключить unit (освободить порт на хосте);

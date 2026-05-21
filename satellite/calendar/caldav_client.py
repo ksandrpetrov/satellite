@@ -8,7 +8,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone, tzinfo
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import requests
@@ -314,7 +314,7 @@ class CalDAVService:
         for handle in result.calendars:
             cal_events: list[Event] = []
             try:
-                events_iter = handle.obj.events()
+                events_iter = handle.obj.get_events()
             except Exception as exc:  # noqa: BLE001
                 log.warning(
                     "Failed to enumerate events for calendar url=%s: %s",
@@ -404,12 +404,9 @@ class CalDAVService:
         last_value_error: ValueError | None = None
         for expand in (True, False):
             try:
-                try:
-                    return handle.obj.search(
-                        start=range_start, end=range_end, event=True, expand=expand
-                    )
-                except TypeError:
-                    return handle.obj.date_search(start=range_start, end=range_end, expand=expand)
+                return handle.obj.search(
+                    start=range_start, end=range_end, event=True, expand=expand
+                )
             except ValueError as exc:
                 last_value_error = exc
                 if expand:
@@ -683,7 +680,7 @@ class CalDAVService:
         ics.add("version", "2.0")
         ics.add_component(component)
         try:
-            handle.obj.save_event(ics.to_ical())
+            handle.obj.add_event(ics.to_ical())
         except DAVError as exc:
             log.warning(
                 "CalDAV create_event failed url=%s status=%s: %s",
@@ -796,8 +793,9 @@ class CalDAVService:
                         username=username,
                         password=self._app_password,
                     )
-                    principal = client.principal()
-                    calendars = principal.calendars()
+                    principal = client.get_principal()
+                    # Sync DAVClient: runtime — list; stubs — list | Coroutine.
+                    calendars = cast(list[Any], principal.get_calendars())
                     handles = [self._make_handle(cal) for cal in calendars]
                     log.info(
                         "CalDAV discovery ok: endpoint=%s calendars=%d login_variant=%s",
@@ -842,12 +840,7 @@ class CalDAVService:
             if target_calendar_name and not calendar_matches(handle.name, target_calendar_name):
                 continue
             matched_calendar = True
-            try:
-                events_iter = handle.obj.search(
-                    start=day_start, end=day_end, event=True, expand=True
-                )
-            except TypeError:
-                events_iter = handle.obj.date_search(start=day_start, end=day_end, expand=True)
+            events_iter = handle.obj.search(start=day_start, end=day_end, event=True, expand=True)
             for raw_event in events_iter:
                 parsed = parse_calendar_events(raw_event.data, handle.name)
                 event_url = str(getattr(raw_event, "url", "") or "")

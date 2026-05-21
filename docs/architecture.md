@@ -383,7 +383,7 @@ The bot logs operational failures but sends users only safe, non-technical messa
 **CI/CD (Docker):** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на
 push в `main` или тег `v*` — reusable `_checks.yml` (ruff + mypy + `py_compile` + pytest),
 сборка в GHCR (`:sha-<short>`; `:latest` на main; semver на теге), затем
-`scripts/docker-smoke-image.sh` (импорты, `caldav<3`, `/healthz` в образе). Rolling update
+`scripts/docker-smoke-image.sh` (импорты, `caldav>=3`, `/healthz` в образе). Rolling update
 контейнера на сервере (`scripts/ci-deploy-remote.sh`, `SATELLITE_IMAGE` в `.env`) — только
 для `main` и `workflow_dispatch`: `compose pull/up`, ожидание `healthy`, host `/healthz`,
 затем `scripts/smoke-prod.sh` с публичного URL (`SMOKE_PUBLIC_BASE_URL`, в Actions

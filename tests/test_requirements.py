@@ -11,21 +11,21 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIREMENTS = ROOT / "requirements.txt"
 
 
-def test_caldav_pinned_below_3() -> None:
+def test_caldav_pinned_at_3() -> None:
     text = REQUIREMENTS.read_text(encoding="utf-8")
-    assert re.search(r"^caldav\s*>=\s*2\.2\s*,\s*<\s*3\s*$", text, re.MULTILINE), (
-        "caldav must stay pinned as caldav>=2.2,<3 (3.x breaks mypy and runtime imports)"
+    assert re.search(r"^caldav\s*>=\s*3\.\d+\s*,\s*<\s*4\s*$", text, re.MULTILINE), (
+        "caldav must stay pinned as caldav>=3.x,<4 (requires Python 3.10+)"
     )
 
 
 @pytest.mark.parametrize(
     "line",
     [
-        "cryptography>=42.0",
-        "icalendar>=5.0",
-        "python-dotenv>=1.0",
-        "requests>=2.31",
-        "Pillow>=10.0",
+        "cryptography>=48.0",
+        "icalendar>=7.1",
+        "python-dotenv>=1.2",
+        "requests>=2.34",
+        "Pillow>=12.0",
     ],
 )
 def test_core_runtime_deps_present(line: str) -> None:

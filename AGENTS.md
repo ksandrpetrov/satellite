@@ -272,7 +272,7 @@ TLS и reverse proxy на 443 — ваш существующий nginx на х�
 | [`scripts/diagnose_invitation.py`](scripts/diagnose_invitation.py) | PARTSTAT / pending без Telegram (`--user-id`, `--summary`, опц. `--accept`; lookback 14 д — как в боте) |
 | [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy: trim секретов SSH/host → stop/disable legacy `satellite-bot.service` → детект legacy `logs/users.json` vs пустой volume → `SATELLITE_IMAGE` в `.env` → `compose pull/up` → wait healthy + host `/healthz` → опц. [`smoke-prod.sh`](scripts/smoke-prod.sh) |
 | [`scripts/migrate-legacy-logs.sh`](scripts/migrate-legacy-logs.sh) | Однократный перенос `/opt/satellite/logs/` (systemd) в volume `satellite_satellite-logs` (Docker) с `chown` под satellite uid внутри образа; идемпотентен, делает rescue-копию |
-| [`scripts/docker-smoke-image.sh`](scripts/docker-smoke-image.sh) | CI/local: `docker run` → [`smoke_container.py`](scripts/smoke_container.py) (импорты, caldav&lt;3, HTTP /healthz) |
+| [`scripts/docker-smoke-image.sh`](scripts/docker-smoke-image.sh) | CI/local: `docker run` → [`smoke_container.py`](scripts/smoke_container.py) (импорты, caldav≥3, HTTP /healthz) |
 | [`scripts/smoke-prod.sh`](scripts/smoke-prod.sh) | Публичные curl-проверки `/healthz`, `/connect`, `/api/calendar/status` после деплоя |
 
 ## Web App

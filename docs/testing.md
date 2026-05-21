@@ -48,7 +48,7 @@ semver-образ. После деплоя CI вызывает [`smoke-prod.sh`]
 ## Контракт зависимостей (`test_requirements.py`)
 
 [`tests/test_requirements.py`](../tests/test_requirements.py) фиксирует пины в
-`requirements.txt`, в первую очередь `caldav>=2.2,<3` (в 3.x ломаются runtime-импорты
+`requirements.txt`, в первую очередь `caldav>=3.0,<4` (Python 3.10+; smoke проверяет импорты
 и mypy). Не ослабляйте assert без осознанной смены контракта CalDAV.
 
 ## Smoke (образ и production URL)
