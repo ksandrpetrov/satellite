@@ -379,14 +379,14 @@ def test_enrich_invitations_prioritizes_upcoming_for_partstat_refresh(monkeypatc
         "url": "https://fake/calendars/cal/old.ics",
         "dtstart": "2026-05-10T10:00:00+03:00",
         "dtend": "2026-05-10T11:00:00+03:00",
-        "attendees": [f"mailto:me@vk.team;PARTSTAT=ACCEPTED"],
+        "attendees": ["mailto:me@vk.team;PARTSTAT=ACCEPTED"],
     }
     may26 = {
         "summary": "May26 invite",
         "url": target_url,
         "dtstart": "2026-05-26T17:30:00+03:00",
         "dtend": "2026-05-26T18:30:00+03:00",
-        "attendees": [f"mailto:me@vk.team;PARTSTAT=ACCEPTED"],
+        "attendees": ["mailto:me@vk.team;PARTSTAT=ACCEPTED"],
     }
     events = [stale_accepted, may26]
     refreshed_urls: list[str] = []
@@ -416,8 +416,6 @@ def test_enrich_invitations_prioritizes_upcoming_for_partstat_refresh(monkeypatc
                 self.content = content
 
         return _Resp(cal.to_ical())
-
-    import requests
 
     monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
 
@@ -457,14 +455,12 @@ def test_enrich_invitations_skips_get_when_report_already_needs_action(monkeypat
             "url": "https://fake/calendars/cal/pending.ics",
             "dtstart": "2026-05-26T17:30:00+03:00",
             "dtend": "2026-05-26T18:30:00+03:00",
-            "attendees": [f"mailto:me@vk.team;PARTSTAT=NEEDS-ACTION"],
+            "attendees": ["mailto:me@vk.team;PARTSTAT=NEEDS-ACTION"],
         }
     ]
 
     def fail_get(*_args, **_kwargs):
         raise AssertionError("GET should not run when REPORT already has NEEDS-ACTION")
-
-    import requests
 
     monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fail_get)
 
