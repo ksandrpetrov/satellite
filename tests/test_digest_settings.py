@@ -693,6 +693,61 @@ def test_pending_digest_toggle_enables(tmp_path: Path):
     assert "включён" in text
 
 
+def test_pending_digest_days_bitmask_round_trip(tmp_path: Path):
+    store = SubscriptionStore(tmp_path / "subs.json")
+    store.update_settings(100, "alice", pending_digest_days="1010100")
+    rec = store.get(100)
+    assert rec is not None
+    assert rec.pending_digest_days == "1010100"
+
+    reloaded = SubscriptionStore(tmp_path / "subs.json")
+    assert reloaded.get(100).pending_digest_days == "1010100"
+
+
+def test_pending_digest_days_toggle_updates_mask(tmp_path: Path):
+    from satellite.messages_ru import pending_digest_day_callback_data
+
+    ctx, store, _state = _ctx(tmp_path)
+    store.update_settings(900, "alice", pending_digest_days="1111100")
+
+    handle_callback_query(ctx, _callback(900, pending_digest_day_callback_data(5)))
+
+    assert store.get(900).pending_digest_days == "1111110"
+
+
+def test_pending_digest_days_toggle_blocks_last_day(tmp_path: Path):
+    from satellite.messages_ru import (
+        PENDING_DIGEST_LAST_DAY_TEXT,
+        pending_digest_day_callback_data,
+    )
+
+    ctx, store, _state = _ctx(tmp_path)
+    store.update_settings(900, "alice", pending_digest_days="1000000")
+
+    handle_callback_query(ctx, _callback(900, pending_digest_day_callback_data(0)))
+
+    assert store.get(900).pending_digest_days == "1000000"
+    assert (
+        ctx.telegram.answer_callback_query.call_args.kwargs["text"] == PENDING_DIGEST_LAST_DAY_TEXT
+    )
+    assert ctx.telegram.answer_callback_query.call_args.kwargs["show_alert"] is True
+
+
+def test_pending_digest_days_keyboard_shows_weekday_toggles(tmp_path: Path):
+    from satellite.messages_ru import CB_PENDING_DIGEST_DAYS
+
+    ctx, store, _state = _ctx(tmp_path)
+    store.update_settings(900, "alice", pending_digest_days="1000000")
+
+    handle_callback_query(ctx, _callback(900, CB_PENDING_DIGEST_DAYS))
+
+    keyboard = ctx.telegram.edit_message_text.call_args.kwargs["reply_markup"]
+    rows = keyboard["inline_keyboard"]
+    assert len(rows) == 9  # 7 дней + пресеты + назад
+    assert rows[0][0]["text"] == "✅ Пн"
+    assert rows[1][0]["text"] == "Вт"
+
+
 def test_pending_digest_time_input_updates_field(tmp_path: Path):
     from satellite.messages_ru import CB_PENDING_DIGEST_TIME, PENDING_DIGEST_TIME_INVALID_TEXT
     from satellite.telegram_bot.handlers.digest_state import DIGEST_KIND_PENDING

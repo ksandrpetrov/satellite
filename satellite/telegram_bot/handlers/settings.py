@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...calendar.time_utils import normalize_hhmm_input
+from ...digest_utils import toggle_digest_days_bitmask
 from ...messages_ru import (
     CB_DIGEST_BACK,
     CB_DIGEST_CLOSE,
@@ -24,6 +25,7 @@ from ...messages_ru import (
     CB_DIGEST_TOGGLE,
     CB_PENDING_DIGEST_BACK,
     CB_PENDING_DIGEST_CLOSE,
+    CB_PENDING_DIGEST_DAY_PREFIX,
     CB_PENDING_DIGEST_DAYS,
     CB_PENDING_DIGEST_DAYS_ALL,
     CB_PENDING_DIGEST_DAYS_WEEKDAYS,
@@ -36,6 +38,7 @@ from ...messages_ru import (
     DIGEST_TIME_INVALID_TEXT,
     PENDING_DIGEST_DAYS_ALL_APPLIED_TEXT,
     PENDING_DIGEST_DAYS_WEEKDAYS_APPLIED_TEXT,
+    PENDING_DIGEST_LAST_DAY_TEXT,
     PENDING_DIGEST_SETTINGS_CLOSED_TEXT,
     PENDING_DIGEST_TIME_INVALID_TEXT,
     build_digest_days_keyboard,
@@ -343,6 +346,49 @@ def handle_callback_set_days(
     safe_answer_callback(ctx, cb)
 
 
+def handle_pending_digest_day_toggle(
+    ctx: HandlerContext,
+    cb: IncomingCallback,
+    weekday: int,
+) -> None:
+    bindings = _bindings(DIGEST_KIND_PENDING)
+    if cb.chat_id is None or cb.user_id is None:
+        return
+    username = effective_username_from_callback(cb)
+    settings = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
+    current_days = _days(settings, bindings)
+    new_days = toggle_digest_days_bitmask(current_days, weekday)
+    if new_days is None:
+        safe_answer_callback(ctx, cb, text=PENDING_DIGEST_LAST_DAY_TEXT, show_alert=True)
+        return
+    if new_days == current_days:
+        safe_answer_callback(ctx, cb)
+        return
+    updated = _update_settings(
+        ctx,
+        cb.chat_id,
+        username,
+        telegram_user_id=cb.user_id,
+        bindings=bindings,
+        days=new_days,
+    )
+    log.info(
+        "Toggle %s weekday=%s: chat_id=%s username=%s -> %s",
+        bindings.days_field,
+        weekday,
+        cb.chat_id,
+        username,
+        _days(updated, bindings),
+    )
+    edit_callback_message(
+        ctx,
+        cb,
+        bindings.days_screen_text(_days(updated, bindings)),
+        bindings.build_days_keyboard(digest_days=_days(updated, bindings)),
+    )
+    safe_answer_callback(ctx, cb)
+
+
 def handle_callback_time(
     ctx: HandlerContext, cb: IncomingCallback, *, kind: DigestKind = DIGEST_KIND_DAILY
 ) -> None:
@@ -420,11 +466,27 @@ def _route_kind_callback(
     return False
 
 
+def _route_pending_digest_day_toggle(ctx: HandlerContext, cb: IncomingCallback) -> bool:
+    data = (cb.data or "").strip()
+    if not data.startswith(CB_PENDING_DIGEST_DAY_PREFIX):
+        return False
+    suffix = data[len(CB_PENDING_DIGEST_DAY_PREFIX) :]
+    if not suffix.isdigit():
+        return False
+    weekday = int(suffix)
+    if not 0 <= weekday <= 6:
+        return False
+    handle_pending_digest_day_toggle(ctx, cb, weekday)
+    return True
+
+
 def route_settings_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
     """Диспетчер callback_data для экранов настроек обоих дайджестов."""
     data = (cb.data or "").strip()
     if not data:
         return False
+    if _route_pending_digest_day_toggle(ctx, cb):
+        return True
     if _route_kind_callback(ctx, cb, _BINDINGS[DIGEST_KIND_DAILY]):
         return True
     if _route_kind_callback(ctx, cb, _BINDINGS[DIGEST_KIND_PENDING]):

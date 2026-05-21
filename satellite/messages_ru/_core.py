@@ -1168,9 +1168,20 @@ CB_PENDING_DIGEST_TOGGLE = "pending_digest_toggle"
 CB_PENDING_DIGEST_DAYS = "pending_digest_days"
 CB_PENDING_DIGEST_DAYS_WEEKDAYS = "pending_digest_days_weekdays"
 CB_PENDING_DIGEST_DAYS_ALL = "pending_digest_days_all"
+CB_PENDING_DIGEST_DAY_PREFIX = "pending_digest_d:"
 CB_PENDING_DIGEST_TIME = "pending_digest_time"
 CB_PENDING_DIGEST_BACK = "pending_digest_back"
 CB_PENDING_DIGEST_CLOSE = "pending_digest_close"
+
+
+def _pending_digest_days_label(digest_days: str) -> str:
+    from ..digest_utils import format_digest_days_label
+
+    return format_digest_days_label(digest_days)
+
+
+def pending_digest_day_callback_data(weekday: int) -> str:
+    return f"{CB_PENDING_DIGEST_DAY_PREFIX}{weekday}"
 
 
 def pending_digest_settings_screen_text(
@@ -1178,7 +1189,7 @@ def pending_digest_settings_screen_text(
 ) -> str:
     status_emoji = "📨" if digest_enabled else "🔕"
     status_text = "включён" if digest_enabled else "отключён"
-    days_label = DIGEST_DAYS_LABEL.get(digest_days, digest_days)
+    days_label = _pending_digest_days_label(digest_days)
     return (
         "📨 <b>Настройки дайджеста непринятых встреч</b>\n\n"
         f"{status_emoji} Статус: <b>{status_text}</b>\n"
@@ -1189,12 +1200,16 @@ def pending_digest_settings_screen_text(
 
 
 def pending_digest_days_screen_text(digest_days: str) -> str:
-    days_label = DIGEST_DAYS_LABEL.get(digest_days, digest_days)
+    days_label = _pending_digest_days_label(digest_days)
     return (
         "📆 <b>Дни отправки</b>\n\n"
         f"Сейчас: <b>{days_label}</b>.\n"
-        "Когда Чайке напоминать о непринятых встречах?"
+        "Отметь дни недели — можно один или несколько.\n"
+        "Снять последнюю галочку нельзя: нужен хотя бы один день."
     )
+
+
+PENDING_DIGEST_LAST_DAY_TEXT = "Нужен хотя бы один день отправки."
 
 
 def pending_digest_time_screen_text(digest_time: str) -> str:
@@ -1243,15 +1258,28 @@ def build_pending_digest_settings_keyboard(*, digest_enabled: bool) -> dict:
 
 
 def build_pending_digest_days_keyboard(*, digest_days: str) -> dict:
-    weekdays_label = "✅ Только будни" if digest_days == "weekdays" else "Только будни"
-    all_label = "✅ Все дни" if digest_days == "all_days" else "Все дни"
-    return {
-        "inline_keyboard": [
-            [{"text": weekdays_label, "callback_data": CB_PENDING_DIGEST_DAYS_WEEKDAYS}],
-            [{"text": all_label, "callback_data": CB_PENDING_DIGEST_DAYS_ALL}],
-            [{"text": "⬅️ Назад к настройкам", "callback_data": CB_PENDING_DIGEST_BACK}],
+    from ..digest_utils import WEEKDAY_SHORT_RU, digest_days_to_bitmask
+
+    mask = digest_days_to_bitmask(digest_days)
+    rows: list[list[dict[str, str]]] = []
+    for weekday, short_name in enumerate(WEEKDAY_SHORT_RU):
+        prefix = "✅ " if mask[weekday] == "1" else ""
+        rows.append(
+            [
+                {
+                    "text": f"{prefix}{short_name}",
+                    "callback_data": pending_digest_day_callback_data(weekday),
+                }
+            ]
+        )
+    rows.append(
+        [
+            {"text": "Все дни", "callback_data": CB_PENDING_DIGEST_DAYS_ALL},
+            {"text": "Будни", "callback_data": CB_PENDING_DIGEST_DAYS_WEEKDAYS},
         ]
-    }
+    )
+    rows.append([{"text": "⬅️ Назад к настройкам", "callback_data": CB_PENDING_DIGEST_BACK}])
+    return {"inline_keyboard": rows}
 
 
 def build_pending_digest_time_keyboard() -> dict:

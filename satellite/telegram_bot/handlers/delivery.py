@@ -87,10 +87,21 @@ def edit_callback_message(
 
 
 def safe_answer_callback(
-    ctx: HandlerContext, cb: IncomingCallback, *, text: str | None = None
+    ctx: HandlerContext,
+    cb: IncomingCallback,
+    *,
+    text: str | None = None,
+    show_alert: bool = False,
 ) -> None:
     try:
-        ctx.telegram.answer_callback_query(cb.callback_query_id, text=text)
+        if show_alert:
+            ctx.telegram.answer_callback_query(
+                cb.callback_query_id,
+                text=text,
+                show_alert=True,
+            )
+        else:
+            ctx.telegram.answer_callback_query(cb.callback_query_id, text=text)
     except TelegramError as exc:
         log.info("answerCallbackQuery failed: %s", exc)
     except Exception as exc:  # noqa: BLE001 - callback ack не должен валить handler

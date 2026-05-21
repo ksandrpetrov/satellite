@@ -41,6 +41,19 @@ log = logging.getLogger(__name__)
 DIGEST_DAYS_WEEKDAYS = "weekdays"
 DIGEST_DAYS_ALL = "all_days"
 ALLOWED_DIGEST_DAYS = frozenset({DIGEST_DAYS_WEEKDAYS, DIGEST_DAYS_ALL})
+PENDING_DIGEST_DAYS_MASK_LEN = 7
+
+
+def is_valid_pending_digest_days(value: str) -> bool:
+    """Legacy ``weekdays``/``all_days`` или 7-битная маска с хотя бы одним днём."""
+    if value in ALLOWED_DIGEST_DAYS:
+        return True
+    return (
+        len(value) == PENDING_DIGEST_DAYS_MASK_LEN
+        and all(ch in "01" for ch in value)
+        and "1" in value
+    )
+
 
 DEFAULT_DIGEST_TIME = "09:00"
 DEFAULT_PENDING_DIGEST_TIME = "10:00"
@@ -131,7 +144,7 @@ class DigestSettings:
         last_sent = raw.get("last_digest_sent_date")
         last_sent_str = None if last_sent in (None, "") else str(last_sent)
         pending_days = str(raw.get("pending_digest_days") or DEFAULT_DIGEST_DAYS)
-        if pending_days not in ALLOWED_DIGEST_DAYS:
+        if not is_valid_pending_digest_days(pending_days):
             pending_days = DEFAULT_DIGEST_DAYS
         pending_time_raw = raw.get("pending_digest_time")
         if pending_time_raw is None:
@@ -341,7 +354,9 @@ class SubscriptionStore:
                 and pending_digest_enabled != updated.pending_digest_enabled
             ):
                 updated = replace(updated, pending_digest_enabled=pending_digest_enabled)
-            if pending_digest_days is not None and pending_digest_days in ALLOWED_DIGEST_DAYS:
+            if pending_digest_days is not None and is_valid_pending_digest_days(
+                pending_digest_days
+            ):
                 updated = replace(updated, pending_digest_days=pending_digest_days)
             if pending_digest_time is not None and pending_digest_time:
                 normalized_pending_time = normalize_hhmm_input(pending_digest_time)

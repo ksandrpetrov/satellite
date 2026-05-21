@@ -14,7 +14,11 @@ from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
 from satellite.config import DigestConfig
-from satellite.digest_utils import is_digest_day_allowed, resolve_target_date
+from satellite.digest_utils import (
+    is_digest_day_allowed,
+    resolve_target_date,
+    toggle_digest_days_bitmask,
+)
 from satellite.invitations_view import InvitationsScreen
 from satellite.scheduler import (
     DigestScheduler,
@@ -203,6 +207,19 @@ def test_is_day_allowed_weekdays():
 def test_is_day_allowed_all_days():
     for wd in range(7):
         assert is_digest_day_allowed(DIGEST_DAYS_ALL, wd)
+
+
+def test_is_day_allowed_custom_bitmask():
+    mask = "1010100"  # Пн, Ср, Пт
+    assert is_digest_day_allowed(mask, 0)
+    assert not is_digest_day_allowed(mask, 1)
+    assert is_digest_day_allowed(mask, 2)
+    assert not is_digest_day_allowed(mask, 6)
+
+
+def test_toggle_digest_days_bitmask_requires_at_least_one_day():
+    monday_only = "1000000"
+    assert toggle_digest_days_bitmask(monday_only, 0) is None
 
 
 # --- resolve_target_date ----------------------------------------------------
