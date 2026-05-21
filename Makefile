@@ -6,7 +6,7 @@ VENV_PIP := $(VENV)/bin/pip
 ENTRY := telegram_test_command.py
 DOCKER_IMAGE ?= satellite:dev
 
-.PHONY: help install install-dev install-server deploy venv env fernet-key run test compile lint format typecheck check clean update docker-build docker-up docker-down docker-logs docker-smoke smoke-prod
+.PHONY: help install install-dev install-server deploy venv env fernet-key run test compile lint format format-check typecheck check clean update docker-build docker-up docker-down docker-logs docker-smoke smoke-prod
 
 help:
 	@echo "Targets:"
@@ -19,8 +19,9 @@ help:
 	@echo "  make compile        py_compile всех модулей (как в CI)"
 	@echo "  make lint           ruff (lint)"
 	@echo "  make format         ruff format"
+	@echo "  make format-check   ruff format --check (как в CI)"
 	@echo "  make typecheck      mypy на satellite/ (см. pyproject.toml)"
-	@echo "  make check          lint + typecheck + compile + test"
+	@echo "  make check          lint + format-check + typecheck + compile + test"
 	@echo "  make env            создать .env из шаблона и сгенерировать TOKEN_ENCRYPTION_KEY"
 	@echo "  make fernet-key     напечатать новый Fernet-ключ"
 	@echo "  make docker-build   собрать локальный Docker-образ ($(DOCKER_IMAGE))"
@@ -74,10 +75,13 @@ lint:
 format:
 	$(VENV_PY) -m ruff format satellite tests
 
+format-check:
+	$(VENV_PY) -m ruff format --check satellite tests
+
 typecheck:
 	$(VENV_PY) -m mypy satellite
 
-check: lint typecheck compile test
+check: lint format-check typecheck compile test
 
 docker-build:
 	docker build -t $(DOCKER_IMAGE) .

@@ -12,6 +12,7 @@ from satellite.calendar.caldav_client import CalDAVService
 from satellite.calendar.callback_tokens import event_callback_token
 from satellite.calendar.events import (
     collect_pending_invitations,
+    event_relevant_for_invitations,
     is_pending_invitation_for_user,
 )
 from satellite.messages_ru import BUTTON_INVITATIONS
@@ -59,6 +60,16 @@ def test_collect_pending_invitations_skips_past_and_accepted():
     pending = collect_pending_invitations(events, LOGIN, TZ, now=now, max_events=10)
     assert len(pending) == 1
     assert pending[0]["summary"] == "Pending"
+
+
+def test_event_relevant_uses_end_date_for_multiday_lookback():
+    """Lookback по дате окончания: длинная встреча с концом 26.05 остаётся после 26.05."""
+    now = datetime(2026, 6, 5, 12, 0, tzinfo=TZ)
+    ev = _ev(
+        start="2026-05-20T10:00:00+03:00",
+        end="2026-05-26T18:30:00+03:00",
+    )
+    assert event_relevant_for_invitations(ev, TZ, moment=now, lookback_days=14)
 
 
 def test_collect_pending_invitations_keeps_recent_ended_with_lookback():

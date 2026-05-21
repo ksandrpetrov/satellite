@@ -27,6 +27,7 @@ from ._partstat import (
 from ._time import (
     event_datetime_bounds,
     event_ends_after,
+    event_local_end_date,
     event_local_start_date,
     event_occurs_on,
     format_time_range,
@@ -202,10 +203,10 @@ def event_relevant_for_invitations(
         return True
     if lookback_days <= 0:
         return False
-    day = event_local_start_date(event, tz)
-    if day is None:
+    anchor = event_local_end_date(event, tz) or event_local_start_date(event, tz)
+    if anchor is None:
         return False
-    return day >= moment.date() - timedelta(days=lookback_days)
+    return anchor >= moment.date() - timedelta(days=lookback_days)
 
 
 def collect_pending_invitations(

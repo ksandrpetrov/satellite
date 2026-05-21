@@ -224,9 +224,7 @@ class DigestScheduler:
             log.warning("Unknown timezone %r; falling back to scheduler default", name)
             return self._tz
 
-    def _maybe_deliver(
-        self, sub: DigestSettings
-    ) -> tuple[int, int, int, int, int, int]:
+    def _maybe_deliver(self, sub: DigestSettings) -> tuple[int, int, int, int, int, int]:
         """(daily_due, daily_sent, daily_fail, pending_due, pending_sent, pending_fail)."""
         daily_due = daily_sent = daily_failed = 0
         pending_due = pending_sent = pending_failed = 0

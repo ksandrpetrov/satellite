@@ -18,7 +18,8 @@ from caldav.lib.error import DAVError
 from icalendar import Calendar as IcsCalendar
 from icalendar import Event as IcsEvent
 
-from .events import day_bounds
+from .events import day_bounds, event_local_start_date, sort_key
+from .events._partstat import user_partstat
 from .ical_parser import _attendee_to_str, parse_calendar_events
 
 DEFAULT_CALDAV_URL = "https://calendar.mail.ru/"
@@ -342,6 +343,7 @@ class CalDAVService:
         calendar_url: str | None = None,
         calendar_urls: Sequence[str] | None = None,
         enrich_partstat: bool = False,
+        invitation_partstat_verify: bool = False,
     ) -> list[Event]:
         """События в диапазоне дат включительно для одного или нескольких календарей."""
         if end_date < start_date:
@@ -381,23 +383,63 @@ class CalDAVService:
                     ev["url"] = str(getattr(raw_event, "url", "") or "")
                 out.extend(parsed)
         if enrich_partstat:
-            self._enrich_events_partstat(out)
+            self._enrich_events_partstat(
+                out,
+                tz=tz,
+                prioritize_from=start_date,
+                invitation_verify=invitation_partstat_verify,
+            )
         out.sort(key=lambda event: event.get("dtstart") or "")
         return out
 
-    def _enrich_events_partstat(self, events: list[Event]) -> None:
+    def _event_needs_partstat_refresh(self, ev: Event, *, invitation_verify: bool) -> bool:
+        """Нужен ли GET на ресурс события для достоверного PARTSTAT."""
+        if invitation_verify:
+            login = (self._login or "").strip()
+            if not login:
+                return False
+            if not self._has_user_partstat([ev]):
+                return True
+            status = user_partstat(ev, login)
+            if status in {"NEEDS-ACTION", "DELEGATED", "DECLINED"}:
+                return False
+            # Mail.ru в REPORT иногда отдаёт ложный ACCEPTED — перепроверяем GET.
+            return True
+        return not self._has_user_partstat([ev])
+
+    def _enrich_events_partstat(
+        self,
+        events: list[Event],
+        *,
+        tz: tzinfo,
+        prioritize_from: date | None = None,
+        invitation_verify: bool = False,
+    ) -> None:
         """Дополняет ATTENDEE/PARTSTAT через GET там, где REPORT их не отдал."""
         if self._partstat_refresh_limit <= 0 or not self._login:
             return
         refresh_started = time.monotonic()
         refresh_count = 0
-        for ev in events:
+        ordered = list(events)
+        if prioritize_from is not None:
+
+            def _group(ev: Event) -> int:
+                day = event_local_start_date(ev, tz)
+                if day is None:
+                    return 1
+                return 0 if day >= prioritize_from else 1
+
+            ordered.sort(key=lambda ev: (_group(ev), sort_key(ev, tz)))
+
+        for ev in ordered:
             if refresh_count >= self._partstat_refresh_limit:
                 break
             if not self._partstat_refresh_budget_left(refresh_started):
                 break
             event_url = str(ev.get("url") or "")
-            if not event_url or self._has_user_partstat([ev]):
+            if not event_url or not self._event_needs_partstat_refresh(
+                ev, invitation_verify=invitation_verify
+            ):
                 continue
             refreshed = self._refresh_attendees_via_get(event_url)
             refresh_count += 1

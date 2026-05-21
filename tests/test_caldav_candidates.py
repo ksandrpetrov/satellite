@@ -12,6 +12,7 @@ from satellite.calendar.caldav_client import (
     calendar_matches,
     login_variants_for_caldav,
 )
+from satellite.calendar.events import is_pending_invitation_for_user
 
 
 def test_login_variants_for_caldav_includes_local_part():
@@ -367,3 +368,116 @@ def test_search_events_skips_get_when_partstat_already_present(monkeypatch):
 
     events = service._search_events(handles, date(2026, 5, 12), ZoneInfo("Europe/Moscow"), None)
     assert len(events) == 1
+
+
+def test_enrich_invitations_prioritizes_upcoming_for_partstat_refresh(monkeypatch):
+    """GET-бюджет PARTSTAT тратится сначала на ближайшие встречи, не на старые в REPORT."""
+    tz = ZoneInfo("Europe/Moscow")
+    target_url = "https://fake/calendars/cal/may26.ics"
+    stale_accepted = {
+        "summary": "Stale ACCEPTED in REPORT",
+        "url": "https://fake/calendars/cal/old.ics",
+        "dtstart": "2026-05-10T10:00:00+03:00",
+        "dtend": "2026-05-10T11:00:00+03:00",
+        "attendees": [f"mailto:me@vk.team;PARTSTAT=ACCEPTED"],
+    }
+    may26 = {
+        "summary": "May26 invite",
+        "url": target_url,
+        "dtstart": "2026-05-26T17:30:00+03:00",
+        "dtend": "2026-05-26T18:30:00+03:00",
+        "attendees": [f"mailto:me@vk.team;PARTSTAT=ACCEPTED"],
+    }
+    events = [stale_accepted, may26]
+    refreshed_urls: list[str] = []
+
+    def fake_get(url, **_kwargs):
+        refreshed_urls.append(str(url))
+        from icalendar import Calendar as IcsCalendar
+        from icalendar import Event as IcsEvent
+
+        component = IcsEvent()
+        component.add("uid", "u@test")
+        component.add(
+            "attendee",
+            "mailto:me@vk.team",
+            parameters={"PARTSTAT": "NEEDS-ACTION"},
+        )
+        component.add("dtstart", datetime(2026, 5, 26, 17, 30))
+        component.add("dtend", datetime(2026, 5, 26, 18, 30))
+        cal = IcsCalendar()
+        cal.add_component(component)
+
+        class _Resp:
+            status_code = 200
+            headers: dict = {}
+
+            def __init__(self, content: bytes) -> None:
+                self.content = content
+
+        return _Resp(cal.to_ical())
+
+    import requests
+
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
+
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login="me@vk.team",
+        app_password="pw",
+        cache_ttl_sec=300,
+        partstat_refresh_limit=1,
+        partstat_refresh_budget_sec=10.0,
+    )
+    import time as _time
+
+    from satellite.calendar.caldav_client import _DiscoveryResult
+
+    service._cache = _DiscoveryResult(
+        endpoint="https://fake/",
+        calendars=[],
+        cached_at=_time.monotonic(),
+        auth_username="me@vk.team",
+    )
+    service._enrich_events_partstat(
+        events,
+        tz=tz,
+        prioritize_from=date(2026, 5, 20),
+        invitation_verify=True,
+    )
+    assert refreshed_urls == [target_url]
+    assert is_pending_invitation_for_user(may26, "me@vk.team")
+
+
+def test_enrich_invitations_skips_get_when_report_already_needs_action(monkeypatch):
+    tz = ZoneInfo("Europe/Moscow")
+    events = [
+        {
+            "summary": "Already pending",
+            "url": "https://fake/calendars/cal/pending.ics",
+            "dtstart": "2026-05-26T17:30:00+03:00",
+            "dtend": "2026-05-26T18:30:00+03:00",
+            "attendees": [f"mailto:me@vk.team;PARTSTAT=NEEDS-ACTION"],
+        }
+    ]
+
+    def fail_get(*_args, **_kwargs):
+        raise AssertionError("GET should not run when REPORT already has NEEDS-ACTION")
+
+    import requests
+
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fail_get)
+
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login="me@vk.team",
+        app_password="pw",
+        cache_ttl_sec=0,
+        partstat_refresh_limit=8,
+    )
+    service._enrich_events_partstat(
+        events,
+        tz=tz,
+        prioritize_from=date(2026, 5, 20),
+        invitation_verify=True,
+    )

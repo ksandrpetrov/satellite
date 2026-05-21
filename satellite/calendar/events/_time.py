@@ -88,6 +88,25 @@ def event_local_start_date(event: Event, tz: tzinfo) -> date | None:
     return None
 
 
+def event_local_end_date(event: Event, tz: tzinfo) -> date | None:
+    """Локальная дата окончания (для lookback неотвеченных приглашений).
+
+    Timed: дата ``dtend`` в зоне пользователя. All-day: ``dtend`` эксклюзивен —
+    последний день встречи = ``dtend - 1 day`` (как в ``event_occurs_on``).
+    """
+    end = parse_iso(event.get("dtend"))
+    start = parse_iso(event.get("dtstart"))
+    if isinstance(end, datetime):
+        return _to_local(end, tz).date()
+    if isinstance(end, date) and not isinstance(end, datetime):
+        return end - timedelta(days=1)
+    if isinstance(start, datetime):
+        return _to_local(start, tz).date()
+    if isinstance(start, date) and not isinstance(start, datetime):
+        return start
+    return None
+
+
 def day_bounds(target_date: date, tz: tzinfo) -> tuple[datetime, datetime]:
     day_start = datetime.combine(target_date, time.min, tzinfo=tz)
     return day_start, day_start + timedelta(days=1)

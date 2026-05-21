@@ -1096,9 +1096,7 @@ DIGEST_SETTINGS_CLOSED_TEXT = (
 
 def build_digest_settings_keyboard(*, digest_enabled: bool) -> dict:
     toggle_label = (
-        "🔕 Отключить дайджест на сегодня"
-        if digest_enabled
-        else "🔔 Включить дайджест на сегодня"
+        "🔕 Отключить дайджест на сегодня" if digest_enabled else "🔔 Включить дайджест на сегодня"
     )
     return {
         "inline_keyboard": [
@@ -1217,10 +1215,7 @@ PENDING_DIGEST_DAYS_ALL_APPLIED_TEXT = (
 
 
 def pending_digest_time_applied_text(digest_time: str) -> str:
-    return (
-        f"🕘 Готово.\n"
-        f"Дайджест непринятых встреч будет прилетать в <b>{digest_time} МСК</b>."
-    )
+    return f"🕘 Готово.\nДайджест непринятых встреч будет прилетать в <b>{digest_time} МСК</b>."
 
 
 PENDING_DIGEST_TIME_INVALID_TEXT = (
@@ -1229,16 +1224,13 @@ PENDING_DIGEST_TIME_INVALID_TEXT = (
 )
 
 PENDING_DIGEST_SETTINGS_CLOSED_TEXT = (
-    "🪶 Чайка свернула настройки дайджеста непринятых встреч. "
-    "Возвращайся, когда понадобятся."
+    "🪶 Чайка свернула настройки дайджеста непринятых встреч. Возвращайся, когда понадобятся."
 )
 
 
 def build_pending_digest_settings_keyboard(*, digest_enabled: bool) -> dict:
     toggle_label = (
-        "🔕 Отключить дайджест непринятых"
-        if digest_enabled
-        else "📨 Включить дайджест непринятых"
+        "🔕 Отключить дайджест непринятых" if digest_enabled else "📨 Включить дайджест непринятых"
     )
     return {
         "inline_keyboard": [
@@ -1271,11 +1263,7 @@ def build_pending_digest_time_keyboard() -> dict:
 
 
 def pending_digest_toggle_notice_text(*, enabled: bool) -> str:
-    return (
-        "📨 Дайджест непринятых включён"
-        if enabled
-        else "🔕 Дайджест непринятых отключён"
-    )
+    return "📨 Дайджест непринятых включён" if enabled else "🔕 Дайджест непринятых отключён"
 
 
 # --- Шаблоны строк дайджеста, использующиеся в seagull.render ---------------

@@ -127,6 +127,7 @@ class MailruCalendarProvider:
                 tz=tz,
                 calendar_urls=calendar_urls,
                 enrich_partstat=True,
+                invitation_partstat_verify=True,
             )
         except CalDAVError as exc:
             raise CalendarProviderError(

@@ -189,9 +189,7 @@ class SubscriptionStore:
     def is_subscribed(self, chat_id: int) -> bool:
         with self._lock:
             record = self._items.get(chat_id)
-            return bool(
-                record and (record.digest_enabled or record.pending_digest_enabled)
-            )
+            return bool(record and (record.digest_enabled or record.pending_digest_enabled))
 
     def subscribe(
         self,
@@ -338,7 +336,10 @@ class SubscriptionStore:
                     )
             if digest_timezone is not None and digest_timezone:
                 updated = replace(updated, digest_timezone=digest_timezone)
-            if pending_digest_enabled is not None and pending_digest_enabled != updated.pending_digest_enabled:
+            if (
+                pending_digest_enabled is not None
+                and pending_digest_enabled != updated.pending_digest_enabled
+            ):
                 updated = replace(updated, pending_digest_enabled=pending_digest_enabled)
             if pending_digest_days is not None and pending_digest_days in ALLOWED_DIGEST_DAYS:
                 updated = replace(updated, pending_digest_days=pending_digest_days)
@@ -391,11 +392,7 @@ class SubscriptionStore:
         вызовы обновлены, тесты — тоже.
         """
         with self._lock:
-            return [
-                s
-                for s in self._items.values()
-                if s.digest_enabled or s.pending_digest_enabled
-            ]
+            return [s for s in self._items.values() if s.digest_enabled or s.pending_digest_enabled]
 
     def list_all(self) -> list[DigestSettings]:
         """Все записи, включая отключённые — для админских операций и тестов."""

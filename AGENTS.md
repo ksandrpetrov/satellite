@@ -153,7 +153,7 @@ satellite/
 11. **Подписка на дайджест** — `DigestSettings.telegram_user_id` в [`subscriptions.py`](satellite/subscriptions.py); scheduler резолвит пользователя через `UserStore.get`, не через `username`.
 12. **Навигация настроек** — кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` обрабатывает только [`settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py); `settings.py` и `analytics.py` не импортируют друг друга и не имеют lazy-back-импортов в хаб.
 13. **Сбой `UserStore._save_locked`** — поднимает [`UserStorePersistenceError`](satellite/users/store.py); caller (handler / Web App) ловит на границе и показывает безопасный текст.
-14. **Перед коммитом** — `make check` (ruff lint + mypy + py_compile + pytest). Стиль/форматирование — только [`ruff`](pyproject.toml) (lint + format); blackd/isort не используем. Поведение при падении тестов — см. раздел **«Тесты и регрессии»** ниже.
+14. **Перед коммитом** — `make check` (ruff lint + `ruff format --check` + mypy + py_compile + pytest). Стиль/форматирование — только [`ruff`](pyproject.toml) (lint + format); blackd/isort не используем. Поведение при падении тестов — см. раздел **«Тесты и регрессии»** ниже.
 
 ## Тесты и регрессии (для агентов)
 
@@ -236,7 +236,7 @@ python -m ruff check satellite tests              # make lint
 python -m ruff format satellite tests             # make format
 python -m mypy satellite                          # make typecheck (блокирующий гейт)
 find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 python -m py_compile  # make compile
-make check                                        # lint + typecheck + compile + test (full)
+make check                                        # lint + format-check + typecheck + compile + test (full)
 make docker-smoke                                 # smoke образа: импорты + /healthz (см. docs/testing.md)
 make smoke-prod                                   # curl публичного /healthz, /connect, /api/… после деплоя
 python telegram_test_command.py                   # make run
