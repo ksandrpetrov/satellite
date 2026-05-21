@@ -11,7 +11,7 @@ Reverse proxy и TLS для `cassinilab.ru` — ваш существующий 
 ## CI/CD: GitHub Actions под ключ
 
 Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на каждый push в `main`
-или тег `v*`:
+или тег `v*` (отдельный workflow [`test.yml`](../.github/workflows/test.yml) — только на PR):
 
 1. **test** — ruff (lint + format check), py_compile, pytest.
 2. **build** — Docker-образ в GHCR: `:sha-<short>` (всегда), `:latest` (только `main`),

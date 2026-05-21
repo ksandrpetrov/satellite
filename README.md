@@ -189,8 +189,8 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 
 CI/CD:
 
-- [test.yml](.github/workflows/test.yml) — ruff, mypy, py_compile, pytest (PR + push).
-- [deploy.yml](.github/workflows/deploy.yml) — push в `main` или тег `v*`: test → образ в GHCR
+- [test.yml](.github/workflows/test.yml) — ruff, mypy, py_compile, pytest (только PR).
+- [deploy.yml](.github/workflows/deploy.yml) — push в `main` или тег `v*`: test → образ в GHCR → deploy
   (`:sha-<short>`, на main ещё `:latest`, на теге — semver). Rolling deploy по SSH — только
   для `main` и ручного **Run workflow**; тег `v*` только публикует образ. Секреты и
   первичный деплой (Ansible) — [deploy/README.md](deploy/README.md).
@@ -204,6 +204,7 @@ CI/CD:
 - `telegram-offset.json`;
 - `subscriptions.json` — настройки дайджеста;
 - `users.json` — статус доступа и зашифрованные CalDAV-credentials;
+- `connect-tokens.json` — краткоживущие токены для Web App (кнопки в чате);
 - `backups/` — снапшоты `users.json` и `subscriptions.json` на каждый старт бота
   (последние 20, см. [`satellite/backup.py`](satellite/backup.py)).
 

@@ -246,6 +246,12 @@ last_digest_sent_date
 
 Writes are atomic: temporary file, flush, `fsync`, `os.replace`.
 
+### `logs/connect-tokens.json` (`ConnectTokenStore`)
+
+Краткоживущие токены для `/connect/<token>` из кнопок в чате (TTL 900 с).
+Персист переживает рестарт бота; не коммитится. См.
+[configuration.md](configuration.md#web-app-connect-токены).
+
 ## Scheduler
 
 `satellite/scheduler.py` is a single background thread. It polls active
@@ -281,26 +287,36 @@ resolve_target_date(DIGEST_MODE, today in user timezone)
 - `satellite/web/responses.py` — `json_response`, `png_response`, `AbortRequest`.
 - `satellite/web/parsing.py` — `read_json`, `extract_init_data`, `*_token_from_path`,
   `parse_positive_int`, `parse_date`, `parse_datetime`, `serialize_event`.
-- `satellite/web/auth.py` — `validated_user` (initData + UserStore.approved).
+- `satellite/web/auth.py` — `validated_user` (initData или connect-token +
+  `UserStore.approved`).
+- `satellite/web/connect_token.py` — `ConnectTokenStore`: issue/resolve,
+  TTL 900 с, опционально `logs/connect-tokens.json`.
 - `satellite/web/static_pages.py` — единая `serve_html` для `/connect`.
 - `satellite/web/api/calendar.py` — REST-хендлеры календаря.
 - `satellite/web/init_data.py` — HMAC-валидация Telegram `initData`
   (`InitDataError` с кодами `no_init_data`, `bad_signature`, `expired`).
 
-Авторизация API: `initData` + `UserStore.status == approved`. Сервер принимает
-`initData` в порядке приоритета:
+Авторизация API (`validated_user` в `auth.py`): пользователь `approved` в
+`UserStore`. Два пути:
 
-1. заголовок `X-Telegram-Init-Data` (рекомендуется в nginx);
-2. поле `initData` в JSON-теле POST;
-3. query-параметр `?initData=...` (fallback, если прокси режет кастомные headers).
+1. **initData** (предпочтительно) — HMAC в `init_data.py`. Источники в порядке
+   приоритета: заголовок `X-Telegram-Init-Data` (рекомендуется в nginx); поле
+   `initData` в JSON-теле POST; query `?initData=...` (fallback, если прокси
+   режет кастомные headers).
+2. **Connect-token** — если `initData` нет: токен из path `/connect/<token>`,
+   hash `#t=...`, JSON (`t` / `connect_token`) или query. Выдаётся ботом в
+   `webapp_connect_url` ([`delivery.py`](../satellite/telegram_bot/handlers/delivery.py));
+   store — [`connect_token.py`](../satellite/web/connect_token.py), TTL 15 мин,
+   персист в `logs/connect-tokens.json`. Ответ `connect_token_invalid` — истёк
+   или ссылка не из бота.
 
 Клиент [`connect.html`](../satellite/web/static/connect.html) дублирует `initData`
-в заголовок, тело и query для всех API-запросов.
+и connect-token в заголовок, тело и query для всех API-запросов.
 
 | Метод/путь | Назначение |
 |------------|------------|
 | `GET /healthz` | Docker HEALTHCHECK; без auth |
-| `GET /connect` | SPA [`connect.html`](../satellite/web/static/connect.html) |
+| `GET /connect`, `GET /connect/<token>` | SPA [`connect.html`](../satellite/web/static/connect.html) |
 | `GET /api/calendar/status` | Статус подключения |
 | `POST /api/calendar/connect` | Сохранить credentials (`provider`, `login`, `app_password`) |
 | `DELETE /api/calendar/disconnect` | Сбросить подключение |

@@ -56,7 +56,8 @@ satellite/
     routing.py           # таблица (method, path) → handler
     responses.py         # json_response / png_response / AbortRequest
     parsing.py           # read_json, extract_init_data, *_token, parse_*
-    auth.py              # validated_user (initData + UserStore)
+    auth.py              # validated_user (initData или connect-token + UserStore)
+    connect_token.py     # ConnectTokenStore — краткоживущие токены Web App
     static_pages.py      # serve_html для /connect
     init_data.py         # HMAC validate_init_data
     api/
@@ -104,7 +105,7 @@ satellite/
 | Чужие (пошаренные) календари | [`handlers/calendar_foreign.py`](satellite/telegram_bot/handlers/calendar_foreign.py) |
 | Список CalDAV-календарей в UI | [`handlers/calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py) — `fetch_calendars` (→ `CalendarListResult`) и `build_calendar_sources_screen` |
 | Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users.py`](satellite/users.py) |
-| URL Web App connect | [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `webapp_connect_url(ctx)` |
+| URL Web App connect | [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `webapp_connect_url(ctx)` (персональный `/connect/<token>`); store — [`web/connect_token.py`](satellite/web/connect_token.py) |
 | Потоковый ответ (черновик + финал) | [`streaming_delivery.py`](satellite/telegram_bot/streaming_delivery.py), [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `open_streaming_reply` (plan, upcoming, invitations, manage, analytics) |
 | Визуал Telegram (typing, effects, меню) | [`visual.py`](satellite/telegram_bot/visual.py) — `TypingIndicator`, `pick_plan_message_effect`, `set_default_menu_button_for_chat`; HTML — [`html_format.py`](satellite/telegram_bot/html_format.py); профиль бота на старте — [`commands.py`](satellite/telegram_bot/commands.py) `setup_bot_identity` |
 | Расписание дайджеста | [`scheduler.py`](satellite/scheduler.py) + [`subscriptions.py`](satellite/subscriptions.py) |
@@ -241,8 +242,8 @@ python telegram_test_command.py                   # make run
 [deploy/README.md](deploy/README.md));
 **Docker (local)** — `make env && make docker-up` (см. корневой `docker-compose.yml`).
 
-CI: [`.github/workflows/test.yml`](.github/workflows/test.yml) (PR + push: ruff, mypy, py_compile, pytest);
-[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — push в `main` или тег `v*`: test → образ в GHCR;
+CI: [`.github/workflows/test.yml`](.github/workflows/test.yml) (только PR: ruff, mypy, py_compile, pytest);
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — push в `main` или тег `v*`: test → образ в GHCR → deploy;
 rolling deploy по SSH (`scripts/ci-deploy-remote.sh`) — только для `main` и `workflow_dispatch`
 (тег `v*` лишь пушит semver-образ). Первичный деплой (`.env`, `docker-compose.yml`, образ) — `make deploy` (Ansible);
 TLS и reverse proxy на 443 — ваш существующий nginx на хосте, не из стека.
@@ -265,10 +266,19 @@ TLS и reverse proxy на 443 — ваш существующий nginx на х�
 `ThreadingHTTPServer`, поднимаемый из [`bot.py`](satellite/telegram_bot/bot.py).
 Валидация сессии — [`init_data.py`](satellite/web/init_data.py).
 
-Все запросы под `/api/calendar/*` авторизуются по Telegram `initData`
-(HMAC) и фильтруются по `UserStore.status == approved`. `initData` берётся из
-заголовка `X-Telegram-Init-Data`, JSON-тела или query `?initData=...`
-(см. `_extract_init_data` в `server.py`).
+Все запросы под `/api/calendar/*` авторизуются через [`auth.validated_user`](satellite/web/auth.py):
+сначала Telegram `initData` (HMAC), иначе **connect-token** (когда WebView не
+передаёт `initData`). Пользователь должен быть `approved` в `UserStore`.
+
+`initData` — заголовок `X-Telegram-Init-Data`, JSON-тело или query `?initData=...`
+(см. `extract_init_data` в [`parsing.py`](satellite/web/parsing.py)).
+
+**Connect-token:** кнопки в чате ведут на `/connect/<token>#t=...` (см.
+`webapp_connect_url` в [`delivery.py`](satellite/telegram_bot/handlers/delivery.py));
+TTL 15 мин, store в `logs/connect-tokens.json` ([`ConnectTokenStore`](satellite/web/connect_token.py)).
+Токен дублируется в path, hash, JSON (`t` / `connect_token`) и query — Telegram
+иногда срезает query у `web_app`-кнопок. Menu Button без `telegram_user_id` —
+только `WEBAPP_BASE_URL` (нужен рабочий `initData`).
 
 `WEBAPP_BASE_URL` — только публичный HTTPS (проверка `is_valid_webapp_base_url`
 в [`config.py`](satellite/config.py)); не путь к `connect.html` в репозитории.
@@ -278,7 +288,7 @@ Endpoint-ы:
 | Метод/путь | Назначение |
 |------------|------------|
 | `GET /healthz` | Docker HEALTHCHECK; без auth |
-| `GET /connect` | SPA [`connect.html`](satellite/web/static/connect.html) |
+| `GET /connect`, `GET /connect/<token>` | SPA [`connect.html`](satellite/web/static/connect.html) |
 | `GET /api/calendar/status` | Проверка подключения |
 | `POST /api/calendar/connect` | Сохранить credentials (Fernet через `TokenVault`) |
 | `DELETE /api/calendar/disconnect` | Сбросить подключение |
@@ -301,6 +311,7 @@ production, ngrok/Cloudflare Tunnel в dev). Проксируйте `/connect` �
 | `logs/telegram-offset.json` | Watermark long-polling |
 | `logs/subscriptions.json` | Per-user дайджест |
 | `logs/users.json` | Доступ + зашифрованные CalDAV-credentials |
+| `logs/connect-tokens.json` | Краткоживущие Web App connect-токены (переживают рестарт) |
 | `logs/backups/` | Снапшоты `users.json`/`subscriptions.json` на каждый старт ([`backup.py`](satellite/backup.py)) — last 20, имя `<file>.YYYYMMDD-HHMMSSZ.bak` |
 | `.env` | См. [`.env.example`](.env.example); должен быть `chmod 600` |
 

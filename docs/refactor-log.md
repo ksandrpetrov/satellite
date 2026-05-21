@@ -3,10 +3,8 @@
 Кратко — какие архитектурные фазы прошли через кодовую базу, чтобы будущие
 агенты и люди не переоткрывали одни и те же файлы и понимали, какие инварианты
 держим. Каждая фаза была behaviour-preserving: внешний контракт (тексты,
-callback_data, HTTP-ответы) не менялся; baseline pytest-набора оставался
-зелёным с теми же двумя историческими failing-кейсами
-(`test_calendar_foreign.py::test_foreign_calendars_callback_flow`,
-`test_handlers.py::test_plan_legacy_falls_back_to_new_message_when_edit_fails`).
+callback_data, HTTP-ответы) не менялся без явной продуктовой задачи; baseline
+pytest оставался зелёным.
 
 ## Фазы
 
@@ -145,3 +143,14 @@ callback_data, HTTP-ответы) не менялся; baseline pytest-набо�
   loading-сообщение + `editMessageText`.
 - `ActionGuard` 10 с на open; refresh и ответ PARTSTAT — `edit_callback_message`.
 - Документация: README.md, architecture.md, telegram-ux.md, testing.md, troubleshooting.md.
+
+## Web App connect-токены (2026-05-21)
+
+- `ConnectTokenStore` (`web/connect_token.py`): краткоживущие токены, когда
+  Telegram WebView не передаёт `initData` в `web_app`-кнопках.
+- Кнопки в чате → `webapp_connect_url` → `/connect/<token>#t=...`; API принимает
+  токен из path/hash/body/query (`auth.validated_user` fallback после initData).
+- Персист `logs/connect-tokens.json` (TTL 900 с). Тесты — `test_connect_token.py`,
+  `test_web_server.py::test_status_with_connect_token_without_init_data`.
+- Документация: AGENTS.md, architecture.md, configuration.md, telegram-ux.md,
+  troubleshooting.md, operations.md, README.md.

@@ -195,6 +195,16 @@ proxy_set_header X-Telegram-Init-Data $http_x_telegram_init_data;
 
 Начиная с актуальной версии кода, `initData` также передаётся в query (`?initData=...`) — работает даже если заголовок режется.
 
+### Web App: `connect_token_invalid` / «Ссылка устарела»
+
+Кнопки «Подключить календарь» в чате открывают `/connect/<token>`. Токен живёт
+**15 минут** (`ConnectTokenStore`, `logs/connect-tokens.json`). Если Web App
+открыт по старой ссылке или скопирован в браузер — API вернёт `connect_token_invalid`.
+
+**Что делать:** снова «⚙️ Настройки» → «🔌 Подключить» (или `/connect`) и открыть
+Web App из свежего сообщения бота. Menu Button без токена в URL по-прежнему
+требует валидный `initData` от Telegram.
+
 ## Telegram token неверный (HTTP 401 Unauthorized)
 
 Telegram отвечает 401 на `getUpdates` / `setMyCommands`, если `TELEGRAM_BOT_TOKEN`

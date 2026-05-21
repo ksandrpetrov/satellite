@@ -20,13 +20,31 @@
 
 set -euo pipefail
 
-DEPLOY_HOST="${DEPLOY_HOST:?set DEPLOY_HOST}"
-DEPLOY_USER="${DEPLOY_USER:?set DEPLOY_USER}"
-SATELLITE_IMAGE="${SATELLITE_IMAGE:?set SATELLITE_IMAGE}"
-SSH_PRIVATE_KEY="${SSH_PRIVATE_KEY:?set SSH_PRIVATE_KEY}"
+# Срезает CR/LF и пробелы по краям — Actions-секреты часто приезжают с
+# trailing '\n', из-за чего ssh падает с "hostname contains invalid characters".
+strip_ws() { printf '%s' "${1-}" | tr -d '\r\n\t' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
 
-DEPLOY_DIR="${DEPLOY_DIR:-/opt/satellite}"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-satellite}"
+DEPLOY_HOST="$(strip_ws "${DEPLOY_HOST:?set DEPLOY_HOST}")"
+DEPLOY_USER="$(strip_ws "${DEPLOY_USER:?set DEPLOY_USER}")"
+SATELLITE_IMAGE="$(strip_ws "${SATELLITE_IMAGE:?set SATELLITE_IMAGE}")"
+: "${SSH_PRIVATE_KEY:?set SSH_PRIVATE_KEY}"
+
+DEPLOY_DIR="$(strip_ws "${DEPLOY_DIR:-/opt/satellite}")"
+COMPOSE_PROJECT_NAME="$(strip_ws "${COMPOSE_PROJECT_NAME:-satellite}")"
+GHCR_USER="$(strip_ws "${GHCR_USER:-}")"
+# GHCR_TOKEN читаем как есть — токен не должен ломаться из-за пробелов внутри,
+# но обрезаем хвостовые перевод-строки от paste.
+GHCR_TOKEN="$(printf '%s' "${GHCR_TOKEN:-}" | tr -d '\r\n')"
+
+if [[ -z "${DEPLOY_HOST}" || -z "${DEPLOY_USER}" ]]; then
+    echo "::error::DEPLOY_HOST / DEPLOY_USER пустые после нормализации" >&2
+    exit 1
+fi
+
+if [[ ! "${DEPLOY_HOST}" =~ ^[A-Za-z0-9.:_-]+$ ]]; then
+    echo "::error::DEPLOY_HOST содержит недопустимые символы: '${DEPLOY_HOST}'" >&2
+    exit 1
+fi
 
 log() { printf '[ci-deploy] %s\n' "$*"; }
 

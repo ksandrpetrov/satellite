@@ -25,7 +25,7 @@ python -m pytest
 # или: make test
 ```
 
-В CI (GitHub Actions, [`.github/workflows/test.yml`](../.github/workflows/test.yml)) —
+В CI на **pull request** ([`.github/workflows/test.yml`](../.github/workflows/test.yml)) —
 три job'а на Python 3.11:
 
 - **ruff** — `ruff check` и `ruff format --check` (блокирующий);

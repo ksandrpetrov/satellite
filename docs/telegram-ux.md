@@ -289,8 +289,13 @@ manage — молча; аналитика — toast «Уже строю отчё
   бота или Menu Button типа **Web App**, если включён в BotFather), не закладкой в Safari/Chrome.
 - URL в BotFather и в `.env` (`WEBAPP_BASE_URL`) должны совпадать, например
   `https://cassinilab.ru/connect`.
+- Кнопки **в чате** (хаб настроек, `/connect`) ведут на персональный URL
+  `/connect/<token>#t=...` — краткоживущий connect-token (15 мин), потому что
+  Telegram часто не передаёт `initData` в `web_app`-кнопках. Menu Button без
+  токена в пути — нужен рабочий `initData` от WebView.
 - В форме: email (полный `@vk.team` для Mailroom), app password с правом «Календарь»,
   CalDAV URL — пусто или principal URL с Mac.
 - Ошибки: «Токен не подошёл» — CalDAV; «Сессия Telegram…» / `unauthorized` — initData
-  (не из бота, другой токен в `.env`, nginx без прокси API). См.
-  [troubleshooting.md](troubleshooting.md).
+  (не из бота, другой токен в `.env`, nginx без прокси API); `connect_token_invalid` —
+  истёк connect-token или ссылка скопирована не из бота — откройте Web App снова из чата.
+  См. [troubleshooting.md](troubleshooting.md).

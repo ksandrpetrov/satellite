@@ -267,8 +267,17 @@ LOG_LEVEL=INFO
 
 Допустимые практические значения: `DEBUG`, `INFO`, `WARNING`, `ERROR`.
 
+## Web App connect-токены
+
+Кнопки «Подключить календарь» в чате выдают персональный URL
+`/connect/<token>` (см. [`webapp_connect_url`](../satellite/telegram_bot/handlers/delivery.py)).
+Токены хранятся в `logs/connect-tokens.json` (TTL **900 с**, атомарная запись).
+Отдельных env-переменных нет. Menu Button в BotFather использует только
+`WEBAPP_BASE_URL` без токена — там авторизация идёт через `initData`.
+
 ## Файлы, которые нельзя коммитить
 
 - `.env`;
-- `logs/` (включая `users.json`, `subscriptions.json`, `bot.log`, lock, offset);
+- `logs/` (включая `users.json`, `subscriptions.json`, `connect-tokens.json`,
+  `bot.log`, lock, offset);
 - `venv/`.

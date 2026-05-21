@@ -251,6 +251,10 @@ Playbook ставит Docker Engine, кладёт `docker-compose.yml` и `.env`
 
 #### Автодеплой из GitHub Actions
 
+Перед merge в `main` тесты на PR гоняет отдельный workflow
+[`.github/workflows/test.yml`](../.github/workflows/test.yml) (ruff + mypy + pytest);
+push в `main` — только [`deploy.yml`](../.github/workflows/deploy.yml) (test + build + deploy).
+
 Push в `main`, ручной запуск workflow `deploy` (`Actions → deploy → Run workflow`)
 или merge в `main` после релизного тега делает rolling update без `make deploy`.
 Тег `v*` запускает тот же workflow (test + build + semver в GHCR), но job **deploy**
@@ -512,12 +516,15 @@ logs/bot.lock
 logs/telegram-offset.json
 logs/subscriptions.json
 logs/users.json
+logs/connect-tokens.json   # краткоживущие Web App connect-токены
 logs/backups/          # снапшоты users.json и subscriptions.json
 ```
 
 - `telegram-offset.json` — offset long-polling.
 - `subscriptions.json` — настройки дайджеста.
 - `users.json` — статусы доступа и зашифрованные CalDAV-credentials.
+- `connect-tokens.json` — персональные токены для `/connect/<token>` (TTL 15 мин;
+  переживает рестарт бота, не коммитится).
 - `backups/` — при каждом старте бота копии `users.json` и `subscriptions.json`
   (`satellite/backup.py`, последние 20, имя `<file>.YYYYMMDD-HHMMSSZ.bak`).
 - `bot.log` — runtime-логи.
