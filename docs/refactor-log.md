@@ -106,7 +106,8 @@ pytest оставался зелёным.
 - Job deploy: явная проверка секретов `DEPLOY_HOST` / `DEPLOY_USER` / `SSH_PRIVATE_KEY`;
   lowercase имени образа в GHCR (`tr` вместо `${var,,}`).
 - `ci-deploy-remote.sh`: stop/disable legacy `satellite-bot.service` перед `compose up`
-  (как в Ansible playbook).
+  (как в Ansible playbook); нормализация `DEPLOY_HOST`/`DEPLOY_USER`/`SATELLITE_IMAGE`
+  (trim CR/LF — иначе SSH: `hostname contains invalid characters`).
 - Compose с `image: ${SATELLITE_IMAGE}`; шаблон `env.j2` пишет `SATELLITE_IMAGE` в `.env` при
   первичном `make deploy`, дальше Actions сам перезаписывает значение.
 - Старый `release-docker.yml` удалён (заменён `deploy.yml`).

@@ -262,7 +262,9 @@ Push в `main`, ручной запуск workflow `deploy` (`Actions → deploy
 **Run workflow** на ветке `main` или дождитесь push в `main`.
 
 Скрипт [`ci-deploy-remote.sh`](../scripts/ci-deploy-remote.sh) (тот же, что в Actions):
-при наличии legacy `satellite-bot.service` останавливает и отключает unit, чтобы
+нормализует `DEPLOY_HOST` / `DEPLOY_USER` / `SATELLITE_IMAGE` (обрезка CR/LF и
+пробелов по краям — иначе SSH: `hostname contains invalid characters`); при наличии
+legacy `satellite-bot.service` останавливает и отключает unit, чтобы
 освободить `127.0.0.1:<satellite_host_port>`; затем перезаписывает `SATELLITE_IMAGE`
 в `/opt/satellite/.env` на сборку `:sha-<short>`, выполняет `docker compose pull satellite`
 и `docker compose up -d satellite`. Job **deploy** перед SSH проверяет наличие
@@ -280,6 +282,9 @@ Push в `main`, ручной запуск workflow `deploy` (`Actions → deploy
 
 `logs/` (volume `satellite-logs`), `TOKEN_ENCRYPTION_KEY` и nginx на хосте этот
 путь не трогает — только тег образа бота.
+
+Типичные сбои deploy job (секреты, GHCR, занятый порт 8080, отсутствие compose) —
+[troubleshooting.md — автодеплой](troubleshooting.md#автодеплой-github-actions-и-docker-на-сервере).
 
 #### Полный playbook (когда нужен)
 

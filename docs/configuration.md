@@ -279,5 +279,5 @@ LOG_LEVEL=INFO
 
 - `.env`;
 - `logs/` (включая `users.json`, `subscriptions.json`, `connect-tokens.json`,
-  `bot.log`, lock, offset);
+  `backups/`, `bot.log`, lock, offset);
 - `venv/`.

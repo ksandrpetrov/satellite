@@ -21,7 +21,8 @@ Production Telegram-бот для календарных дайджестов и
 - `/create` — пошаговое создание события в календаре.
 - `/start`, `/help`, `/settings`, `/connect`.
 - Заявка на доступ и одобрение админом (`ADMIN_TELEGRAM_IDS`, `/pending`).
-- Подключение календаря Mail.ru через Telegram Web App (per-user credentials).
+- Подключение календаря Mail.ru через Telegram Web App (per-user credentials;
+  кнопки в чате — персональный `/connect/<token>`, TTL 15 мин).
 - Inline-хаб настроек: дайджест, выбор календарей для плана, connect/check/disconnect.
 - Выбор нескольких CalDAV-календарей для плана и автодайджеста (`enabled_calendar_urls`).
 - Просмотр пошаренных («чужих») календарей — `/foreign`, кнопка на главной клавиатуре.

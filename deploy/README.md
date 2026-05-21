@@ -16,11 +16,13 @@ Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на 
 1. **test** — ruff (lint + format check), py_compile, pytest.
 2. **build** — Docker-образ в GHCR: `:sha-<short>` (всегда), `:latest` (только `main`),
    semver-теги (только `v*`).
-3. **deploy** — SSH на сервер (`scripts/ci-deploy-remote.sh`): при наличии legacy
+3. **deploy** — SSH на сервер (`scripts/ci-deploy-remote.sh`): нормализация
+   `DEPLOY_HOST`/`DEPLOY_USER`/`SATELLITE_IMAGE`; при наличии legacy
    `satellite-bot.service` — остановить и отключить unit (освободить порт на хосте);
    обновить `SATELLITE_IMAGE` в `.env`, `docker compose pull satellite`,
    `docker compose up -d satellite`. Только для push в `main` и ручного `workflow_dispatch`.
    Перед SSH job проверяет, что заданы секреты `DEPLOY_HOST`, `DEPLOY_USER`, `SSH_PRIVATE_KEY`.
+   Тег `v*` job **deploy** не запускает — см. [troubleshooting](../docs/troubleshooting.md#автодеплой-github-actions-и-docker-на-сервере).
 
 Пакет в GHCR после первой сборки сделайте **public** (или задайте `GHCR_PULL_TOKEN`, см. ниже):
 `Settings → Packages → satellite → Package settings → Change visibility`.
@@ -43,7 +45,7 @@ satellite_image_source: ghcr
 
 | Секрет | Назначение |
 |--------|------------|
-| `DEPLOY_HOST` | IP или hostname сервера |
+| `DEPLOY_HOST` | IP или hostname сервера (без `https://`, без хвостового перевода строки) |
 | `DEPLOY_USER` | SSH-пользователь (`root` или deploy-user) |
 | `SSH_PRIVATE_KEY` | приватный ключ SSH (публичный — в `authorized_keys` на сервере) |
 | `SSH_KNOWN_HOSTS` | опционально: вывод `ssh-keyscan -H <DEPLOY_HOST>` |
@@ -104,7 +106,7 @@ TLS, домен и проксирование — на вашем хостово
 **Вручную локально** (тот же `scripts/ci-deploy-remote.sh`):
 
 ```bash
-DEPLOY_HOST=91.201.114.159 \
+DEPLOY_HOST=<IP-или-hostname-сервера> \
 DEPLOY_USER=root \
 SSH_PRIVATE_KEY="$(cat ~/.ssh/satellite_deploy)" \
 SATELLITE_IMAGE=ghcr.io/ksandrpetrov/satellite:sha-abc1234 \
@@ -142,5 +144,6 @@ Health: `curl http://127.0.0.1:8080/healthz`. Чтобы Telegram WebApp раб�
 снаружи, поверх 8080 нужен HTTPS-туннель (`ngrok http 8080` или Cloudflare Tunnel)
 и `WEBAPP_BASE_URL=https://<публичный-домен>/connect` в `.env`.
 
-Диагностика: [docs/troubleshooting.md](../docs/troubleshooting.md),
+Диагностика: [docs/troubleshooting.md](../docs/troubleshooting.md)
+(сбои Actions/deploy — [автодеплой](../docs/troubleshooting.md#автодеплой-github-actions-и-docker-на-сервере)),
 эксплуатация: [docs/operations.md](../docs/operations.md).

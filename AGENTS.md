@@ -25,6 +25,7 @@ Telegram, опционально с погодой. Per-user расписани�
 ```
 satellite/
   services.py            # run_bot
+  backup.py              # снапшоты users.json / subscriptions.json при старте
   config.py              # load_settings; SecurityConfig, AdminConfig, WebAppConfig
   users.py               # UserStore, UserRecord, access + calendar connection
   security/
@@ -258,7 +259,7 @@ TLS и reverse proxy на 443 — ваш существующий nginx на х�
 | [`scripts/bootstrap-server.sh`](scripts/bootstrap-server.sh) | apt + clone + `install-server.sh` на чистом хосте |
 | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) | CalDAV с сервера без Telegram (см. troubleshooting) |
 | [`scripts/diagnose_invitation.py`](scripts/diagnose_invitation.py) | PARTSTAT / pending без Telegram (`--user-id`, `--summary`, опц. `--accept`; lookback 14 д — как в боте) |
-| [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy: stop/disable legacy `satellite-bot.service` при наличии → `SATELLITE_IMAGE` в `.env` → `compose pull/up satellite` (Actions и локально) |
+| [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy: trim секретов SSH/host → stop/disable legacy `satellite-bot.service` → `SATELLITE_IMAGE` в `.env` → `compose pull/up satellite` (Actions и локально) |
 
 ## Web App
 

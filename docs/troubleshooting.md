@@ -305,6 +305,66 @@ WEATHER_LOCATION=...
 
 При ошибке Open-Meteo календарный дайджест должен работать без погодного блока.
 
+## Автодеплой GitHub Actions и Docker на сервере
+
+См. также [operations.md — автодеплой](operations.md#автодеплой-из-github-actions),
+[deploy/README.md](../deploy/README.md).
+
+### Job deploy не запустился после тега `v*`
+
+Workflow [`deploy.yml`](../.github/workflows/deploy.yml) на теге `v*` собирает образ
+с semver-тегом в GHCR, но job **deploy** на сервер **не** выполняется. Для выката на prod:
+push в `main`, **Run workflow** на ветке `main`, или локально `ci-deploy-remote.sh`
+с нужным `SATELLITE_IMAGE`.
+
+### `Missing Actions secret: DEPLOY_HOST` (и др.)
+
+В `Settings → Secrets and variables → Actions` должны быть заданы
+`DEPLOY_HOST`, `DEPLOY_USER`, `SSH_PRIVATE_KEY`. Значения без лишних кавычек;
+`DEPLOY_HOST` — только hostname или IP (`203.0.113.10`, `example.com`), без
+`https://` и без пробелов/перевода строки в конце (скрипт обрезает CR/LF, но не
+исправляет мусор внутри строки).
+
+### SSH: `hostname contains invalid characters`
+
+Секрет `DEPLOY_HOST` скопирован с хвостовым `\n` или с недопустимым символом.
+Пересохраните секрет; локально проверьте:
+
+```bash
+DEPLOY_HOST="$(printf '%s' 'ваш-хост' | tr -d '\r\n')"
+ssh -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" true
+```
+
+### `docker-compose.yml not found in /opt/satellite`
+
+Первичный стек ещё не накатан. С ноутбука один раз: `make deploy` (Ansible).
+Rolling update из Actions только подтягивает образ и перезапускает сервис `satellite`.
+
+### `docker compose pull` / `unauthorized` (GHCR)
+
+Пакет в GHCR приватный — задайте секрет `GHCR_PULL_TOKEN` (PAT с `read:packages`)
+или сделайте пакет **public** (`Settings → Packages → satellite`).
+
+### `bind: address already in use` на `127.0.0.1:8080`
+
+На том же порту слушает **systemd** `satellite-bot.service` (старая установка).
+[`ci-deploy-remote.sh`](../scripts/ci-deploy-remote.sh) и Ansible playbook останавливают
+и отключают unit перед `docker compose up`. Вручную:
+
+```bash
+sudo systemctl stop satellite-bot.service
+sudo systemctl disable satellite-bot.service
+cd /opt/satellite && docker compose up -d satellite
+```
+
+Не держите systemd и Docker с одним `TELEGRAM_BOT_TOKEN` одновременно.
+
+### Push в `main`, но бот на сервере старый
+
+Проверьте, что workflow `deploy` завершился зелёным, в `/opt/satellite/.env` актуальный
+`SATELLITE_IMAGE=ghcr.io/...:sha-<short>`, контейнер пересоздан:
+`docker compose ps satellite`, `docker compose logs --tail=50 satellite`.
+
 ## Тесты не запускаются после переноса папки
 
 Пересоздайте venv или:
