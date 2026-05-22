@@ -93,10 +93,23 @@ pytest оставался зелёным.
   (`web/`, `calendar/providers/`, `plan_service.py`, `scheduler.py`),
   предварительно проставив аннотации. Базовый mypy уже блокирующий в CI
   (0 ошибок на момент Фазы 11).
-- `messages_ru/_core.py` ещё монолит (1199 строк). Фаза 8 ограничилась
-  превращением файла в пакет; разбиение по сценариям (`calendar/`, `digest/`,
-  `settings/`, ...) сделано не было — но фасад готов к этому без миграции
-  импортов.
+
+## messages_ru: разбиение по сценариям (2026-05-22)
+
+- Монолит `_core.py` (~1350 строк) распилен на подмодули:
+  `buttons`, `identity`, `access`, `admin_messages`, `calendar_ui`,
+  `settings_ui`, `plan_strings`, `duration`. `_core.py` — тонкий реэкспорт;
+  `from satellite.messages_ru import …` без изменений.
+- Агенту проще править один сценарий (например, только `settings_ui.py`
+  для дайджеста) без прокрутки тысячи строк.
+
+## dispatch: единая обёртка ошибок + /start в таблице (2026-05-22)
+
+- `handlers/dispatch.py`: `_safe_message_run` — один try/except для всех
+  message-путей (стабильность, меньше копипасты).
+- `StartOrHelpCommand` и `PendingCommand` перенесены в `_MESSAGE_ROUTES`;
+  `/start` и `/help` теперь сбрасывают FSM (`digest_state`, `calendar_state`),
+  как и остальные распознанные команды (инвариант AGENTS.md §10).
 
 ## GitHub Actions автодеплой (2026-05-21)
 

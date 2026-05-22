@@ -42,9 +42,10 @@ satellite/
   scheduler.py           # DigestScheduler
   subscriptions.py       # SubscriptionStore → logs/subscriptions.json
   logging_setup.py
-  messages_ru/           # ВСЕ user-facing тексты (пакет: __init__ = фасад, _core = реализация)
+  messages_ru/           # ВСЕ user-facing тексты (пакет: __init__ = фасад, подмодули по сценарию)
     __init__.py          # реэкспорт публичного API; импорты не меняются
-    _core.py             # текстовые константы, keyboard builders, helpers
+    buttons.py, calendar_ui.py, settings_ui.py, …  # см. refactor-log «messages_ru»
+    _core.py             # совместимость: реэкспорт подмодулей
 
   analytics/             # недельная аналитика
     service.py           # build_week_analytics (raw → отчёт → PNG + подпись)
@@ -103,7 +104,7 @@ satellite/
 
 | Хочу поменять | Куда смотреть |
 |---------------|---------------|
-| Текст любого сообщения пользователю | [`messages_ru/`](satellite/messages_ru/) (фасад в `__init__.py`, реализация в `_core.py`), [`seagull/templates.py`](satellite/seagull/templates.py) |
+| Текст любого сообщения пользователю | [`messages_ru/`](satellite/messages_ru/) (фасад `__init__.py`; сценарий — `buttons.py`, `settings_ui.py`, …), [`seagull/templates.py`](satellite/seagull/templates.py) |
 | Логику дайджеста (метрики) | [`calendar/stats.py`](satellite/calendar/stats.py) |
 | Финальный рендер | [`seagull/render.py`](satellite/seagull/render.py), [`seagull/rules.py`](satellite/seagull/rules.py) |
 | Команду / кнопку | [`recognize_message`](satellite/telegram_bot/handlers/routing.py) → запись в `_RECOGNIZERS`; маршрутизация — [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py) (`_MESSAGE_ROUTES`, `_CALLBACK_ROUTERS`) |

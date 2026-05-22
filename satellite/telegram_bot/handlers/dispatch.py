@@ -66,6 +66,24 @@ from .subscription import handle_subscription_action
 log = logging.getLogger(__name__)
 
 
+def _safe_message_run(
+    ctx: HandlerContext,
+    msg: IncomingMessage,
+    fn: Callable[[], None],
+    *,
+    log_context: str,
+) -> None:
+    """Единая обёртка: TelegramError и прочие исключения не валят процесс бота."""
+    try:
+        fn()
+    except TelegramError as exc:
+        log.error("Telegram error %s user_id=%s: %s", log_context, msg.user_id, exc)
+    except Exception:  # noqa: BLE001 - один апдейт не должен валить бота
+        log.exception("Unexpected error %s user_id=%s", log_context, msg.user_id)
+        if msg.chat_id is not None:
+            notify_handler_failure(ctx, msg.chat_id)
+
+
 # --- диспетчер: сообщения --------------------------------------------------
 
 
@@ -75,43 +93,21 @@ def handle_message(ctx: HandlerContext, msg: IncomingMessage) -> None:
         return
 
     if msg.web_app_data:
-        try:
-            handle_web_app_connect(ctx, msg)
-        except TelegramError as exc:
-            log.error("Telegram error on web_app_data user_id=%s: %s", msg.user_id, exc)
-        except Exception:  # noqa: BLE001
-            log.exception("Unexpected error on web_app_data user_id=%s", msg.user_id)
-            notify_handler_failure(ctx, msg.chat_id)
+        _safe_message_run(
+            ctx,
+            msg,
+            lambda: handle_web_app_connect(ctx, msg),
+            log_context="on web_app_data",
+        )
         return
 
     cmd = recognize_message(msg.text)
-    if isinstance(cmd, StartOrHelpCommand):
-        try:
-            handle_start_or_help(ctx, msg, is_start=cmd.is_start)
-        except TelegramError as exc:
-            log.error("Telegram error while handling user_id=%s: %s", msg.user_id, exc)
-        except Exception:  # noqa: BLE001 - один апдейт не должен валить бота
-            log.exception("Unexpected error while handling user_id=%s", msg.user_id)
-            notify_handler_failure(ctx, msg.chat_id)
-        return
-
-    if isinstance(cmd, PendingCommand):
-        try:
-            handle_pending_command(ctx, msg)
-        except TelegramError as exc:
-            log.error("Telegram error in /pending user_id=%s: %s", msg.user_id, exc)
-        except Exception:  # noqa: BLE001
-            log.exception("Unexpected error in /pending user_id=%s", msg.user_id)
-            notify_handler_failure(ctx, msg.chat_id)
-        return
-
-    try:
-        _route_message(ctx, msg, cmd)
-    except TelegramError as exc:
-        log.error("Telegram error while handling user_id=%s: %s", msg.user_id, exc)
-    except Exception:  # noqa: BLE001 - один апдейт не должен валить бота
-        log.exception("Unexpected error while handling user_id=%s", msg.user_id)
-        notify_handler_failure(ctx, msg.chat_id)
+    _safe_message_run(
+        ctx,
+        msg,
+        lambda: _route_message(ctx, msg, cmd),
+        log_context="while handling message",
+    )
 
 
 def _route_message(
@@ -169,7 +165,17 @@ def _subscription(ctx, msg, cmd):
     handle_subscription_action(ctx, msg, cmd.action)
 
 
+def _start_or_help(ctx, msg, cmd):
+    handle_start_or_help(ctx, msg, is_start=cmd.is_start)
+
+
+def _pending(ctx, msg, cmd):
+    handle_pending_command(ctx, msg)
+
+
 _MESSAGE_ROUTES: dict[type, _MessageRoute] = {
+    StartOrHelpCommand: _MessageRoute(handler=_start_or_help),
+    PendingCommand: _MessageRoute(handler=_pending),
     ConnectCommand: _MessageRoute(handler=_run_simple(handle_connect_calendar_button)),
     CheckCommand: _MessageRoute(handler=_run_simple(handle_check_calendar)),
     DisconnectCommand: _MessageRoute(handler=_run_simple(handle_disconnect_calendar)),
