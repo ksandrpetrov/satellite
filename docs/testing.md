@@ -176,7 +176,7 @@ python -m pytest tests/test_weather.py
 
 **Config** (`test_config.py`):
 
-- `DIGEST_MODE` из `.env` поверх env процесса;
+- `DIGEST_MODE` из `.env` (legacy; scheduler авто-дайджеста всегда на today);
 - погода из `WEATHER_LOCATION` JSON;
 - `is_valid_webapp_base_url` — отклонение путей `connect.html` / `/static/`;
 - `load_settings(require_webapp=True)` — заглушки и невалидный `WEBAPP_BASE_URL`;

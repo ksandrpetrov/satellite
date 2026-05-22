@@ -1,12 +1,17 @@
 """Фоновый scheduler для per-user дайджестов (план дня и непринятые встречи).
 
-Дизайн (Вариант А из ТЗ):
+Дизайн:
 
 - Один поток просыпается каждые ``tick_interval_sec`` (по умолчанию 30 с)
   и сверяет ``HH:MM`` в часовом поясе пользователя с его расписанием.
-- Если совпало, день недели разрешён, и сегодня этому пользователю ещё
-  не отправляли — стреляем; ``last_*_sent_date`` записываем только после
-  успешного ``sendMessage``.
+- Стреляем, если: день недели разрешён, локальное время ``>=`` scheduled,
+  и сегодня этому пользователю ещё не отправляли. ``last_*_sent_date``
+  записывается **только** после успешного ``sendMessage`` — это анти-дубль.
+- Догон после пропуска: если бот рестартился / тик упал / сеть моргнула
+  ровно в минуту scheduled — следующий тик в этот же день всё равно
+  отправит дайджест (а не молча потеряет слот до завтра). Окно «догона» —
+  до конца локальных суток пользователя; если день закончился без
+  отправки, scheduled-слот этого дня считается потерянным.
 - Каждый подписчик обрабатывается независимо (фейл одного не валит остальных).
 """
 
@@ -46,7 +51,20 @@ def should_fire_at(
     chat_id: int | None = None,
     log_label: str = "digest_time",
 ) -> bool:
-    """Чистый решатель «пора ли стрелять» для одного вида дайджеста."""
+    """Чистый решатель «пора ли стрелять» для одного вида дайджеста.
+
+    Стреляем, если:
+
+    - дайджест включён;
+    - сегодня (в локали пользователя) — разрешённый день недели;
+    - локальное время **>=** запланированного (``HH:MM``);
+    - сегодня ещё не отправляли (``last_sent_iso`` ≠ сегодня).
+
+    Семантика «>=» вместо строгого «==» — защита от потери слота
+    при рестарте/исключении ровно в scheduled-минуту. Защита от двойной
+    отправки — единственно через ``last_sent_iso`` (его выставляет caller
+    после успешного ``sendMessage``).
+    """
     if not enabled:
         return False
     if not is_digest_day_allowed(days, now_in_user_tz.weekday()):
@@ -63,7 +81,7 @@ def should_fire_at(
             )
         return False
     current_minutes = now_in_user_tz.hour * 60 + now_in_user_tz.minute
-    if current_minutes != scheduled_minutes:
+    if current_minutes < scheduled_minutes:
         return False
     today_iso = now_in_user_tz.date().isoformat()
     if last_sent_iso == today_iso:
@@ -155,7 +173,7 @@ class DigestScheduler:
         self._thread.start()
         log.info(
             "Digest scheduler started: per-user schedule; tick=%.0fs auto_plan_date=today "
-            "(DIGEST_MODE=%s ignored for scheduled digest)",
+            "fire_window=catch_up_same_day (DIGEST_MODE=%s ignored for scheduled digest)",
             self._tick_interval_sec,
             self._digest_config.mode,
         )

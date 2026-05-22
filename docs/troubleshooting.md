@@ -311,6 +311,21 @@ sudo -u satellite bash -c 'set -a; . /opt/satellite/.env; set +a; \
 
 Если `last_digest_sent_date` уже сегодня, повторной отправки не будет.
 
+**Окно срабатывания — «догон в течение дня».** Раньше дайджест уходил ровно
+в scheduled-минуту: если бот в эту минуту рестартился (deploy, OOM, исключение
+в тике), слот терялся до завтра. Сейчас scheduler стреляет, если: время в
+локали пользователя `>= digest_time`, сегодняшний день недели разрешён,
+`last_digest_sent_date` ≠ сегодня. То есть рестарт в 09:00 → дайджест уйдёт
+следующим тиком в 09:00:30 / 09:05 / 14:30 — но **в тот же день**.
+Двойной отправки нет: `last_digest_sent_date` выставляется только после
+успешного `sendMessage`. В логе при старте: `Digest scheduler started: …
+fire_window=catch_up_same_day`.
+
+Если бот лежал весь день (locale-сутки прошли без единого успешного тика
+после scheduled) — слот теряется. Тогда смотрите `Digest scheduler tick
+failed` / `Daily digest send failed` в `logs/bot.log` и
+[«Бот не запускается»](#бот-не-запускается).
+
 Устаревшие ключи в `.env` (`DIGEST_TIME`, `DIGEST_WEEKDAYS_ONLY`, `DIGEST_MODE`) scheduler
 не читает: авто-дайджест плана всегда на **сегодня** в `digest_timezone` пользователя.
 Если в сообщении «Прогноз на завтра» — обновите образ/код (до fix использовался
@@ -320,15 +335,19 @@ sudo -u satellite bash -c 'set -a; . /opt/satellite/.env; set +a; \
 
 Отдельно от плана дня — `/settings` → «📨 Дайджест непринятых встреч» и поля
 `pending_digest_*` в `logs/subscriptions.json` (`pending_digest_enabled`,
-`pending_digest_days`, `pending_digest_time`, `pending_digest_timezone`,
-`telegram_user_id`).
+`pending_digest_days` — `weekdays`, `all_days` или маска `1111100`,
+`pending_digest_time`, `pending_digest_timezone`, `telegram_user_id`).
 
 Как и для плана: без `has_calendar` шедулер пропускает пользователя; если
 `last_pending_digest_sent_date` уже сегодня — повторной отправки не будет.
+Окно срабатывания такое же — «догон в течение того же дня» (см. секцию
+выше).
 
 Если в момент срабатывания нет встреч с `NEEDS-ACTION` / `DELEGATED` (тот же
 отбор, что `/invitations`, lookback 14 д / горизонт 60 д вперёд), сообщение
 намеренно не уходит — в логе `Pending digest skipped (empty)`.
+`last_pending_digest_sent_date` при этом **не** ставится: если встречи
+появятся позже в тот же день, следующий тик догонит и отправит.
 
 Проверка списка без Telegram: [`scripts/diagnose_invitation.py`](../scripts/diagnose_invitation.py).
 

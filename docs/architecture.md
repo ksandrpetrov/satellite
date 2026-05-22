@@ -57,7 +57,10 @@ Handlers принимают Telegram-события и не считают ка�
   статусы) + `store.py` (`UserStore`, атомарная запись `logs/users.json`) +
   `admin.py` (парсинг `ADMIN_TELEGRAM_IDS`).
 - `satellite/security/token_vault.py` — Fernet-шифрование credentials.
-- `satellite/digest_utils.py` — `resolve_target_date`, `is_digest_day_allowed`.
+- `satellite/digest_utils.py` — `resolve_target_date`, `is_digest_day_allowed`,
+  маски дней (`digest_days_to_bitmask`, `format_digest_days_label`, …).
+- `satellite/invitations_view.py` — общий экран pending-приглашений для
+  `/invitations` и шедулера (`load_pending_invitations_screen`).
 - `satellite/messages_ru/` — пакет с user-facing текстами и callback-константами.
   `__init__.py` — фасад (re-export всего публичного API), реализация — в
   `_core.py`. Старые импорты `from satellite.messages_ru import ...` работают
@@ -121,7 +124,8 @@ telegram_test_command.py
   - `admin.py` — `/pending`, approve/reject callbacks.
   - `settings_hub.py` — inline-хаб «Настройки» (дайджест, аналитика, календари,
     connect); кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` только здесь.
-  - `settings.py` — экран настроек дайджеста и callbacks `CB_DIGEST_*`.
+  - `settings.py` — экраны дайджеста плана и непринятых (`CB_DIGEST_*`,
+    `CB_PENDING_DIGEST_*`, общий `DigestKindBindings`).
   - `analytics.py` — недельная аналитика (PNG + подпись) из хаба;
     `ActionGuard` (45 с cooldown) — один прогон на `chat_id` + защита от
     двойного PNG при повторном callback.
@@ -254,7 +258,7 @@ digest_timezone
 subscribed_at
 last_digest_sent_date
 pending_digest_enabled
-pending_digest_days
+pending_digest_days         # weekdays | all_days | 7-bit mask
 pending_digest_time         # default 10:00
 pending_digest_timezone
 last_pending_digest_sent_date

@@ -222,22 +222,24 @@ chat_id
 telegram_user_id   # для резолва UserRecord в шедулере (не @username)
 username
 digest_enabled
-digest_days        # weekdays | all_days
+digest_days        # weekdays | all_days (UI — два пресета)
 digest_time        # HH:MM
 digest_timezone    # IANA, напр. Europe/Moscow
 subscribed_at
 last_digest_sent_date
 pending_digest_enabled
-pending_digest_days
+pending_digest_days  # weekdays | all_days | 7-битная маска (Пн=0…Вс=6, ≥1 «1»)
 pending_digest_time         # default 10:00 при отсутствии в JSON
 pending_digest_timezone
 last_pending_digest_sent_date
 ```
 
-Шедулер (`scheduler.py`) опрашивает оба расписания независимо. Дайджест
-непринятых отправляется только если в момент срабатывания есть хотя бы одно
-неотвеченное приглашение; иначе тик молча пропускается (без сообщения и без
-обновления `last_pending_digest_sent_date`).
+Шедулер (`scheduler.py`) опрашивает оба расписания независимо; допустимость
+дня недели — `is_digest_day_allowed` в [`digest_utils.py`](../satellite/digest_utils.py)
+(для `pending_digest_days` поддерживается и маска). Дайджест непринятых
+отправляется только если в момент срабатывания есть хотя бы одно неотвеченное
+приглашение; иначе тик молча пропускается (без сообщения и без обновления
+`last_pending_digest_sent_date`).
 
 Глобальная переменная:
 

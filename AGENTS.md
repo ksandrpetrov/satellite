@@ -34,7 +34,8 @@ satellite/
     admin.py             # parse_admin_ids / admin_id_set (env → tuple[int])
   security/
     token_vault.py       # Fernet encrypt/decrypt ProviderCredentials
-  digest_utils.py        # resolve_target_date, is_digest_day_allowed
+  digest_utils.py        # resolve_target_date, is_digest_day_allowed, маски дней
+  invitations_view.py  # load_pending_invitations_screen (/invitations + scheduler)
   plan_service.py        # PlanBuilder (не читает users.json)
   visual_cards/
     base.py              # палитра, шрифты, примитивы PNG (аналитика)
@@ -107,7 +108,8 @@ satellite/
 | Финальный рендер | [`seagull/render.py`](satellite/seagull/render.py), [`seagull/rules.py`](satellite/seagull/rules.py) |
 | Команду / кнопку | [`recognize_message`](satellite/telegram_bot/handlers/routing.py) → запись в `_RECOGNIZERS`; маршрутизация — [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py) (`_MESSAGE_ROUTES`, `_CALLBACK_ROUTERS`) |
 | Хаб настроек / дайджест | [`handlers/settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py) (роутер всех `CB_SETTINGS_*` / `CB_ANALYTICS_*`), [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) (экраны «на сегодня» и «непринятых встреч») |
-| Дайджест непринятых встреч (расписание + автоотправка) | [`scheduler.py`](satellite/scheduler.py) `_deliver_pending`, [`invitations_view.py`](satellite/invitations_view.py) `load_pending_invitations_screen`; настройки — `pending_digest_*` в [`subscriptions.py`](satellite/subscriptions.py), `mark_pending_digest_sent` |
+| Дайджест непринятых встреч (расписание + автоотправка) | [`scheduler.py`](satellite/scheduler.py) `_deliver_pending`, [`invitations_view.py`](satellite/invitations_view.py) `load_pending_invitations_screen`; настройки — `pending_digest_*` в [`subscriptions.py`](satellite/subscriptions.py) (дни: legacy + 7-bit mask), UI — [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) `CB_PENDING_DIGEST_*`, `mark_pending_digest_sent` |
+| Дни отправки дайджестов (маска, подпись) | [`digest_utils.py`](satellite/digest_utils.py) — `is_digest_day_allowed`, `digest_days_to_bitmask`, `format_digest_days_label`, `toggle_digest_days_bitmask` |
 | Чужие (пошаренные) календари | [`handlers/calendar_foreign.py`](satellite/telegram_bot/handlers/calendar_foreign.py) |
 | Список CalDAV-календарей в UI | [`handlers/calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py) — `fetch_calendars` (→ `CalendarListResult`) и `build_calendar_sources_screen` |
 | Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users/record.py`](satellite/users/record.py) |
@@ -117,7 +119,7 @@ satellite/
 | Расписание дайджеста на сегодня | [`scheduler.py`](satellite/scheduler.py) `_deliver_daily` + [`subscriptions.py`](satellite/subscriptions.py) (`digest_*`, `mark_digest_sent`) |
 | Доступ, заявки, календарь пользователя | [`users/store.py`](satellite/users/store.py) (UserStore) + [`users/record.py`](satellite/users/record.py) (UserRecord, статусы), шифрование — [`security/token_vault.py`](satellite/security/token_vault.py) |
 | Web App connect | handlers + HTTP в [`bot.py`](satellite/telegram_bot/bot.py); env — [`config.py`](satellite/config.py) |
-| Дату дайджеста (mode→дата) | [`digest_utils.py`](satellite/digest_utils.py) |
+| Дату плана по команде (today/tomorrow/…) | [`digest_utils.py`](satellite/digest_utils.py) `resolve_target_date`; авто-дайджест — всегда today в [`scheduler.py`](satellite/scheduler.py) |
 | Парсинг .env | [`config.py`](satellite/config.py), образец [`.env.example`](.env.example) |
 | CalDAV / провайдеры | [`calendar/caldav_client.py`](satellite/calendar/caldav_client.py), [`calendar/providers/`](satellite/calendar/providers/), [`user_calendar_service.py`](satellite/calendar/user_calendar_service.py) |
 | Список / создание событий в боте | [`handlers/calendar_list.py`](satellite/telegram_bot/handlers/calendar_list.py), [`calendar_create.py`](satellite/telegram_bot/handlers/calendar_create.py); формат строк — [`events/_collectors.py`](satellite/calendar/events/_collectors.py) (импорт через фасад `satellite.calendar.events`) |
@@ -144,7 +146,9 @@ satellite/
 3. **Доступ** — `UserStore` единственный источник `status` / `has_calendar`;
    админы — `ADMIN_TELEGRAM_IDS` из env.
 4. **Не считать stats в хендлерах** — только `PlanBuilder`.
-5. **Дата дайджеста** — `resolve_target_date` / `is_digest_day_allowed`.
+5. **Дата и дни дайджеста** — команды плана: `resolve_target_date`; авто-дайджест
+   плана: всегда today в scheduler; допустимость дня: `is_digest_day_allowed`
+   (для `pending_digest_days` — и 7-bit mask).
 6. **Тексты** — [`messages_ru/`](satellite/messages_ru/) / шаблоны seagull/weather.
 7. **Хендлеры не пробрасывают исключения** — safe text из `messages_ru`.
 8. **Атомарная запись JSON-store** — `subscriptions.py` и `users/store.py`: tmp + fsync + os.replace`.

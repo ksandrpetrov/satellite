@@ -199,19 +199,29 @@ Callback data хаба: `CB_SETTINGS_*` / `CB_ANALYTICS_*` в [`messages_ru/_cor
 
 ### Digest settings (из хаба)
 
-Оба экрана («🔔 Дайджест на сегодня» и «📨 Дайджест непринятых встреч») устроены
-одинаково (`settings.py`, общий код для `digest_*` и `pending_digest_*`):
+Оба экрана («🔔 Дайджест на сегодня» и «📨 Дайджест непринятых встреч») делят
+общий каркас в `settings.py` (`DigestKindBindings` для `digest_*` и
+`pending_digest_*`):
 
-- статус подписки;
-- дни отправки (`weekdays` / `all_days`);
+- статус подписки (вкл/выкл);
 - время отправки (следующий текст без команды — новое `HH:MM`, см.
   [Time input](#time-input); FSM — `handlers/digest_state`);
-- кнопка включения или отключения;
 - «Назад» / «Закрыть» возвращают в хаб.
+
+**Дни отправки** различаются:
+
+- **План** (`digest_days`) — пресеты «Только будни» / «Все дни»
+  (`weekdays` | `all_days`; callbacks `CB_DIGEST_DAYS_*`).
+- **Непринятые** (`pending_digest_days`) — галочки по дням недели (Пн…Вс,
+  `CB_PENDING_DIGEST_DAY_PREFIX`), плюс быстрые «Будни» / «Все дни»; в JSON
+  может храниться 7-символьная маска (`1111100`, индекс 0 = понедельник).
+  Снять последнюю галочку нельзя (`PENDING_DIGEST_LAST_DAY_TEXT`).
+  Подпись на экране — `format_digest_days_label` в [`digest_utils.py`](../satellite/digest_utils.py).
 
 **Дайджест плана** (`digest_enabled`, `digest_time`, …) — `PlanBuilder` на
 **сегодня** (в TZ подписки). Команды «завтра»/«послезавтра» — отдельные
-кнопки и `/tomorrow`, `/dayafter`.
+кнопки и `/tomorrow`, `/dayafter`. `DIGEST_MODE` в `.env` на авто-дайджест не
+влияет.
 
 **Дайджест непринятых** (`pending_digest_enabled`, …) — в заданное время
 шедулер шлёт тот же список и клавиатуру, что `/invitations`

@@ -79,14 +79,35 @@ def test_does_not_fire_when_disabled():
     )
 
 
-def test_does_not_fire_when_minute_differs():
-    assert not should_fire_for_user(
-        settings=_settings(time_str="09:00"),
-        now_in_user_tz=_at(2026, 5, 11, 9, 1),
-    )
+def test_does_not_fire_before_scheduled_time():
+    """До scheduled-минуты — молчим."""
     assert not should_fire_for_user(
         settings=_settings(time_str="09:00"),
         now_in_user_tz=_at(2026, 5, 11, 8, 59),
+    )
+
+
+def test_fires_after_scheduled_time_within_same_day():
+    """После scheduled, в тот же день — стреляем (догон после рестарта/сбоя)."""
+    assert should_fire_for_user(
+        settings=_settings(time_str="09:00"),
+        now_in_user_tz=_at(2026, 5, 11, 9, 1),
+    )
+    assert should_fire_for_user(
+        settings=_settings(time_str="09:00"),
+        now_in_user_tz=_at(2026, 5, 11, 14, 30),
+    )
+    assert should_fire_for_user(
+        settings=_settings(time_str="09:00"),
+        now_in_user_tz=_at(2026, 5, 11, 23, 59),
+    )
+
+
+def test_does_not_fire_after_scheduled_if_already_sent_today():
+    """Догон не превращается в дубль: last_sent_iso защищает."""
+    assert not should_fire_for_user(
+        settings=_settings(time_str="09:00", last_sent="2026-05-11"),
+        now_in_user_tz=_at(2026, 5, 11, 14, 30),
     )
 
 
@@ -122,9 +143,15 @@ def test_fires_at_custom_time():
         settings=_settings(time_str="08:30"),
         now_in_user_tz=_at(2026, 5, 11, 8, 30),
     )
-    assert not should_fire_for_user(
+    # Догон в тот же день после scheduled — стреляем.
+    assert should_fire_for_user(
         settings=_settings(time_str="08:30"),
         now_in_user_tz=_at(2026, 5, 11, 9, 0),
+    )
+    # А до scheduled — молчим.
+    assert not should_fire_for_user(
+        settings=_settings(time_str="08:30"),
+        now_in_user_tz=_at(2026, 5, 11, 8, 29),
     )
 
 
@@ -290,15 +317,14 @@ def test_daily_digest_targets_today_when_global_mode_is_tomorrow(tmp_path: Path)
     assert call.kwargs["reference_date"] == date(2026, 5, 11)
 
 
-def test_tick_sends_only_to_users_matching_time(tmp_path: Path):
+def test_tick_sends_only_to_users_whose_scheduled_time_has_arrived(tmp_path: Path):
+    """09:00 МСК: alice scheduled на 09:00 — стреляет; bob на 09:30 — рано."""
     # 2026-05-11 — понедельник, 09:00 МСК
     now = _at(2026, 5, 11, 9, 0)
     scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
-    # alice: 09:00 будни — должна получить
     store.subscribe(1, "alice")
-    # bob: 08:30 — не должен (другое время)
     store.subscribe(2, "bob")
-    store.update_settings(2, "bob", digest_time="08:30")
+    store.update_settings(2, "bob", digest_time="09:30")
 
     delivered = scheduler.tick()
     assert delivered == 1
@@ -396,14 +422,41 @@ def test_tick_delivers_at_custom_user_time(tmp_path: Path):
     assert scheduler.tick() == 1
 
 
-def test_tick_does_not_deliver_at_default_time_for_custom_time_user(tmp_path: Path):
-    # пользователь установил 08:30, сейчас 09:00 — не пора
-    now = _at(2026, 5, 13, 9, 0)
+def test_tick_does_not_deliver_before_custom_time_user(tmp_path: Path):
+    """Кастомный 08:30, сейчас 08:00 — рано, ничего не шлём."""
+    now = _at(2026, 5, 13, 8, 0)
     scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
     store.subscribe(1, "alice")
     store.update_settings(1, "alice", digest_time="08:30")
 
     assert scheduler.tick() == 0
+
+
+def test_tick_catches_up_after_missed_scheduled_minute(tmp_path: Path):
+    """Регрессия: бот рестартовал в 09:00, тик подняли в 09:05 — догоняем сегодня.
+
+    Раньше окно было ровно одна минута: пропустили 09:00 — слот потерян до завтра.
+    Теперь `current_minutes >= scheduled_minutes`, защита от двойной — last_sent.
+    """
+    # alice scheduled на 09:00 будни, бот «прокинулся» только в 09:05
+    now = _at(2026, 5, 11, 9, 5)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(1, "alice")
+
+    assert scheduler.tick() == 1
+    assert telegram.send_message.call_count == 1
+    assert store.get(1).last_digest_sent_date == "2026-05-11"
+
+
+def test_tick_does_not_catch_up_if_already_sent_today(tmp_path: Path):
+    """Догон не пробивает анти-дубль: если today уже отмечен — не шлём."""
+    now = _at(2026, 5, 11, 14, 30)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(1, "alice")
+    store.mark_digest_sent(1, date(2026, 5, 11))
+
+    assert scheduler.tick() == 0
+    telegram.send_message.assert_not_called()
 
 
 def test_tick_one_failed_user_does_not_block_others(tmp_path: Path):

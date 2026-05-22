@@ -259,3 +259,20 @@ pytest оставался зелёным.
   `pending_digest_*`) работают; в `configuration.md` / `architecture.md` оставалась
   устаревшая пометка «шедулер/UI пока не шлют».
 - Обновлены: README, configuration, architecture, telegram-ux, troubleshooting.
+
+## Дни `pending_digest_days`: маска по будням (2026-05-21)
+
+- UI «📨 Дайджест непринятых» — галочки Пн…Вс + «Будни»/«Все дни»; в JSON —
+  `weekdays` | `all_days` | `1111100` (`is_valid_pending_digest_days`,
+  `toggle_digest_days_bitmask` в `digest_utils.py`).
+- Плановый дайджест (`digest_days`) по-прежнему только два пресета в UI.
+- Тесты: `test_digest_settings.py` (pending bitmask), `test_scheduler.py`.
+
+## Авто-дайджест плана: всегда «сегодня» (2026-05-22)
+
+- `DigestScheduler._deliver_daily` вызывает `resolve_target_date("today", …)`;
+  `DIGEST_MODE` из `.env` на дату авто-отправки не влияет (legacy для логов /
+  совместимости; дефолт `today`).
+- `resolve_target_date`: неизвестный режим → `today` (раньше — `tomorrow`).
+- Документация и `.env.example`: README, configuration, architecture, telegram-ux,
+  troubleshooting, AGENTS.md, refactor-log.
