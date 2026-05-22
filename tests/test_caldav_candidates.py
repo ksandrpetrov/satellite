@@ -447,6 +447,72 @@ def test_enrich_invitations_prioritizes_upcoming_for_partstat_refresh(monkeypatc
     assert is_pending_invitation_for_user(may26, "me@vk.team")
 
 
+def test_enrich_invitations_skips_get_for_far_future_false_accepted(monkeypatch):
+    """Ложный ACCEPTED далеко в будущем не оправдывает GET — горизонт verify ограничен."""
+    tz = ZoneInfo("Europe/Moscow")
+    moment = datetime(2026, 5, 21, 12, 0, tzinfo=tz)
+    events = [
+        {
+            "summary": "Far",
+            "url": "https://fake/calendars/cal/far.ics",
+            "dtstart": "2026-07-15T10:00:00+03:00",
+            "dtend": "2026-07-15T11:00:00+03:00",
+            "attendees": ["mailto:me@vk.team;PARTSTAT=ACCEPTED"],
+        }
+    ]
+
+    def fail_get(*_args, **_kwargs):
+        raise AssertionError("GET should not run for far-future ACCEPTED in REPORT")
+
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fail_get)
+
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login="me@vk.team",
+        app_password="pw",
+        cache_ttl_sec=0,
+        partstat_refresh_limit=8,
+    )
+    service._enrich_events_partstat(
+        events,
+        tz=tz,
+        invitation_verify=True,
+        moment=moment,
+    )
+
+
+def test_enrich_invitations_skips_get_when_user_not_among_attendees(monkeypatch):
+    tz = ZoneInfo("Europe/Moscow")
+    events = [
+        {
+            "summary": "Other people",
+            "url": "https://fake/calendars/cal/other.ics",
+            "dtstart": "2026-05-26T10:00:00+03:00",
+            "dtend": "2026-05-26T11:00:00+03:00",
+            "attendees": ["mailto:boss@vk.team;PARTSTAT=ACCEPTED"],
+        }
+    ]
+
+    def fail_get(*_args, **_kwargs):
+        raise AssertionError("GET should not run without user mailto or open PARTSTAT")
+
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fail_get)
+
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login="me@vk.team",
+        app_password="pw",
+        cache_ttl_sec=0,
+        partstat_refresh_limit=8,
+    )
+    service._enrich_events_partstat(
+        events,
+        tz=tz,
+        invitation_verify=True,
+        moment=datetime(2026, 5, 21, 12, 0, tzinfo=tz),
+    )
+
+
 def test_enrich_invitations_refreshes_upcoming_before_older_false_accepted(monkeypatch):
     """Ложный ACCEPTED в REPORT: GET-бюджет не должен тратиться на старые дни до 26.05."""
     tz = ZoneInfo("Europe/Moscow")

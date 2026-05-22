@@ -285,7 +285,8 @@ class MailruCalendarProvider:
             login=credentials.login.strip(),
             app_password=credentials.secret,
             cache_ttl_sec=self._cache_ttl_sec,
-            partstat_refresh_limit=120,
-            partstat_refresh_timeout_sec=3.0,
-            partstat_refresh_budget_sec=25.0,
+            # Достаточно для ложного ACCEPTED в REPORT; бюджет держим коротким для /invitations.
+            partstat_refresh_limit=20,
+            partstat_refresh_timeout_sec=1.0,
+            partstat_refresh_budget_sec=5.0,
         )

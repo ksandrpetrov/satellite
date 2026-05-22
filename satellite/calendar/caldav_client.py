@@ -6,6 +6,7 @@ import logging
 import threading
 import time
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any, cast
@@ -33,6 +34,9 @@ DEFAULT_CALDAV_URL = "https://calendar.mail.ru/"
 _PARTSTAT_REFRESH_LIMIT = 4
 _PARTSTAT_REFRESH_TIMEOUT_SEC = 0.8
 _PARTSTAT_REFRESH_BUDGET_SEC = 1.5
+# Ложный ACCEPTED в REPORT у Mail.ru — перепроверяем GET, но не на всём 60-дневном горизонте.
+_INVITATION_VERIFY_FORWARD_DAYS = 42
+_RANGE_SEARCH_MAX_WORKERS = 6
 # Ответ на приглашение (GET+PUT): Mail.ru часто отвечает >0.8s; не reuse refresh timeout.
 _PARTSTAT_UPDATE_TIMEOUT_SEC = 20.0
 
@@ -361,22 +365,7 @@ class CalDAVService:
             raise CalDAVError("Selected calendar(s) not found for user")
         range_start, _ = day_bounds(start_date, tz)
         _, range_end = day_bounds(end_date, tz)
-        out: list[Event] = []
-        for handle in handles:
-            try:
-                events_iter = self._iter_calendar_range_search(handle, range_start, range_end)
-            except Exception as exc:  # noqa: BLE001
-                log.warning(
-                    "CalDAV range search failed url=%s: %s",
-                    _redact_url(handle.url),
-                    exc.__class__.__name__,
-                )
-                continue
-            for raw_event in events_iter:
-                parsed = parse_calendar_events(raw_event.data, handle.name)
-                for ev in parsed:
-                    ev["url"] = str(getattr(raw_event, "url", "") or "")
-                out.extend(parsed)
+        out = self._collect_events_in_range(handles, range_start, range_end)
         if enrich_partstat:
             verify_moment = datetime.now(tz) if invitation_partstat_verify else None
             self._enrich_events_partstat(
@@ -388,6 +377,60 @@ class CalDAVService:
             )
         out.sort(key=lambda event: event.get("dtstart") or "")
         return out
+
+    def _collect_events_in_range(
+        self,
+        handles: Sequence[CalendarHandle],
+        range_start: datetime,
+        range_end: datetime,
+    ) -> list[Event]:
+        """REPORT по одному или нескольким календарям; при N>1 — параллельно."""
+        if not handles:
+            return []
+        if len(handles) == 1:
+            chunks = [self._parse_range_events_from_handle(handles[0], range_start, range_end)]
+        else:
+            workers = min(len(handles), _RANGE_SEARCH_MAX_WORKERS)
+            chunks = []
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [
+                    pool.submit(
+                        self._parse_range_events_from_handle,
+                        handle,
+                        range_start,
+                        range_end,
+                    )
+                    for handle in handles
+                ]
+                for fut in as_completed(futures):
+                    chunks.append(fut.result())
+        out: list[Event] = []
+        for chunk in chunks:
+            out.extend(chunk)
+        return out
+
+    def _parse_range_events_from_handle(
+        self,
+        handle: CalendarHandle,
+        range_start: datetime,
+        range_end: datetime,
+    ) -> list[Event]:
+        local: list[Event] = []
+        try:
+            events_iter = self._iter_calendar_range_search(handle, range_start, range_end)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "CalDAV range search failed url=%s: %s",
+                _redact_url(handle.url),
+                exc.__class__.__name__,
+            )
+            return local
+        for raw_event in events_iter:
+            parsed = parse_calendar_events(raw_event.data, handle.name)
+            for ev in parsed:
+                ev["url"] = str(getattr(raw_event, "url", "") or "")
+            local.extend(parsed)
+        return local
 
     def _iter_calendar_range_search(
         self,
@@ -421,6 +464,25 @@ class CalDAVService:
             raise last_value_error
         raise CalDAVError("CalDAV range search failed without exception")
 
+    def _report_suggests_invitation_partstat_get(self, ev: Event) -> bool:
+        """Есть повод догрузить PARTSTAT: пустые ATTENDEE, открытый статус или наш mailto."""
+        attendees = ev.get("attendees") or []
+        if not attendees:
+            return True
+        joined = " ".join(str(attendee).casefold() for attendee in attendees)
+        if "partstat=needs-action" in joined or "partstat=delegated" in joined:
+            return True
+        if not (self._login or "").strip():
+            return False
+        login_variants = login_variants_for_caldav(self._login)
+        for attendee in attendees:
+            attendee_norm = str(attendee).casefold()
+            if any(
+                (variant or "").strip().casefold() in attendee_norm for variant in login_variants
+            ):
+                return True
+        return False
+
     def _event_needs_partstat_refresh(
         self,
         ev: Event,
@@ -436,21 +498,21 @@ class CalDAVService:
             if not login:
                 return False
             if not self._has_user_partstat([ev]):
-                return True
+                return self._report_suggests_invitation_partstat_get(ev)
             status = user_partstat(ev, login)
             if status in {"NEEDS-ACTION", "DELEGATED", "DECLINED"}:
                 return False
-            if (
-                status in {"ACCEPTED", "TENTATIVE"}
-                and tz is not None
-                and moment is not None
-                and not event_ends_after(ev, tz, moment=moment)
-            ):
+            if tz is not None and moment is not None:
                 start_day = event_local_start_date(ev, tz)
-                if start_day is not None and start_day < moment.date() - timedelta(
-                    days=lookback_days
-                ):
-                    return False
+                if start_day is not None:
+                    if start_day > moment.date() + timedelta(days=_INVITATION_VERIFY_FORWARD_DAYS):
+                        return False
+                    if (
+                        status in {"ACCEPTED", "TENTATIVE"}
+                        and not event_ends_after(ev, tz, moment=moment)
+                        and start_day < moment.date() - timedelta(days=lookback_days)
+                    ):
+                        return False
             # Mail.ru в REPORT иногда отдаёт ложный ACCEPTED — перепроверяем GET.
             return True
         return not self._has_user_partstat([ev])
@@ -503,22 +565,34 @@ class CalDAVService:
             return
         refresh_started = time.monotonic()
         refresh_count = 0
-        ordered = list(events)
         if invitation_verify and moment is not None:
+            ordered = [
+                ev
+                for ev in events
+                if self._event_needs_partstat_refresh(
+                    ev,
+                    invitation_verify=True,
+                    tz=tz,
+                    moment=moment,
+                    lookback_days=lookback_days,
+                )
+            ]
             ordered.sort(
                 key=lambda ev: self._invitation_partstat_refresh_order(
                     ev, tz=tz, moment=moment, lookback_days=lookback_days
                 )
             )
-        elif prioritize_from is not None:
+        else:
+            ordered = list(events)
+            if prioritize_from is not None:
 
-            def _group(ev: Event) -> int:
-                day = event_local_start_date(ev, tz)
-                if day is None:
-                    return 1
-                return 0 if day >= prioritize_from else 1
+                def _group(ev: Event) -> int:
+                    day = event_local_start_date(ev, tz)
+                    if day is None:
+                        return 1
+                    return 0 if day >= prioritize_from else 1
 
-            ordered.sort(key=lambda ev: (_group(ev), sort_key(ev, tz)))
+                ordered.sort(key=lambda ev: (_group(ev), sort_key(ev, tz)))
 
         for ev in ordered:
             if refresh_count >= self._partstat_refresh_limit:
