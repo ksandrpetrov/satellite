@@ -117,6 +117,25 @@ def test_init_data_bad_signature_returns_401(webapp) -> None:
     assert body.get("error") == "bad_signature"
 
 
+def test_connect_yandex_returns_provider_not_implemented(webapp) -> None:
+    """Yandex в UI «скоро»; API отклоняет с PROVIDER_NOT_IMPLEMENTED."""
+    _server, users, _cal, base = webapp
+    _approve(users, 1)
+    init_data = _make_init_data(1)
+    status, body = _http(
+        "POST",
+        base + "/api/calendar/connect",
+        init_data=init_data,
+        body={
+            "provider": "yandex",
+            "login": "user@yandex.ru",
+            "app_password": "secret",
+        },
+    )
+    assert status == HTTPStatus.BAD_REQUEST
+    assert body.get("error") == "PROVIDER_NOT_IMPLEMENTED"
+
+
 def test_init_data_expired_returns_401(webapp) -> None:
     _server, users, _cal, base = webapp
     _approve(users, 1)

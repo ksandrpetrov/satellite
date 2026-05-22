@@ -139,7 +139,8 @@ python -m pytest tests/test_business_routes_contract.py \
 | `test_business_flows_access.py` | access guards, `/help` + `REPLY_KEYBOARD_REMOVE`, `/pending` |
 | `test_business_flows_plan.py` | план дня, ActionGuard release при CalDAV-ошибке |
 | `test_business_flows_upcoming.py` | `/upcoming` 7 дней, пустой список, guard |
-| `test_business_flows_invitations.py` | горизонт 60d/14d, лимит 12, PARTSTAT |
+| `test_business_flows_invitations.py` | горизонт 60d/14d, лимит 12, PARTSTAT, cooldown 10 с |
+| `test_calendar_manage.py` | `/manage` streaming, PARTSTAT, cooldown 10 с |
 | `test_business_flows_create.py` | FSM `/create` целиком |
 | `test_business_flows_settings.py` | callbacks настроек и навигация «Назад» |
 | `test_business_flows_webapp.py` | initData, секреты в `users.json`, 403 pending |

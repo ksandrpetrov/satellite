@@ -423,6 +423,43 @@ def test_manage_blocks_when_calendar_not_connected():
     ctx.calendar_service.list_events_for_invitations.assert_not_called()
 
 
+def test_manage_cooldown_blocks_second_call_after_success(monkeypatch):
+    """Повторный /manage в пределах 10 с не дергает CalDAV второй раз."""
+    import satellite.telegram_bot.handlers.calendar_manage as cm
+
+    now = datetime(2026, 5, 21, 10, 0, tzinfo=TZ)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return now.astimezone(tz) if tz else now
+
+    monkeypatch.setattr(cm, "datetime", _FixedDatetime)
+
+    ctx = _ctx(events=[_ev(summary="Standup", url="https://e/standup")])
+    msg = IncomingMessage(
+        update_id=50,
+        chat_id=952,
+        user_id=1,
+        username="alice",
+        display_name=None,
+        text="/manage",
+    )
+    handle_message(ctx, msg)
+    handle_message(
+        ctx,
+        IncomingMessage(
+            update_id=51,
+            chat_id=952,
+            user_id=1,
+            username="alice",
+            display_name=None,
+            text="/manage",
+        ),
+    )
+    assert ctx.calendar_service.list_events_for_invitations.call_count == 1
+
+
 def test_manage_releases_guard_after_list_failure(monkeypatch):
     """CalDAV-ошибка при открытии /manage не блокирует повтор на 10 с."""
     import satellite.telegram_bot.handlers.calendar_manage as cm

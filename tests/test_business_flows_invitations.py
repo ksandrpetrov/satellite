@@ -186,6 +186,29 @@ def test_invitations_respond_accept_updates_partstat(monkeypatch: pytest.MonkeyP
     assert ctx.calendar_service.set_attendee_partstat.call_args.args[2] == "ACCEPTED"
 
 
+def test_invitations_cooldown_blocks_second_call_after_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Повторный /invitations в пределах 10 с не дергает CalDAV второй раз."""
+    now = datetime(2026, 5, 22, 10, 0, tzinfo=TZ)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return now.astimezone(tz) if tz else now
+
+    monkeypatch.setattr("satellite.invitations_view.datetime", _FixedDatetime)
+
+    ctx = _ctx(events=[_ev()])
+    handle_message(
+        ctx, make_msg(text="/invitations", chat_id=CHAT_ID, user_id=USER_ID, update_id=9)
+    )
+    handle_message(
+        ctx, make_msg(text="/invitations", chat_id=CHAT_ID, user_id=USER_ID, update_id=10)
+    )
+    assert ctx.calendar_service.list_events_for_invitations.call_count == 1
+
+
 def test_invitations_releases_guard_after_list_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime(2026, 5, 22, 10, 0, tzinfo=TZ)
 

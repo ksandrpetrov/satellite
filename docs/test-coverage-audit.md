@@ -42,7 +42,7 @@
 | Persistence connect-токенов (`logs/connect-tokens.json`) | `web/connect_token.py::ConnectTokenStore` | `test_issue_and_resolve`, `test_expired_token_returns_none` (in-memory only) | Нет round-trip через файл, нет recovery от битого JSON, нет purge-on-save | [test_connect_token.py](../tests/test_connect_token.py) *(ext)* |
 | Не-approved пользователь не может вызвать `/api/calendar/*` | `web/auth.py::validated_user` | `test_status_for_pending_user_returns_403` | Только для `status`; нет таблицы по каждому endpoint | [test_business_flows_webapp.py](../tests/test_business_flows_webapp.py) *(new)* |
 | Approved + не-подключённый видит `connected=False` | `web/api/calendar.py::handle_status` | `test_status_for_approved_without_calendar` | OK | без изменений |
-| `POST /api/calendar/connect` happy / bad provider / провайдер-ошибка | `web/api/calendar.py::handle_connect` | `test_connect_happy_path`, `test_connect_invalid_provider_returns_400`, `test_connect_provider_error_propagates_code`, `test_connect_rejects_pending_user` | Не проверено, что сырой пароль не уходит в `users.json` | [test_business_flows_webapp.py](../tests/test_business_flows_webapp.py) *(new)* |
+| `POST /api/calendar/connect` happy / bad provider / yandex `PROVIDER_NOT_IMPLEMENTED` / провайдер-ошибка | `web/api/calendar.py::handle_connect` | `test_connect_happy_path`, `test_connect_invalid_provider_returns_400`, `test_connect_provider_error_propagates_code`, `test_connect_rejects_pending_user` | Не проверено, что сырой пароль не уходит в `users.json`; yandex disabled | [test_business_flows_webapp.py](../tests/test_business_flows_webapp.py) *(ext)* |
 | `DELETE /api/calendar/disconnect` | `handle_disconnect` | `test_disconnect_endpoint` | OK | без изменений |
 | `GET /api/calendar/events?from=&to=` | `handle_list_events` | `test_list_events_when_not_connected`, `test_list_events_upcoming_view`, `test_list_events_serializes_payload` | Нет проверки явных `from`/`to` query | [test_business_flows_webapp.py](../tests/test_business_flows_webapp.py) *(new)* |
 | `POST /api/calendar/events` | `handle_create_event` | `test_create_event_validates_dates`, `test_create_event_with_duration_minutes`, `test_create_event_happy_path` | OK | без изменений |
@@ -80,7 +80,7 @@
 | NEEDS-ACTION / DELEGATED включены, ACCEPTED/DECLINED исключены | `_partstat.py::is_pending_invitation_for_user` | `test_is_pending_*` | OK | без изменений |
 | PARTSTAT ответ (принять/отклонить/может быть) → CalDAV update | `handlers/partstat_flow.py`, `calendar/caldav_client.py::set_attendee_partstat` | `test_set_attendee_partstat_updates_ics`, и другие | OK | без изменений |
 | Refresh через `edit_callback_message` + fallback на send | `delivery.py::edit_or_send_message` | `test_message_editing.py` | OK | без изменений |
-| `_invitations_open_guard` 10 с | `calendar_invitations.py` | – | Нет теста release on failure | [test_business_flows_invitations.py](../tests/test_business_flows_invitations.py) *(new)* |
+| `_invitations_open_guard` 10 с (cooldown + release on failure) | `calendar_invitations.py` | – | Не было cooldown и release on failure | [test_business_flows_invitations.py](../tests/test_business_flows_invitations.py) *(ext)* |
 | Из settings hub → CB_SETTINGS_INVITATIONS | `settings_hub.py` | косвенно | Нет специального теста, что entry-point работает | [test_business_flows_invitations.py](../tests/test_business_flows_invitations.py) *(new)* |
 
 ## 6. `/manage`
@@ -91,7 +91,7 @@
 | Сбор manageable (на 7 дней, любой PARTSTAT) | `_collectors.py::collect_manageable_events` | `test_collect_manageable_events_*` | OK | без изменений |
 | Detail screen + change PARTSTAT | `handlers/calendar_manage.py` | `test_manage_pick_opens_detail_with_action_buttons`, `test_manage_respond_*` | OK | без изменений |
 | Access guard (не-подключённый) | `calendar_manage.py::handle_open_manage_events` | – | Не было теста, что guard срабатывает | [test_calendar_manage.py](../tests/test_calendar_manage.py) *(ext)* |
-| Guard release after CalDAV failure | `_manage_open_guard` | – | Не было | [test_calendar_manage.py](../tests/test_calendar_manage.py) *(ext)* |
+| Guard 10 с cooldown + release after CalDAV failure | `_manage_open_guard` | – | Не было cooldown | [test_calendar_manage.py](../tests/test_calendar_manage.py) *(ext)* |
 
 ## 7. `/create` (FSM создания события)
 
