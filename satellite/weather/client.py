@@ -87,17 +87,21 @@ class WeatherForecastClient:
         session: requests.Session | None = None,
         monotonic_fn: Callable[[], float] = time.monotonic,
         fetch_json: Callable[[str], Mapping[str, Any]] | None = None,
-        request_timeout_sec: float = 10.0,
+        request_timeout_sec: float = 15.0,
+        retry_attempts: int = 2,
     ) -> None:
-        # 10s, не 5s: Open-Meteo с российских сетей стабильно отвечает за
-        # ~5.0–5.5 с (TLS-handshake + ответ). Прежний 5-секундный таймаут
-        # выбивал почти каждый запрос → `weather=0.00s` в логах, прогноз
-        # молча пропадал из дайджеста. Join-окно в `plan_service.py`
-        # синхронно расширено до 12 с, чтобы prefetch успел дойти.
+        # 15s + один повтор: Open-Meteo с российских сетей стабильно отвечает
+        # за ~5.0–5.5 с (TLS handshake + ответ), но изредка проседает до 10–14 с.
+        # Прежний 5-секундный таймаут выбивал почти каждый запрос → в логах
+        # `weather=0.00s`, прогноз молча пропадал из дайджеста /today и /tomorrow.
+        # Join-окно в `plan_service.py` синхронно расширено, чтобы prefetch
+        # успел дойти. `retry_attempts=2` означает «попыток всего две» —
+        # один основной запрос + один повтор только при сетевых ошибках.
         self._session = session or requests.Session()
         self._monotonic = monotonic_fn
         self._fetch_json = fetch_json
         self._request_timeout_sec = request_timeout_sec
+        self._retry_attempts = max(1, int(retry_attempts))
         self._lock = threading.Lock()
         self._cache: dict[
             tuple[float, float, str, str],
@@ -108,9 +112,29 @@ class WeatherForecastClient:
         self._session.close()
 
     def _default_fetch(self, url: str) -> Mapping[str, Any]:
-        response = self._session.get(url, timeout=self._request_timeout_sec)
-        response.raise_for_status()
-        return response.json()
+        # Повтор только на ConnectionError (быстро падающие ошибки сети, DNS,
+        # сброс соединения). На Timeout не ретраим — второй 15-секундный
+        # запрос всё равно не уложится в join-окно `_WEATHER_PREFETCH_JOIN_SEC`,
+        # а пользователь будет ждать дольше необходимого.
+        last_exc: Exception | None = None
+        for attempt in range(self._retry_attempts):
+            try:
+                response = self._session.get(url, timeout=self._request_timeout_sec)
+                response.raise_for_status()
+                return response.json()
+            except requests.ConnectionError as exc:
+                last_exc = exc
+                if attempt + 1 < self._retry_attempts:
+                    log.warning(
+                        "Open-Meteo connection failed (attempt %d/%d): %s; retrying",
+                        attempt + 1,
+                        self._retry_attempts,
+                        exc,
+                    )
+                    continue
+                raise
+        assert last_exc is not None  # unreachable
+        raise last_exc
 
     def get_forecast_for_date(
         self,
