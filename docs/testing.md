@@ -102,6 +102,12 @@ python -m pytest tests/test_config.py tests/test_subscriptions.py \
   tests/test_web_server.py tests/test_init_data.py
 ```
 
+Бизнес-сценарии (release-blocking):
+
+```bash
+python -m pytest tests/test_business_routes_contract.py tests/test_business_flows_*.py
+```
+
 Bot infrastructure:
 
 ```bash
@@ -116,12 +122,41 @@ Weather:
 python -m pytest tests/test_weather.py
 ```
 
+## Release-blocking (бизнес-сценарии)
+
+Полная карта сценариев → реализация → покрытие: [`test-coverage-audit.md`](test-coverage-audit.md).
+
+Перед релизом **обязателен** `make check`. Минимальный целевой прогон регрессий:
+
+```bash
+python -m pytest tests/test_business_routes_contract.py \
+  tests/test_business_flows_*.py -q
+```
+
+| Файл | Что ловит |
+|------|-----------|
+| `test_business_routes_contract.py` | алиасы команд, `_MESSAGE_ROUTES`, `CB_*` → router, `API_ROUTES` без 500 |
+| `test_business_flows_access.py` | access guards, `/help` + `REPLY_KEYBOARD_REMOVE`, `/pending` |
+| `test_business_flows_plan.py` | план дня, ActionGuard release при CalDAV-ошибке |
+| `test_business_flows_upcoming.py` | `/upcoming` 7 дней, пустой список, guard |
+| `test_business_flows_invitations.py` | горизонт 60d/14d, лимит 12, PARTSTAT |
+| `test_business_flows_create.py` | FSM `/create` целиком |
+| `test_business_flows_settings.py` | callbacks настроек и навигация «Назад» |
+| `test_business_flows_webapp.py` | initData, секреты в `users.json`, 403 pending |
+| `test_business_flows_runtime_state.py` | `TokenVault`, атомарность subscriptions |
+| `test_business_flows_smoke.py` | импорт всех модулей `satellite`, `/healthz` |
+
 ## Фикстуры
 
-`tests/conftest.py` экспортирует `make_event(title, start, end, ...)` — сборку
-`NormalizedEvent` из `HH:MM` для тестов метрик. Production-путь — только
-`normalize_caldav_event`; в тестах CalDAV-словари не подаём в `calculate_day_stats`
-напрямую.
+`tests/conftest.py`:
+
+- `make_event(title, start, end, ...)` — `NormalizedEvent` из `HH:MM` для метрик;
+- autouse `_reset_action_guards` — сброс `ActionGuard` между тестами;
+- `make_fake_telegram`, `make_ctx`, `make_msg`, `make_callback`, `make_user_store`,
+  `FakeCalendarService`, `freeze_now`, `free_tcp_port` — для business-flow тестов.
+
+Production-путь нормализации — только `normalize_caldav_event`; в тестах метрик
+CalDAV-словари в `calculate_day_stats` не подаём напрямую.
 
 ## Что покрыто
 

@@ -404,3 +404,84 @@ def test_manage_close_callback_clears_keyboard():
     edit_kw = ctx.telegram.edit_message_text.call_args
     assert edit_kw[0][2] == MANAGE_CLOSED_TEXT
     assert edit_kw.kwargs.get("reply_markup") is None
+
+
+def test_manage_blocks_when_calendar_not_connected():
+    """Approved без календаря не доходит до list_events_for_invitations."""
+    record = _approved_user(has_calendar=False)
+    ctx = _ctx(events=[])
+    ctx.users.get = MagicMock(return_value=record)
+    msg = IncomingMessage(
+        update_id=50,
+        chat_id=950,
+        user_id=1,
+        username="alice",
+        display_name=None,
+        text="/manage",
+    )
+    handle_message(ctx, msg)
+    ctx.calendar_service.list_events_for_invitations.assert_not_called()
+
+
+def test_manage_releases_guard_after_list_failure(monkeypatch):
+    """CalDAV-ошибка при открытии /manage не блокирует повтор на 10 с."""
+    import satellite.telegram_bot.handlers.calendar_manage as cm
+
+    now = datetime(2026, 5, 21, 10, 0, tzinfo=TZ)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return now.astimezone(tz) if tz else now
+
+    monkeypatch.setattr(cm, "datetime", _FixedDatetime)
+
+    from satellite.calendar.providers.base import CalendarProviderError
+
+    err = CalendarProviderError("boom", error_code="CALDAV_UNAVAILABLE")
+    ctx = _ctx(events=[])
+    ctx.calendar_service.list_events_for_invitations = MagicMock(side_effect=[err, []])
+    msg = IncomingMessage(
+        update_id=51,
+        chat_id=951,
+        user_id=1,
+        username="alice",
+        display_name=None,
+        text="/manage",
+    )
+    handle_message(ctx, msg)
+    handle_message(
+        ctx,
+        IncomingMessage(
+            update_id=52,
+            chat_id=951,
+            user_id=1,
+            username="alice",
+            display_name=None,
+            text="/manage",
+        ),
+    )
+    assert ctx.calendar_service.list_events_for_invitations.call_count == 2
+
+
+def test_manage_back_from_detail_returns_to_list(monkeypatch):
+    """CB_MANAGE_BACK с детального экрана возвращает к списку встреч."""
+    import satellite.telegram_bot.handlers.calendar_manage as cm
+
+    now = datetime(2026, 5, 21, 10, 0, tzinfo=TZ)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return now.astimezone(tz) if tz else now
+
+    monkeypatch.setattr(cm, "datetime", _FixedDatetime)
+
+    url = "https://e/back"
+    ctx = _ctx(events=[_ev(summary="BackTest", url=url)])
+    token = event_callback_token(url)
+    handle_callback_query(ctx, _cb(952, f"{CB_MANAGE_PICK_PREFIX}{token}"))
+    handle_callback_query(ctx, _cb(952, CB_MANAGE_BACK, message_id=42))
+    # Последний edit — список с BackTest
+    text = ctx.telegram.edit_message_text.call_args[0][2]
+    assert "BackTest" in text

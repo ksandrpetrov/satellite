@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from cryptography.fernet import Fernet
 
 from satellite.config import (
     is_valid_webapp_base_url,
@@ -167,3 +168,53 @@ def test_load_settings_rejects_placeholder_bot_token(tmp_path: Path, monkeypatch
             require_encryption_key=True,
         )
     assert "BotFather" in str(exc_info.value)
+
+
+def test_load_settings_webapp_host_defaults(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("WEBAPP_HOST", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "TELEGRAM_BOT_TOKEN=1:abc\n"
+        f"TOKEN_ENCRYPTION_KEY={Fernet.generate_key().decode()}\n"
+        "ADMIN_TELEGRAM_IDS=1\n"
+        "WEBAPP_BASE_URL=https://example.com/connect\n",
+        encoding="utf-8",
+    )
+    settings = load_settings(env_path=env_file)
+    assert settings.webapp.host == "127.0.0.1"
+
+
+def test_load_settings_webapp_host_0_0_0_0(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("WEBAPP_HOST", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "TELEGRAM_BOT_TOKEN=1:abc\n"
+        f"TOKEN_ENCRYPTION_KEY={Fernet.generate_key().decode()}\n" + "\n"
+        "ADMIN_TELEGRAM_IDS=1\n"
+        "WEBAPP_BASE_URL=https://example.com/connect\n"
+        "WEBAPP_HOST=0.0.0.0\n",
+        encoding="utf-8",
+    )
+    settings = load_settings(env_path=env_file)
+    assert settings.webapp.host == "0.0.0.0"
+
+
+def test_load_settings_caldav_cache_ttl_sec(tmp_path: Path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "TELEGRAM_BOT_TOKEN=1:abc\nCALDAV_CACHE_TTL_SEC=120\n",
+        encoding="utf-8",
+    )
+    settings = load_settings(env_path=env_file)
+    assert settings.bot.caldav_cache_ttl_sec == 120
+
+
+def test_load_settings_hide_all_day_and_lunch_flags(tmp_path: Path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "HIDE_ALL_DAY_EVENTS=false\nHIDE_LUNCH_EVENTS=0\n",
+        encoding="utf-8",
+    )
+    settings = load_settings(env_path=env_file)
+    assert settings.plan.hide_all_day_events is False
+    assert settings.plan.hide_lunch_events is False

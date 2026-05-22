@@ -557,3 +557,73 @@ def test_tick_sends_both_daily_and_pending(tmp_path: Path):
     assert telegram.send_message.call_count == 2
     assert store.get(1).last_digest_sent_date == "2026-05-11"
     assert store.get(1).last_pending_digest_sent_date == "2026-05-11"
+
+
+def test_scheduler_resolves_user_by_telegram_user_id_not_username(tmp_path: Path) -> None:
+    """Подписка с неверным username, но верным telegram_user_id — дайджест доходит."""
+    now = _at(2026, 5, 11, 9, 0)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(100, "stale_wrong_username", telegram_user_id=1)
+    assert scheduler.tick() == 1
+    scheduler._plan_builder.build_text.assert_called_once()
+    assert scheduler._plan_builder.build_text.call_args.kwargs["telegram_user_id"] == 1
+
+
+def test_tick_failed_user_does_not_advance_last_digest_sent_date(tmp_path: Path) -> None:
+    """RuntimeError при send для chat_id=1 не помечает last_digest_sent_date."""
+    now = _at(2026, 5, 11, 9, 0)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(1, "alice")
+    store.subscribe(2, "bob")
+    telegram.send_message.side_effect = lambda chat_id, *_a, **_k: (
+        (_ for _ in ()).throw(RuntimeError("boom")) if chat_id == 1 else {"message_id": 1}
+    )
+    scheduler.tick()
+    assert store.get(1).last_digest_sent_date is None
+    assert store.get(2).last_digest_sent_date == "2026-05-11"
+
+
+def test_pending_digest_wednesday_only_mask(tmp_path: Path) -> None:
+    """Маска ``0010000`` — только среда; во вторник pending не стреляет."""
+    # 2026-05-12 — вторник
+    now = _at(2026, 5, 12, 10, 0)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(1, "alice")
+    store.update_settings(
+        1,
+        "alice",
+        digest_enabled=False,
+        pending_digest_enabled=True,
+        pending_digest_days="0010000",
+    )
+    assert scheduler.tick() == 0
+    telegram.send_message.assert_not_called()
+
+
+def test_pending_digest_weekdays_mask_1111100(tmp_path: Path) -> None:
+    """Маска ``1111100`` — пн–пт; в субботу pending не стреляет."""
+    from unittest.mock import patch
+
+    # 2026-05-09 — суббота
+    now = _at(2026, 5, 9, 10, 0)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(1, "alice")
+    store.update_settings(
+        1,
+        "alice",
+        digest_enabled=False,
+        pending_digest_enabled=True,
+        pending_digest_days="1111100",
+    )
+    empty = InvitationsScreen(
+        pending=[],
+        text="empty",
+        keyboard={"inline_keyboard": []},
+        truncated=False,
+        login="alice@mail.ru",
+    )
+    with patch(
+        "satellite.scheduler.load_pending_invitations_screen",
+        return_value=empty,
+    ):
+        assert scheduler.tick() == 0

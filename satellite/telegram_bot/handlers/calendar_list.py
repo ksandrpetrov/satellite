@@ -59,10 +59,13 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
                 stream.push("\n\n".join(parts))
             text = "\n\n".join(parts)
         except CalendarNotConnectedError:
-            text = ERR_CALDAV_UNAVAILABLE_TEXT
+            log.error("Upcoming list failed user_id=%s: not connected", msg.user_id)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            return
         except CalendarProviderError as exc:
             log.error("Upcoming list failed user_id=%s: %s", msg.user_id, exc.error_code)
-            text = ERR_CALDAV_UNAVAILABLE_TEXT
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            return
         effect = pick_upcoming_message_effect(text) if is_private_chat(msg.chat_id) else None
         stream.finish(text, message_effect_id=effect)
         sent = True

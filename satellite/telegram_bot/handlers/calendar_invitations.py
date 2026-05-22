@@ -90,10 +90,13 @@ def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
         try:
             text, keyboard = _load_screen(ctx, msg.user_id)
         except CalendarNotConnectedError:
-            text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
+            log.error("Invitations list failed user_id=%s: not connected", msg.user_id)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            return
         except CalendarProviderError as exc:
             log.error("Invitations list failed user_id=%s: %s", msg.user_id, exc.error_code)
-            text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            return
         stream.finish(text, reply_markup=keyboard)
         sent = True
         log.info("Opened invitations: user_id=%s", msg.user_id)
