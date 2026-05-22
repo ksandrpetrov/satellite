@@ -209,8 +209,9 @@ Callback data хаба: `CB_SETTINGS_*` / `CB_ANALYTICS_*` в [`messages_ru/_cor
 - кнопка включения или отключения;
 - «Назад» / «Закрыть» возвращают в хаб.
 
-**Дайджест плана** (`digest_enabled`, `digest_time`, …) — `PlanBuilder` +
-`DIGEST_MODE` из `.env` (дата: сегодня / завтра / послезавтра).
+**Дайджест плана** (`digest_enabled`, `digest_time`, …) — `PlanBuilder` на
+**сегодня** (в TZ подписки). Команды «завтра»/«послезавтра» — отдельные
+кнопки и `/tomorrow`, `/dayafter`.
 
 **Дайджест непринятых** (`pending_digest_enabled`, …) — в заданное время
 шедулер шлёт тот же список и клавиатуру, что `/invitations`

@@ -22,7 +22,7 @@ from .calendar.providers.base import CalendarNotConnectedError, CalendarProvider
 from .calendar.time_utils import parse_hhmm
 from .calendar.user_calendar_service import UserCalendarService
 from .config import DigestConfig, PlanConfig, WeatherConfig
-from .digest_utils import is_digest_day_allowed, resolve_target_date
+from .digest_utils import DIGEST_MODE_TODAY, is_digest_day_allowed, resolve_target_date
 from .invitations_view import load_pending_invitations_screen
 from .plan_service import PlanBuilder
 from .subscriptions import DigestSettings, SubscriptionStore
@@ -154,7 +154,8 @@ class DigestScheduler:
         )
         self._thread.start()
         log.info(
-            "Digest scheduler started: per-user schedule; tick=%.0fs mode=%s",
+            "Digest scheduler started: per-user schedule; tick=%.0fs auto_plan_date=today "
+            "(DIGEST_MODE=%s ignored for scheduled digest)",
             self._tick_interval_sec,
             self._digest_config.mode,
         )
@@ -291,7 +292,8 @@ class DigestScheduler:
         if telegram_user_id is None:
             return False
 
-        target_date = resolve_target_date(self._digest_config.mode, today)
+        # Per-user «Дайджест на сегодня» — всегда план на текущий день в TZ пользователя.
+        target_date = resolve_target_date(DIGEST_MODE_TODAY, today)
 
         try:
             plan_text = self._plan_builder.build_text(

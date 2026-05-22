@@ -311,8 +311,10 @@ sudo -u satellite bash -c 'set -a; . /opt/satellite/.env; set +a; \
 
 Если `last_digest_sent_date` уже сегодня, повторной отправки не будет.
 
-Устаревшие ключи в `.env` (`DIGEST_TIME`, `DIGEST_WEEKDAYS_ONLY`) scheduler не читает.
-Глобально для даты дайджеста остаётся только `DIGEST_MODE`.
+Устаревшие ключи в `.env` (`DIGEST_TIME`, `DIGEST_WEEKDAYS_ONLY`, `DIGEST_MODE`) scheduler
+не читает: авто-дайджест плана всегда на **сегодня** в `digest_timezone` пользователя.
+Если в сообщении «Прогноз на завтра» — обновите образ/код (до fix использовался
+`DIGEST_MODE=tomorrow` по умолчанию).
 
 ## Дайджест непринятых не приходит
 

@@ -543,22 +543,6 @@ class CalDAVService:
                 ev["attendees"] = list(attendees)
             if status is not None and not ev.get("status"):
                 ev["status"] = status
-        # #region agent log
-        if invitation_verify and moment is not None:
-            no_attendees_count = sum(1 for ev in events if not ev.get("attendees"))
-            log.warning(
-                "DEBUG_2d45ee PARTSTAT_REFRESH_DONE refreshed=%d/%d total_events=%d "
-                "no_attendees_in_report=%d budget_left=%.2fs",
-                refresh_count,
-                self._partstat_refresh_limit,
-                len(events),
-                no_attendees_count,
-                max(
-                    0.0,
-                    self._partstat_refresh_budget_sec - (time.monotonic() - refresh_started),
-                ),
-            )
-        # #endregion
 
     def _set_attendee_partstat_once(
         self,

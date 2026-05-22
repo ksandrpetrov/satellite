@@ -22,16 +22,18 @@ DIGEST_MODE_DAY_AFTER = "day_after_tomorrow"
 
 
 def resolve_target_date(mode: str, today: date) -> date:
-    """День, на который строится дайджест, по глобальному режиму.
+    """День плана по режиму (команды /today, /tomorrow, …).
 
-    Неизвестный режим трактуем как ``tomorrow`` — историческое поведение
-    scheduler. Сохраняем, чтобы опечатка в env не меняла поведение бота.
+    Авто-дайджест в ``DigestScheduler`` всегда использует ``today``; этот
+    хелпер — для явного выбора даты в хендлерах. Неизвестный режим → ``today``.
     """
     if mode == DIGEST_MODE_TODAY:
         return today
     if mode == DIGEST_MODE_DAY_AFTER:
         return today + timedelta(days=2)
-    return today + timedelta(days=1)
+    if mode == DIGEST_MODE_TOMORROW:
+        return today + timedelta(days=1)
+    return today
 
 
 def is_digest_days_bitmask(value: str) -> bool:

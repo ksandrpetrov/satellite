@@ -230,7 +230,7 @@ def test_resolve_target_date():
     assert resolve_target_date("today", today) == date(2026, 5, 11)
     assert resolve_target_date("tomorrow", today) == date(2026, 5, 12)
     assert resolve_target_date("day_after_tomorrow", today) == date(2026, 5, 13)
-    assert resolve_target_date("unknown_mode", today) == date(2026, 5, 12)  # fallback
+    assert resolve_target_date("unknown_mode", today) == date(2026, 5, 11)  # fallback → today
 
 
 # --- интеграционный тик ----------------------------------------------------
@@ -276,6 +276,18 @@ def _make_scheduler(
     scheduler._plan_builder = MagicMock()
     scheduler._plan_builder.build_text = MagicMock(return_value="<b>Plan</b>")
     return scheduler, store, telegram
+
+
+def test_daily_digest_targets_today_when_global_mode_is_tomorrow(tmp_path: Path):
+    now = _at(2026, 5, 11, 9, 0)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(1, "alice")
+
+    assert scheduler.tick() == 1
+    scheduler._plan_builder.build_text.assert_called_once()
+    call = scheduler._plan_builder.build_text.call_args
+    assert call.kwargs["target_date"] == date(2026, 5, 11)
+    assert call.kwargs["reference_date"] == date(2026, 5, 11)
 
 
 def test_tick_sends_only_to_users_matching_time(tmp_path: Path):

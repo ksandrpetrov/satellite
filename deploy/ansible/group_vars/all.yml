@@ -43,7 +43,7 @@ admin_telegram_ids: "111111111"
 token_encryption_key: ""
 
 # --- Настройки бота (см. .env.example) ---
-digest_mode: tomorrow
+digest_mode: today
 tz_name: Europe/Moscow
 hide_all_day_events: true
 hide_lunch_events: true

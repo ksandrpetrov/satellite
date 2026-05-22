@@ -50,9 +50,9 @@ def test_parse_digest_mode():
     assert parse_digest_mode("today") == "today"
     assert parse_digest_mode("Tomorrow") == "tomorrow"
     assert parse_digest_mode("DAY_AFTER_TOMORROW") == "day_after_tomorrow"
-    assert parse_digest_mode("garbage") == "tomorrow"
-    assert parse_digest_mode(None) == "tomorrow"
-    assert parse_digest_mode("") == "tomorrow"
+    assert parse_digest_mode("garbage") == "today"
+    assert parse_digest_mode(None) == "today"
+    assert parse_digest_mode("") == "today"
 
 
 def test_load_settings_weather_location_json(tmp_path: Path, monkeypatch):

@@ -34,7 +34,9 @@ DEFAULT_LOG_LEVEL = "INFO"
 DEFAULT_BOT_WORKERS = 4
 DEFAULT_BOT_LONG_POLL_SEC = 30
 DEFAULT_CALDAV_CACHE_TTL_SEC = 300
-DEFAULT_DIGEST_MODE = "tomorrow"  # today | tomorrow | day_after_tomorrow
+DEFAULT_DIGEST_MODE = (
+    "today"  # today | tomorrow | day_after_tomorrow (legacy env; scheduler uses today)
+)
 ALLOWED_DIGEST_MODES = frozenset({"today", "tomorrow", "day_after_tomorrow"})
 DEFAULT_WEATHER_CACHE_TTL_MINUTES = 30
 
@@ -133,11 +135,11 @@ class BotConfig:
 
 @dataclass(frozen=True)
 class DigestConfig:
-    """Глобальные параметры дайджеста.
+    """Глобальные параметры дайджеста (legacy).
 
-    Время и дни недели хранятся в per-user настройках ``SubscriptionStore`` и
-    в DigestConfig не дублируются. ``mode`` остаётся глобальным: он определяет,
-    на какую дату строить автоматический дайджест («сегодня»/«завтра»/«послезавтра»).
+    Время и дни недели — в ``SubscriptionStore``. Авто-дайджест плана всегда
+    на сегодня (см. ``DigestScheduler._deliver_daily``); ``mode`` из env
+    оставлен для совместимости и логов.
     """
 
     mode: str = DEFAULT_DIGEST_MODE  # today | tomorrow | day_after_tomorrow

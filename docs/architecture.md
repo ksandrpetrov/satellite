@@ -294,7 +294,7 @@ successful `sendMessage`. One failed user does not stop the rest of the tick.
 Per tick (daily):
 
 ```text
-resolve_target_date(DIGEST_MODE, today in user timezone)
+resolve_target_date("today", today in user digest_timezone)
   -> load UserRecord by chat_id / telegram_user_id
   -> skip if not has_calendar
   -> decrypt credentials, UserCalendarService, PlanBuilder.build_text(...)
