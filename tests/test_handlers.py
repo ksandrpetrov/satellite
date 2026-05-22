@@ -406,13 +406,12 @@ def test_plan_uses_send_message_draft_when_supported():
     ctx.telegram.edit_message_text.assert_not_called()
 
 
-def test_plan_dedup_blocks_second_call_within_cooldown():
-    """Двойной /td в один чат шлёт план один раз: cooldown отбивает повтор.
+def test_plan_two_consecutive_calls_both_deliver():
+    """Два /td подряд → два плана: post-success cooldown снят (см. plan.py).
 
-    Реальный кейс: пользователь нажал кнопку «Сегодня» два раза подряд (или
-    Telegram переотдал тот же текст другим update_id из-за гонки между
-    инстансами). Без guard'а оба вызова доходили до ``stream.finish`` и
-    в чате появлялось два одинаковых плана.
+    Реальный кейс 2026-05-22: пользователь жмёт «Сегодня» несколько раз и хочет
+    свежий план каждый раз. Защита от настоящей гонки double-tap (пока сборка
+    идёт) — отдельный тест ``test_plan_busy_message_when_build_in_progress``.
     """
     ctx = _plan_handler_context()
     msg1 = IncomingMessage(
@@ -429,12 +428,8 @@ def test_plan_dedup_blocks_second_call_within_cooldown():
         for call in ctx.telegram.send_message.call_args_list
         if call[0][1] == "<b>Plan HTML</b>"
     ]
-    assert len(final_sends) == 1
-    ctx.plan_builder.return_value.build_text.assert_called_once()
-    from satellite.messages_ru import PLAN_BUSY_TEXT
-
-    busy = [c for c in ctx.telegram.send_message.call_args_list if c[0][1] == PLAN_BUSY_TEXT]
-    assert len(busy) == 1
+    assert len(final_sends) == 2
+    assert ctx.plan_builder.return_value.build_text.call_count == 2
 
 
 def test_plan_legacy_loading_then_edit_when_draft_unavailable():

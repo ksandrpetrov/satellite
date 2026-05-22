@@ -173,11 +173,17 @@ def test_plan_releases_guard_after_calendar_not_connected(
     pb.build_text.assert_called_once()
 
 
-def test_plan_cooldown_blocks_second_call_after_success(
+def test_plan_no_post_success_cooldown_allows_immediate_retry(
     approved_user_store: UserStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """После УСПЕХА (sent=True) cooldown срабатывает — это инвариант ActionGuard."""
+    """Контракт: после успешной доставки повторный /td сразу строит новый план.
+
+    Регрессия 2026-05-22: 30-секундный post-success cooldown молча проглатывал
+    повторы и пользователь, не получивший feedback, считал бота сломанным.
+    Двойную доставку при настоящей гонке double-tap покрывает while-running лок
+    (см. ``test_plan_busy_message_when_build_in_progress``).
+    """
     fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.plan", now=fixed_now)
 
@@ -187,8 +193,31 @@ def test_plan_cooldown_blocks_second_call_after_success(
     handle_message(ctx, make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=1))
     handle_message(ctx, make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=2))
 
-    # build_text должна вызваться один раз — повтор отбит cooldown'ом
-    assert pb.build_text.call_count == 1
+    assert pb.build_text.call_count == 2
+    busy_calls = [
+        c[0][1] for c in ctx.telegram.send_message.call_args_list if c[0][1] == PLAN_BUSY_TEXT
+    ]
+    assert busy_calls == []
+
+
+def test_plan_busy_message_when_build_in_progress(
+    approved_user_store: UserStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Пока идёт сборка — повтор /td получает busy-сообщение, build не вызывается."""
+    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+    freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.plan", now=fixed_now)
+
+    ctx = _build_ctx(approved_user_store)
+    pb = ctx.plan_builder()
+
+    assert plan_module._plan_run_guard.try_acquire(USER_ID, "plan:today")
+    try:
+        handle_message(ctx, make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=10))
+    finally:
+        plan_module._plan_run_guard.release(USER_ID, "plan:today")
+
+    pb.build_text.assert_not_called()
     busy_calls = [
         c[0][1] for c in ctx.telegram.send_message.call_args_list if c[0][1] == PLAN_BUSY_TEXT
     ]

@@ -28,8 +28,10 @@ log = logging.getLogger(__name__)
 # Двойной ``/today`` / ``/tomorrow`` (или повторный тап по кнопке плана в
 # меню Telegram) пока сборка идёт — сериализуется ``ChatLockManager``, но
 # второй handler всё равно отрабатывает и пользователь видит дубль плана.
-# Guard блокирует повтор пока строим И ~30 с после успешной отправки.
-_plan_run_guard = ActionGuard(cooldown_sec=30.0)
+# Guard блокирует повтор только пока строим: после успешной доставки новый
+# /td пользователя — это явный запрос «дай свежий план», и его надо уважать
+# (история: 30-секундный cooldown молча глотал повторы и казался багом бота).
+_plan_run_guard = ActionGuard(cooldown_sec=0.0)
 
 
 def _plan_action_key(mode: PlanMode) -> str:
@@ -44,7 +46,7 @@ def handle_plan(ctx: HandlerContext, msg: IncomingMessage, mode: PlanMode) -> No
     action = _plan_action_key(mode)
     if not _plan_run_guard.try_acquire(msg.chat_id, action):
         log.info(
-            "Plan run skipped (duplicate within cooldown): user_id=%s mode=%s",
+            "Plan run skipped (build in progress): user_id=%s mode=%s",
             msg.user_id,
             mode,
         )
