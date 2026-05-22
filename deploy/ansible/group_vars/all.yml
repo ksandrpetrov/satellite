@@ -51,4 +51,6 @@ log_level: INFO
 bot_workers: 4
 
 # --- Погода (опционально) ---
-weather_enabled: false
+weather_enabled: true
+weather_location: '{"name":"Москва","latitude":55.7558,"longitude":37.6173,"timezone":"Europe/Moscow"}'
+weather_show_normal: true
