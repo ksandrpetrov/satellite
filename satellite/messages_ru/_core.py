@@ -173,7 +173,7 @@ def button_text_is_foreign_calendars(text: str | None) -> bool:
 
 BOT_INPUT_PLACEHOLDER = "Куда летим? Жми кнопку или напиши команду"
 
-BOT_NAME_RU = "🪶 Чайка"
+BOT_NAME_RU = "Чайка 🪶"
 BOT_SHORT_DESCRIPTION_RU = (
     "Сводка дня из календаря: план, дайджест, приглашения и аналитика недели."
 )
