@@ -513,6 +513,89 @@ def test_enrich_invitations_skips_get_when_user_not_among_attendees(monkeypatch)
     )
 
 
+def test_enrich_invitations_refreshes_empty_attendees_before_accepted_verify(monkeypatch):
+    """Mail.ru REPORT без ATTENDEE (как «Кто есть кто» 26.05) — фаза 1 GET до verify ACCEPTED."""
+    tz = ZoneInfo("Europe/Moscow")
+    moment = datetime(2026, 5, 21, 12, 0, tzinfo=tz)
+    login = "alexandra@vk.team"
+    target_url = "https://fake/calendars/cal/may26.ics"
+    may26 = {
+        "summary": "«Кто есть кто»: команды модерации",
+        "url": target_url,
+        "dtstart": "2026-05-26T17:30:00+03:00",
+        "dtend": "2026-05-26T18:30:00+03:00",
+        "attendees": [],
+        "status": "TENTATIVE",
+    }
+    fillers = [
+        {
+            "summary": f"Filler {i}",
+            "url": f"https://fake/calendars/cal/f{i}.ics",
+            "dtstart": f"2026-05-{day:02d}T10:00:00+03:00",
+            "dtend": f"2026-05-{day:02d}T11:00:00+03:00",
+            "attendees": [f"mailto:{login};PARTSTAT=ACCEPTED"],
+        }
+        for i, day in enumerate(range(22, 30), start=1)
+    ]
+    events = fillers + [may26]
+    refreshed_urls: list[str] = []
+
+    def fake_get(url, **_kwargs):
+        refreshed_urls.append(str(url))
+        from icalendar import Calendar as IcsCalendar
+        from icalendar import Event as IcsEvent
+
+        component = IcsEvent()
+        component.add("uid", "u@test")
+        component.add(
+            "attendee",
+            f"mailto:{login}",
+            parameters={"PARTSTAT": "NEEDS-ACTION"},
+        )
+        component.add("dtstart", datetime(2026, 5, 26, 17, 30))
+        component.add("dtend", datetime(2026, 5, 26, 18, 30))
+        cal = IcsCalendar()
+        cal.add_component(component)
+
+        class _Resp:
+            status_code = 200
+            headers: dict = {}
+
+            def __init__(self, content: bytes) -> None:
+                self.content = content
+
+        return _Resp(cal.to_ical())
+
+    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
+
+    import time as _time
+
+    from satellite.calendar.caldav_client import _DiscoveryResult
+
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login=login,
+        app_password="pw",
+        cache_ttl_sec=300,
+        partstat_refresh_limit=0,
+        partstat_refresh_budget_sec=0.0,
+    )
+    service._cache = _DiscoveryResult(
+        endpoint="https://fake/",
+        calendars=[],
+        cached_at=_time.monotonic(),
+        auth_username=login,
+    )
+    service._enrich_events_partstat(
+        events,
+        tz=tz,
+        invitation_verify=True,
+        moment=moment,
+    )
+    assert target_url in refreshed_urls
+    assert is_pending_invitation_for_user(may26, login)
+
+
 def test_enrich_invitations_refreshes_upcoming_before_older_false_accepted(monkeypatch):
     """Ложный ACCEPTED в REPORT: GET-бюджет не должен тратиться на старые дни до 26.05."""
     tz = ZoneInfo("Europe/Moscow")

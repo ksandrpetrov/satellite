@@ -25,7 +25,7 @@ from .weather.templates import build_weather_message
 
 log = logging.getLogger(__name__)
 
-_WEATHER_PREFETCH_JOIN_SEC = 6.0
+_WEATHER_PREFETCH_JOIN_SEC = 12.0
 _WEATHER_FETCH_INLINE = object()
 
 

@@ -36,6 +36,9 @@ _PARTSTAT_REFRESH_TIMEOUT_SEC = 0.8
 _PARTSTAT_REFRESH_BUDGET_SEC = 1.5
 # Ложный ACCEPTED в REPORT у Mail.ru — перепроверяем GET, но не на всём 60-дневном горизонте.
 _INVITATION_VERIFY_FORWARD_DAYS = 42
+# REPORT (expand=true) часто без ATTENDEE — отдельная фаза GET до verify ACCEPTED.
+_INVITATION_MISSING_ATTENDEES_REFRESH_LIMIT = 48
+_INVITATION_MISSING_ATTENDEES_BUDGET_SEC = 14.0
 _RANGE_SEARCH_MAX_WORKERS = 6
 # Ответ на приглашение (GET+PUT): Mail.ru часто отвечает >0.8s; не reuse refresh timeout.
 _PARTSTAT_UPDATE_TIMEOUT_SEC = 20.0
@@ -550,6 +553,57 @@ class CalDAVService:
             return (3, inv, sort_key(ev, tz))
         return (4, sort_key(ev, tz))
 
+    @staticmethod
+    def _apply_partstat_refresh_to_event(
+        ev: Event, refreshed: tuple[list[str], str | None] | None
+    ) -> None:
+        if refreshed is None:
+            return
+        attendees, status = refreshed
+        if attendees:
+            ev["attendees"] = list(attendees)
+        if status is not None and not ev.get("status"):
+            ev["status"] = status
+
+    def _enrich_invitation_missing_attendees(
+        self,
+        events: list[Event],
+        *,
+        tz: tzinfo,
+        moment: datetime,
+        lookback_days: int,
+        refresh_started: float,
+    ) -> int:
+        """Фаза 1 /invitations: GET для событий без ATTENDEE в REPORT (Mail.ru)."""
+        missing = [
+            ev
+            for ev in events
+            if not (ev.get("attendees") or [])
+            and str(ev.get("url") or "").strip()
+            and (
+                event_ends_after(ev, tz, moment=moment)
+                or event_relevant_for_invitations(
+                    ev, tz, moment=moment, lookback_days=lookback_days
+                )
+            )
+        ]
+        missing.sort(
+            key=lambda ev: self._invitation_partstat_refresh_order(
+                ev, tz=tz, moment=moment, lookback_days=lookback_days
+            )
+        )
+        refreshed_count = 0
+        for ev in missing:
+            if refreshed_count >= _INVITATION_MISSING_ATTENDEES_REFRESH_LIMIT:
+                break
+            if (time.monotonic() - refresh_started) >= _INVITATION_MISSING_ATTENDEES_BUDGET_SEC:
+                break
+            event_url = str(ev.get("url") or "")
+            refreshed = self._refresh_attendees_via_get(event_url)
+            refreshed_count += 1
+            self._apply_partstat_refresh_to_event(ev, refreshed)
+        return refreshed_count
+
     def _enrich_events_partstat(
         self,
         events: list[Event],
@@ -561,11 +615,20 @@ class CalDAVService:
         lookback_days: int = 14,
     ) -> None:
         """Дополняет ATTENDEE/PARTSTAT через GET там, где REPORT их не отдал."""
-        if self._partstat_refresh_limit <= 0 or not self._login:
+        if not self._login:
             return
         refresh_started = time.monotonic()
         refresh_count = 0
         if invitation_verify and moment is not None:
+            self._enrich_invitation_missing_attendees(
+                events,
+                tz=tz,
+                moment=moment,
+                lookback_days=lookback_days,
+                refresh_started=refresh_started,
+            )
+            if self._partstat_refresh_limit <= 0:
+                return
             ordered = [
                 ev
                 for ev in events
@@ -583,6 +646,8 @@ class CalDAVService:
                 )
             )
         else:
+            if self._partstat_refresh_limit <= 0:
+                return
             ordered = list(events)
             if prioritize_from is not None:
 
@@ -610,13 +675,7 @@ class CalDAVService:
                 continue
             refreshed = self._refresh_attendees_via_get(event_url)
             refresh_count += 1
-            if refreshed is None:
-                continue
-            attendees, status = refreshed
-            if attendees:
-                ev["attendees"] = list(attendees)
-            if status is not None and not ev.get("status"):
-                ev["status"] = status
+            self._apply_partstat_refresh_to_event(ev, refreshed)
 
     def _set_attendee_partstat_once(
         self,

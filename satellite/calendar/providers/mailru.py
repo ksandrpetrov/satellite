@@ -18,6 +18,16 @@ from .base import (
     UserCalendarContext,
 )
 
+# Контракт для /invitations: не урезать до «5s / 20 GET» — см. tests/test_invitations_partstat_regression.py
+INVITATIONS_PARTSTAT_REFRESH_LIMIT = 32
+INVITATIONS_PARTSTAT_REFRESH_TIMEOUT_SEC = 2.5
+INVITATIONS_PARTSTAT_REFRESH_BUDGET_SEC = 22.0
+INVITATIONS_PARTSTAT_REFRESH_KWARGS = {
+    "partstat_refresh_limit": INVITATIONS_PARTSTAT_REFRESH_LIMIT,
+    "partstat_refresh_timeout_sec": INVITATIONS_PARTSTAT_REFRESH_TIMEOUT_SEC,
+    "partstat_refresh_budget_sec": INVITATIONS_PARTSTAT_REFRESH_BUDGET_SEC,
+}
+
 log = logging.getLogger(__name__)
 
 PROVIDER_ID = "mailru"
@@ -285,8 +295,7 @@ class MailruCalendarProvider:
             login=credentials.login.strip(),
             app_password=credentials.secret,
             cache_ttl_sec=self._cache_ttl_sec,
-            # Достаточно для ложного ACCEPTED в REPORT; бюджет держим коротким для /invitations.
-            partstat_refresh_limit=20,
-            partstat_refresh_timeout_sec=1.0,
-            partstat_refresh_budget_sec=5.0,
+            partstat_refresh_limit=INVITATIONS_PARTSTAT_REFRESH_LIMIT,
+            partstat_refresh_timeout_sec=INVITATIONS_PARTSTAT_REFRESH_TIMEOUT_SEC,
+            partstat_refresh_budget_sec=INVITATIONS_PARTSTAT_REFRESH_BUDGET_SEC,
         )
