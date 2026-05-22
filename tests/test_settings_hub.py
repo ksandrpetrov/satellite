@@ -29,6 +29,7 @@ from satellite.messages_ru import (
     CB_SETTINGS_CALENDAR_MENU,
     CB_SETTINGS_DISCONNECT,
     CB_SETTINGS_DISCONNECT_CONFIRM,
+    CB_SETTINGS_WEATHER_TOGGLE,
     SETTINGS_CALENDAR_MENU_TEXT,
     SETTINGS_DISCONNECT_CONFIRM_TEXT,
     SETTINGS_HUB_TEXT,
@@ -53,6 +54,7 @@ def _approved_user(*, has_calendar: bool = True) -> MagicMock:
     record = MagicMock()
     record.status = USER_STATUS_APPROVED
     record.has_calendar = has_calendar
+    record.weather_in_plan_enabled = True
     return record
 
 
@@ -116,6 +118,7 @@ def test_settings_hub_keyboard_digest_and_calendar_when_connected():
     labels = [btn["text"] for row in kb["inline_keyboard"] for btn in row]
     assert "🔔 Дайджест на сегодня" in labels
     assert "📨 Дайджест непринятых встреч" in labels
+    assert "🔕 Выключить погоду в плане" in labels
     assert BUTTON_ANALYTICS in labels
     assert BUTTON_CALENDAR_MENU in labels
     # Деструктивный «Отключить» НЕ должен висеть на главном экране настроек,
@@ -183,6 +186,31 @@ def test_disconnect_cancel_returns_to_calendar_menu(tmp_path: Path):
     ctx.calendar_service.disconnect.assert_not_called()
     last_edit = ctx.telegram.edit_message_text.call_args
     assert last_edit.args[2] == SETTINGS_CALENDAR_MENU_TEXT
+
+
+def test_weather_toggle_disables_and_updates_hub(tmp_path: Path):
+    from satellite.users import UserStore
+
+    store = UserStore(tmp_path / "users.json")
+    store.upsert_from_telegram(
+        telegram_user_id=1,
+        chat_id=900,
+        username="alice",
+        display_name=None,
+        default_status=USER_STATUS_APPROVED,
+    )
+    ctx = _ctx(tmp_path)
+    ctx.users = store
+
+    handle_callback_query(ctx, _cb(900, CB_SETTINGS_WEATHER_TOGGLE))
+
+    assert store.get(1) is not None
+    assert store.get(1).weather_in_plan_enabled is False
+    edit = ctx.telegram.edit_message_text.call_args
+    assert "Погода в плане выключена" in edit.args[2]
+    keyboard = edit.kwargs.get("reply_markup") or edit.args[-1]
+    labels = [btn["text"] for row in keyboard["inline_keyboard"] for btn in row]
+    assert "🌤 Включить погоду в плане" in labels
 
 
 def test_settings_button_opens_hub(tmp_path: Path):

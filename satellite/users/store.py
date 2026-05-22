@@ -266,6 +266,15 @@ class UserStore:
                 return existing
         return self._update_locked(telegram_user_id, analytics_workday=preset)
 
+    def set_weather_in_plan_enabled(self, telegram_user_id: int, *, enabled: bool) -> UserRecord:
+        with self._lock:
+            existing = self._items.get(telegram_user_id)
+            if existing is None:
+                raise KeyError(telegram_user_id)
+            if existing.weather_in_plan_enabled == enabled:
+                return existing
+        return self._update_locked(telegram_user_id, weather_in_plan_enabled=enabled)
+
     def clear_calendar_connection(self, telegram_user_id: int) -> UserRecord:
         return self._update_locked_with(
             telegram_user_id,

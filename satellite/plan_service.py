@@ -46,6 +46,7 @@ class PlanBuilder:
         target_date: date,
         reference_date: date,
         on_progress: Callable[[str], None] | None = None,
+        weather_in_plan_enabled: bool = True,
     ) -> str:
         started_at = time.monotonic()
         cfg = self.weather_config
@@ -57,7 +58,7 @@ class PlanBuilder:
             assert client is not None and cfg is not None
             prefetch_box["forecast"] = client.get_forecast_for_date(cfg, target_date)
 
-        if cfg is not None and cfg.enabled and client is not None:
+        if weather_in_plan_enabled and cfg is not None and cfg.enabled and client is not None:
             prefetch_thread = threading.Thread(
                 target=_prefetch_hourly,
                 name="satellite-weather-prefetch",
@@ -94,12 +95,13 @@ class PlanBuilder:
             prefetch_thread.join(timeout=_WEATHER_PREFETCH_JOIN_SEC)
             if prefetch_thread.is_alive():
                 log.warning(
-                    "Weather prefetch did not finish within %.0fs; skipping weather block",
+                    "Weather prefetch did not finish within %.0fs; fetching weather inline",
                     _WEATHER_PREFETCH_JOIN_SEC,
                 )
-                prefetched = None
+                prefetched = _WEATHER_FETCH_INLINE
             else:
-                prefetched = prefetch_box.get("forecast")
+                got = prefetch_box.get("forecast")
+                prefetched = _WEATHER_FETCH_INLINE if got is None else got
         else:
             prefetched = _WEATHER_FETCH_INLINE
 
@@ -114,12 +116,16 @@ class PlanBuilder:
             )
 
         weather_started = time.monotonic()
-        weather_line = self._build_weather_line(
-            stats,
-            target_date,
-            reference_date,
-            opts,
-            prefetched_forecast=prefetched,
+        weather_line = (
+            self._build_weather_line(
+                stats,
+                target_date,
+                reference_date,
+                opts,
+                prefetched_forecast=prefetched,
+            )
+            if weather_in_plan_enabled
+            else None
         )
         weather_elapsed = time.monotonic() - weather_started
         rendered = render_digest_from_stats(
@@ -153,7 +159,7 @@ class PlanBuilder:
         if cfg is None or not cfg.enabled or client is None:
             return None
         try:
-            if prefetched_forecast is _WEATHER_FETCH_INLINE:
+            if prefetched_forecast is _WEATHER_FETCH_INLINE or prefetched_forecast is None:
                 bundle = client.get_forecast_for_date(cfg, target_date)
             else:
                 bundle = prefetched_forecast  # type: ignore[assignment]

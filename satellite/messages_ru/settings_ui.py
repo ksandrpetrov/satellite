@@ -24,6 +24,9 @@ CB_SETTINGS_DISCONNECT = "settings_disconnect"
 CB_SETTINGS_DISCONNECT_CONFIRM = "settings_disconnect_confirm"
 CB_SETTINGS_BACK = "settings_back"
 CB_SETTINGS_CLOSE = "settings_close"
+CB_SETTINGS_WEATHER_TOGGLE = "settings_weather_toggle"
+
+WEATHER_IN_PLAN_SAVED_TOAST = "Сохранено"
 
 CB_ANALYTICS_RUN = "analytics:run"
 CB_ANALYTICS_WORKDAY_9 = "analytics:wd:9-18"
@@ -43,6 +46,7 @@ def settings_hub_text(
     *,
     digest_enabled: bool | None = None,
     pending_digest_enabled: bool | None = None,
+    weather_in_plan_enabled: bool | None = None,
     has_calendar: bool = True,
 ) -> str:
     from ..telegram_bot.html_format import blockquote
@@ -60,6 +64,12 @@ def settings_hub_text(
             if pending_digest_enabled
             else "📨 Дайджест непринятых выключен"
         )
+    if weather_in_plan_enabled is not None:
+        status_bits.append(
+            "🌤 Погода в плане включена"
+            if weather_in_plan_enabled
+            else "🔕 Погода в плане выключена"
+        )
     if has_calendar:
         status_bits.append("📅 Календарь подключён")
     else:
@@ -67,7 +77,7 @@ def settings_hub_text(
     summary = blockquote(" · ".join(status_bits)) if status_bits else ""
     base = (
         "⚙️ <b>Настройки Чайки</b>\n\n"
-        "Здесь живут три раздела: дайджест, аналитика и календарь. Выбери, что настроить."
+        "Здесь живут дайджесты, погода в плане, аналитика и календарь. Выбери, что настроить."
     )
     if summary:
         return f"{base}\n\n{summary}"
@@ -117,10 +127,21 @@ SETTINGS_HUB_CLOSED_TEXT = (
 )
 
 
+def weather_in_plan_toggle_button_text(*, enabled: bool) -> str:
+    return "🔕 Выключить погоду в плане" if enabled else "🌤 Включить погоду в плане"
+
+
+def weather_in_plan_toggle_notice_text(*, enabled: bool) -> str:
+    if enabled:
+        return "🌤 Погода снова будет в плане и дайджесте на сегодня."
+    return "🔕 Погоду в плане и дайджесте на сегодня отключил — только календарь."
+
+
 def build_settings_hub_keyboard(
     *,
     webapp_url: str,
     has_calendar: bool,
+    weather_in_plan_enabled: bool = True,
     calendar_login: str | None = None,
 ) -> dict:
     """Главный экран настроек.
@@ -135,6 +156,12 @@ def build_settings_hub_keyboard(
     rows: list[list[dict[str, object]]] = [
         [{"text": "🔔 Дайджест на сегодня", "callback_data": CB_SETTINGS_DIGEST}],
         [{"text": "📨 Дайджест непринятых встреч", "callback_data": CB_PENDING_DIGEST_SETTINGS}],
+        [
+            {
+                "text": weather_in_plan_toggle_button_text(enabled=weather_in_plan_enabled),
+                "callback_data": CB_SETTINGS_WEATHER_TOGGLE,
+            }
+        ],
     ]
     if has_calendar:
         rows.append([{"text": BUTTON_ANALYTICS, "callback_data": CB_SETTINGS_ANALYTICS}])

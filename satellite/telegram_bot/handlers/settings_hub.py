@@ -41,6 +41,8 @@ from ...messages_ru import (
     CB_SETTINGS_DIGEST,
     CB_SETTINGS_DISCONNECT,
     CB_SETTINGS_DISCONNECT_CONFIRM,
+    CB_SETTINGS_WEATHER_TOGGLE,
+    ERR_GENERIC_HANDLER_TEXT,
     SETTINGS_CALENDAR_MENU_TEXT,
     SETTINGS_DISCONNECT_CONFIRM_TEXT,
     SETTINGS_HUB_CLOSED_TEXT,
@@ -48,7 +50,9 @@ from ...messages_ru import (
     build_settings_disconnect_confirm_keyboard,
     build_settings_hub_keyboard,
     settings_hub_text,
+    weather_in_plan_toggle_notice_text,
 )
+from ...users.store import UserStorePersistenceError
 from ..visual import set_default_menu_button_for_chat
 from .analytics import CB_ANALYTICS_BACK, handle_open_analytics
 from .calendar_view import (
@@ -96,6 +100,7 @@ def _hub_text_and_keyboard(ctx: HandlerContext, user_id: int, chat_id: int):
     has_cal = bool(record and record.has_calendar)
     digest_on = None
     pending_on = None
+    weather_on = record.weather_in_plan_enabled if record else True
     if record:
         sub = ctx.subscriptions.get_or_create(
             chat_id,
@@ -109,11 +114,13 @@ def _hub_text_and_keyboard(ctx: HandlerContext, user_id: int, chat_id: int):
     text = settings_hub_text(
         digest_enabled=digest_on,
         pending_digest_enabled=pending_on,
+        weather_in_plan_enabled=weather_on,
         has_calendar=has_cal,
     )
     keyboard = build_settings_hub_keyboard(
         webapp_url=webapp_connect_url(ctx, user_id),
         has_calendar=has_cal,
+        weather_in_plan_enabled=weather_on,
         calendar_login=_calendar_login(ctx, user_id) if has_cal else None,
     )
     return text, keyboard
@@ -187,6 +194,9 @@ def route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bo
     if data == CB_SETTINGS_ANALYTICS:
         handle_open_analytics(ctx, cb)
         return True
+    if data == CB_SETTINGS_WEATHER_TOGGLE:
+        _toggle_weather_in_plan(ctx, cb)
+        return True
     if data in (CB_SETTINGS_BACK, CB_ANALYTICS_BACK):
         show_settings_hub_screen(ctx, cb)
         return True
@@ -212,6 +222,33 @@ def route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bo
         _disconnect_calendar_from_callback(ctx, cb)
         return True
     return False
+
+
+def _toggle_weather_in_plan(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    if cb.user_id is None or cb.chat_id is None:
+        safe_answer_callback(ctx, cb)
+        return
+    record = ctx.users.get(cb.user_id)
+    if record is None:
+        safe_answer_callback(ctx, cb)
+        return
+    new_enabled = not record.weather_in_plan_enabled
+    try:
+        ctx.users.set_weather_in_plan_enabled(cb.user_id, enabled=new_enabled)
+    except KeyError:
+        safe_answer_callback(ctx, cb)
+        return
+    except UserStorePersistenceError:
+        log.exception("Failed to save weather_in_plan for user_id=%s", cb.user_id)
+        safe_answer_callback(ctx, cb)
+        send(ctx, cb.chat_id, ERR_GENERIC_HANDLER_TEXT)
+        return
+    show_settings_hub_screen(ctx, cb)
+    safe_answer_callback(
+        ctx,
+        cb,
+        text=weather_in_plan_toggle_notice_text(enabled=new_enabled),
+    )
 
 
 def _open_calendar_sources_from_callback(ctx: HandlerContext, cb: IncomingCallback) -> None:

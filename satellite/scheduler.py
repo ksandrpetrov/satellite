@@ -313,11 +313,14 @@ class DigestScheduler:
         # Per-user «Дайджест на сегодня» — всегда план на текущий день в TZ пользователя.
         target_date = resolve_target_date(DIGEST_MODE_TODAY, today)
 
+        user_record = self._users.get(telegram_user_id)
+        weather_in_plan = user_record.weather_in_plan_enabled if user_record is not None else True
         try:
             plan_text = self._plan_builder.build_text(
                 telegram_user_id=telegram_user_id,
                 target_date=target_date,
                 reference_date=today,
+                weather_in_plan_enabled=weather_in_plan,
             )
         except (CalendarNotConnectedError, CalendarProviderError) as exc:
             log.error(

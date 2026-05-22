@@ -39,6 +39,23 @@ from satellite.users import (
 )
 
 
+def test_user_record_weather_in_plan_defaults_true_and_persists(tmp_path: Path):
+    store = UserStore(tmp_path / "users.json")
+    store.upsert_from_telegram(
+        telegram_user_id=7,
+        chat_id=7,
+        username="bob",
+        display_name=None,
+        default_status=USER_STATUS_APPROVED,
+    )
+    assert store.get(7) is not None
+    assert store.get(7).weather_in_plan_enabled is True
+    store.set_weather_in_plan_enabled(7, enabled=False)
+    reloaded = UserStore(tmp_path / "users.json")
+    assert reloaded.get(7) is not None
+    assert reloaded.get(7).weather_in_plan_enabled is False
+
+
 def test_effective_urls_prefers_explicit_list():
     record = UserRecord(
         telegram_user_id=1,

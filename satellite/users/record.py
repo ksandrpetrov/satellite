@@ -82,6 +82,7 @@ class UserRecord:
     calendar_connected_at: str | None = None
     calendar_last_checked_at: str | None = None
     analytics_workday: str = DEFAULT_ANALYTICS_WORKDAY
+    weather_in_plan_enabled: bool = True
     created_at: str = ""
     updated_at: str = ""
 
@@ -116,6 +117,7 @@ class UserRecord:
             "calendar_connected_at": self.calendar_connected_at,
             "calendar_last_checked_at": self.calendar_last_checked_at,
             "analytics_workday": self.analytics_workday,
+            "weather_in_plan_enabled": self.weather_in_plan_enabled,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -151,6 +153,9 @@ class UserRecord:
             calendar_connected_at=raw.get("calendar_connected_at") or None,
             calendar_last_checked_at=raw.get("calendar_last_checked_at") or None,
             analytics_workday=_parse_analytics_workday(raw.get("analytics_workday")),
+            weather_in_plan_enabled=_parse_weather_in_plan_enabled(
+                raw.get("weather_in_plan_enabled")
+            ),
             created_at=str(raw.get("created_at") or ""),
             updated_at=str(raw.get("updated_at") or ""),
         )
@@ -181,6 +186,14 @@ def _normalize_calendar_url_list(urls: Iterable[str]) -> tuple[str, ...]:
         seen.add(normalized)
         out.append(normalized)
     return tuple(out)
+
+
+def _parse_weather_in_plan_enabled(raw: object) -> bool:
+    if raw is None:
+        return True
+    if isinstance(raw, bool):
+        return raw
+    return True
 
 
 def _parse_analytics_workday(raw: object) -> str:
