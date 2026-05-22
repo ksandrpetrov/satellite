@@ -79,6 +79,7 @@ def _reset_action_guards():
     from satellite.telegram_bot.handlers import calendar_manage as _manage
     from satellite.telegram_bot.handlers import partstat_flow as _partstat
     from satellite.telegram_bot.handlers import plan as _plan
+    from satellite.telegram_bot.handlers import settings_hub as _settings_hub
 
     for guard in (
         _analytics._analytics_run_guard,
@@ -89,6 +90,7 @@ def _reset_action_guards():
         _partstat._partstat_respond_guard,
     ):
         guard.reset()
+    _settings_hub.reset_settings_hub_message_tracker()
     yield
 
 

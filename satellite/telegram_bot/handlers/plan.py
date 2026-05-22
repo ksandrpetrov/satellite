@@ -15,12 +15,13 @@ from ...digest_utils import resolve_target_date
 from ...messages_ru import (
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_DIGEST_BUILD_FAILED_TEXT,
+    PLAN_BUSY_TEXT,
     PLAN_FETCH_STATUS_TEXT,
 )
 from ..visual import is_private_chat, pick_plan_message_effect
 from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingMessage, PlanMode
-from .delivery import open_streaming_reply
+from .delivery import open_streaming_reply, send
 
 log = logging.getLogger(__name__)
 
@@ -42,13 +43,12 @@ def handle_plan(ctx: HandlerContext, msg: IncomingMessage, mode: PlanMode) -> No
 
     action = _plan_action_key(mode)
     if not _plan_run_guard.try_acquire(msg.chat_id, action):
-        # Пользователь повторил команду пока первая ещё идёт — молча
-        # игнорируем; новый «уже строю»-ответ сам по себе был бы дублем.
         log.info(
             "Plan run skipped (duplicate within cooldown): user_id=%s mode=%s",
             msg.user_id,
             mode,
         )
+        send(ctx, msg.chat_id, PLAN_BUSY_TEXT)
         return
 
     sent = False

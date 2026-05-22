@@ -23,7 +23,7 @@ from satellite.calendar.providers.base import (
     CalendarNotConnectedError,
     CalendarProviderError,
 )
-from satellite.messages_ru import ERR_CALDAV_UNAVAILABLE_TEXT
+from satellite.messages_ru import ERR_CALDAV_UNAVAILABLE_TEXT, PLAN_BUSY_TEXT
 from satellite.telegram_bot.handlers import handle_message
 from satellite.telegram_bot.handlers import plan as plan_module
 from satellite.users import UserStore
@@ -189,6 +189,10 @@ def test_plan_cooldown_blocks_second_call_after_success(
 
     # build_text должна вызваться один раз — повтор отбит cooldown'ом
     assert pb.build_text.call_count == 1
+    busy_calls = [
+        c[0][1] for c in ctx.telegram.send_message.call_args_list if c[0][1] == PLAN_BUSY_TEXT
+    ]
+    assert len(busy_calls) == 1
 
 
 def test_plan_independent_action_keys_per_mode(

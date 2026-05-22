@@ -431,6 +431,10 @@ def test_plan_dedup_blocks_second_call_within_cooldown():
     ]
     assert len(final_sends) == 1
     ctx.plan_builder.return_value.build_text.assert_called_once()
+    from satellite.messages_ru import PLAN_BUSY_TEXT
+
+    busy = [c for c in ctx.telegram.send_message.call_args_list if c[0][1] == PLAN_BUSY_TEXT]
+    assert len(busy) == 1
 
 
 def test_plan_legacy_loading_then_edit_when_draft_unavailable():

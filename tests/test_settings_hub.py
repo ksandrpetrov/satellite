@@ -32,6 +32,7 @@ from satellite.messages_ru import (
     CB_SETTINGS_WEATHER_TOGGLE,
     SETTINGS_CALENDAR_MENU_TEXT,
     SETTINGS_DISCONNECT_CONFIRM_TEXT,
+    SETTINGS_HUB_CLOSED_TEXT,
     SETTINGS_HUB_TEXT,
     build_settings_calendar_menu_keyboard,
     build_settings_disconnect_confirm_keyboard,
@@ -228,6 +229,39 @@ def test_settings_button_opens_hub(tmp_path: Path):
 
     call = ctx.telegram.send_message.call_args
     assert "Настройки Чайки" in call.args[1]
+
+
+def test_settings_reply_button_toggles_hub_closed(tmp_path: Path):
+    """Повторная «⚙️ Настройки» сворачивает открытый inline-хаб, как «Закрыть»."""
+    ctx = _ctx(tmp_path)
+    ctx.telegram.send_message = MagicMock(return_value={"message_id": 55})
+    msg = IncomingMessage(
+        update_id=1,
+        chat_id=900,
+        user_id=1,
+        username="alice",
+        display_name=None,
+        text=BUTTON_SETTINGS,
+    )
+    handle_message(ctx, msg)
+    assert ctx.telegram.send_message.call_count == 1
+
+    handle_message(
+        ctx,
+        IncomingMessage(
+            update_id=2,
+            chat_id=900,
+            user_id=1,
+            username="alice",
+            display_name=None,
+            text=BUTTON_SETTINGS,
+        ),
+    )
+    ctx.telegram.send_message.assert_called_once()
+    edit = ctx.telegram.edit_message_text.call_args
+    assert edit.args[0] == 900
+    assert edit.args[1] == 55
+    assert SETTINGS_HUB_CLOSED_TEXT in edit.args[2]
 
 
 # --- подтверждение всегда отдаёт корректную клавиатуру ---------------------
