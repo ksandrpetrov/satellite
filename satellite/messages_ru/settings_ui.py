@@ -434,6 +434,7 @@ CB_DIGEST_DAYS = "digest_days"
 CB_DIGEST_DAYS_WEEKDAYS = "digest_days_weekdays"
 CB_DIGEST_DAYS_ALL = "digest_days_all"
 CB_DIGEST_TIME = "digest_time"
+CB_DIGEST_WEATHER_TOGGLE = "digest_weather_toggle"
 CB_DIGEST_BACK = "digest_back"
 CB_DIGEST_CLOSE = "digest_close"
 
@@ -443,15 +444,24 @@ DIGEST_DAYS_LABEL = {
 }
 
 
-def digest_settings_screen_text(*, digest_enabled: bool, digest_days: str, digest_time: str) -> str:
+def digest_settings_screen_text(
+    *,
+    digest_enabled: bool,
+    digest_days: str,
+    digest_time: str,
+    weather_in_plan_enabled: bool,
+) -> str:
     status_emoji = "🔔" if digest_enabled else "🔕"
     status_text = "включён" if digest_enabled else "отключён"
+    weather_emoji = "🌤" if weather_in_plan_enabled else "🔕"
+    weather_text = "включена" if weather_in_plan_enabled else "выключена"
     days_label = DIGEST_DAYS_LABEL.get(digest_days, digest_days)
     return (
         "📅 <b>Настройки дайджеста на сегодня</b>\n\n"
         f"{status_emoji} Статус: <b>{status_text}</b>\n"
         f"📆 Дни: <b>{days_label}</b>\n"
         f"🕘 Время: <b>{digest_time} МСК</b>\n\n"
+        f"{weather_emoji} Погода в дайджесте: <b>{weather_text}</b>\n\n"
         "Что меняем?"
     )
 
@@ -497,7 +507,7 @@ DIGEST_SETTINGS_CLOSED_TEXT = (
 )
 
 
-def build_digest_settings_keyboard(*, digest_enabled: bool) -> dict:
+def build_digest_settings_keyboard(*, digest_enabled: bool, weather_in_plan_enabled: bool) -> dict:
     toggle_label = (
         "🔕 Отключить дайджест на сегодня" if digest_enabled else "🔔 Включить дайджест на сегодня"
     )
@@ -505,6 +515,12 @@ def build_digest_settings_keyboard(*, digest_enabled: bool) -> dict:
         "inline_keyboard": [
             [{"text": "📆 Дни отправки", "callback_data": CB_DIGEST_DAYS}],
             [{"text": "🕘 Время отправки", "callback_data": CB_DIGEST_TIME}],
+            [
+                {
+                    "text": weather_in_plan_toggle_button_text(enabled=weather_in_plan_enabled),
+                    "callback_data": CB_DIGEST_WEATHER_TOGGLE,
+                }
+            ],
             [{"text": toggle_label, "callback_data": CB_DIGEST_TOGGLE}],
             [{"text": "⬅️ В настройки", "callback_data": CB_SETTINGS_BACK}],
         ]

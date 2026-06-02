@@ -29,6 +29,7 @@ from satellite.messages_ru import (
     CB_DIGEST_SETTINGS,
     CB_DIGEST_TIME,
     CB_DIGEST_TOGGLE,
+    CB_DIGEST_WEATHER_TOGGLE,
     CB_SETTINGS_DIGEST,
     DIGEST_DAYS_ALL_APPLIED_TEXT,
     DIGEST_DAYS_WEEKDAYS_APPLIED_TEXT,
@@ -926,23 +927,33 @@ def test_settings_command_opens_inline_screen(tmp_path: Path):
 
 def test_digest_settings_screen_text_enabled():
     text = digest_settings_screen_text(
-        digest_enabled=True, digest_days="weekdays", digest_time="09:00"
+        digest_enabled=True,
+        digest_days="weekdays",
+        digest_time="09:00",
+        weather_in_plan_enabled=True,
     )
     assert "🔔" in text and "включён" in text
     # Значение дней оборачивается в <b>…</b> для HTML-разметки в Telegram.
     assert "будни" in text
     assert "Дни:" in text
     assert "09:00 МСК" in text
+    assert "Погода в дайджесте" in text
+    assert "включена" in text
 
 
 def test_digest_settings_screen_text_disabled():
     text = digest_settings_screen_text(
-        digest_enabled=False, digest_days="all_days", digest_time="08:30"
+        digest_enabled=False,
+        digest_days="all_days",
+        digest_time="08:30",
+        weather_in_plan_enabled=False,
     )
     assert "🔕" in text and "отключён" in text
     assert "все дни" in text
     assert "Дни:" in text
     assert "08:30 МСК" in text
+    assert "Погода в дайджесте" in text
+    assert "выключена" in text
 
 
 def test_digest_days_keyboard_marks_active():
@@ -957,10 +968,35 @@ def test_digest_days_keyboard_marks_active():
 
 
 def test_digest_settings_keyboard_toggle_label():
-    kb_on = build_digest_settings_keyboard(digest_enabled=True)
+    kb_on = build_digest_settings_keyboard(digest_enabled=True, weather_in_plan_enabled=True)
     labels_on = [btn["text"] for row in kb_on["inline_keyboard"] for btn in row]
     assert any("Отключить" in lbl for lbl in labels_on)
+    assert any("Выключить погоду в плане" in lbl for lbl in labels_on)
 
-    kb_off = build_digest_settings_keyboard(digest_enabled=False)
+    kb_off = build_digest_settings_keyboard(digest_enabled=False, weather_in_plan_enabled=False)
     labels_off = [btn["text"] for row in kb_off["inline_keyboard"] for btn in row]
     assert any("Включить" in lbl for lbl in labels_off)
+    assert any("Включить погоду в плане" in lbl for lbl in labels_off)
+
+
+def test_daily_digest_weather_toggle_updates_user_preference(tmp_path: Path):
+    from satellite.users import USER_STATUS_APPROVED, UserStore
+
+    ctx, store, _state = _ctx(tmp_path)
+    users = UserStore(tmp_path / "users.json")
+    users.upsert_from_telegram(
+        telegram_user_id=1,
+        chat_id=900,
+        username="alice",
+        display_name=None,
+        default_status=USER_STATUS_APPROVED,
+    )
+    ctx.users = users
+    store.get_or_create(900, "alice")
+
+    handle_callback_query(ctx, _callback(900, CB_DIGEST_WEATHER_TOGGLE))
+
+    assert users.get(1) is not None
+    assert users.get(1).weather_in_plan_enabled is False
+    text = ctx.telegram.edit_message_text.call_args.args[2]
+    assert "Погода в дайджесте: <b>выключена</b>" in text

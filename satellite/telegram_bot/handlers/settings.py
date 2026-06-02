@@ -23,6 +23,7 @@ from ...messages_ru import (
     CB_DIGEST_SETTINGS,
     CB_DIGEST_TIME,
     CB_DIGEST_TOGGLE,
+    CB_DIGEST_WEATHER_TOGGLE,
     CB_PENDING_DIGEST_BACK,
     CB_PENDING_DIGEST_CLOSE,
     CB_PENDING_DIGEST_DAY_PREFIX,
@@ -57,8 +58,10 @@ from ...messages_ru import (
     pending_digest_time_applied_text,
     pending_digest_time_screen_text,
     pending_digest_toggle_notice_text,
+    weather_in_plan_toggle_notice_text,
 )
 from ...subscriptions import DIGEST_DAYS_ALL, DIGEST_DAYS_WEEKDAYS, DigestSettings
+from ...users.store import UserStorePersistenceError
 from .access import effective_username, effective_username_from_callback
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import edit_callback_message, safe_answer_callback, send
@@ -426,13 +429,57 @@ def render_digest_settings_screen(
     kind: DigestKind = DIGEST_KIND_DAILY,
 ) -> None:
     bindings = _bindings(kind)
-    text = bindings.screen_text(
-        digest_enabled=_enabled(settings, bindings),
-        digest_days=_days(settings, bindings),
-        digest_time=_time(settings, bindings),
-    )
-    keyboard = bindings.build_settings_keyboard(digest_enabled=_enabled(settings, bindings))
+    weather_in_plan_enabled = True
+    if kind == DIGEST_KIND_DAILY and cb.user_id is not None:
+        record = ctx.users.get(cb.user_id)
+        if record is not None:
+            weather_in_plan_enabled = record.weather_in_plan_enabled
+    if kind == DIGEST_KIND_DAILY:
+        text = bindings.screen_text(
+            digest_enabled=_enabled(settings, bindings),
+            digest_days=_days(settings, bindings),
+            digest_time=_time(settings, bindings),
+            weather_in_plan_enabled=weather_in_plan_enabled,
+        )
+    else:
+        text = bindings.screen_text(
+            digest_enabled=_enabled(settings, bindings),
+            digest_days=_days(settings, bindings),
+            digest_time=_time(settings, bindings),
+        )
+    if kind == DIGEST_KIND_DAILY:
+        keyboard = bindings.build_settings_keyboard(
+            digest_enabled=_enabled(settings, bindings),
+            weather_in_plan_enabled=weather_in_plan_enabled,
+        )
+    else:
+        keyboard = bindings.build_settings_keyboard(digest_enabled=_enabled(settings, bindings))
     edit_callback_message(ctx, cb, text, keyboard)
+
+
+def handle_daily_weather_toggle(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    if cb.chat_id is None or cb.user_id is None:
+        safe_answer_callback(ctx, cb)
+        return
+    record = ctx.users.get(cb.user_id)
+    if record is None:
+        safe_answer_callback(ctx, cb)
+        return
+    new_enabled = not record.weather_in_plan_enabled
+    try:
+        ctx.users.set_weather_in_plan_enabled(cb.user_id, enabled=new_enabled)
+    except (KeyError, UserStorePersistenceError):
+        log.exception("Failed to toggle weather_in_plan in digest settings: user_id=%s", cb.user_id)
+        safe_answer_callback(ctx, cb)
+        return
+    username = effective_username_from_callback(cb)
+    settings = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
+    render_digest_settings_screen(ctx, cb, settings, kind=DIGEST_KIND_DAILY)
+    safe_answer_callback(
+        ctx,
+        cb,
+        text=weather_in_plan_toggle_notice_text(enabled=new_enabled),
+    )
 
 
 # --- callback routing -------------------------------------------------------
@@ -459,6 +506,9 @@ def _route_kind_callback(
         return True
     if data == bindings.cb_time:
         handle_callback_time(ctx, cb, kind=bindings.kind)
+        return True
+    if bindings.kind == DIGEST_KIND_DAILY and data == CB_DIGEST_WEATHER_TOGGLE:
+        handle_daily_weather_toggle(ctx, cb)
         return True
     if data == bindings.cb_close:
         handle_callback_close(ctx, cb, kind=bindings.kind)
