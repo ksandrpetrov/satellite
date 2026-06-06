@@ -1,5 +1,27 @@
 # Troubleshooting
 
+Симптом → причина → что проверить. Для production-диагностики на сервере.
+
+**См. также:** [карта документов](README.md) · [configuration.md](configuration.md) ·
+[operations.md](operations.md) · [deploy/README.md](../deploy/README.md)
+
+## Содержание
+
+- [Бот не запускается](#бот-не-запускается)
+- [Бот молчит](#бот-молчит-в-telegram)
+- [Заявка на доступ](#заявка-на-доступ-зависла)
+- [Календарь пустой](#команда-работает-но-календарь-пустой)
+- [Web App](#web-app-не-открывается)
+- [Миграция systemd → Docker](#после-деплоя-пропали-юзеры--авторизация--календари-systemd--docker)
+- [Telegram token 401](#telegram-token-неверный-http-401-unauthorized)
+- [Дайджест](#дайджест-не-приходит)
+- [Дайджест непринятых](#дайджест-непринятых-не-приходит)
+- [Дубликаты (PNG, план, списки)](#два-png-аналитики-подряд--уже-строю-отчёт)
+- [Автодеплой Actions](#автодеплой-github-actions-и-docker-на-сервере)
+- [Тесты / compileall](#тесты-не-запускаются-после-переноса-папки)
+
+---
+
 ## Бот не запускается
 
 ### Invalid .env (заглушки из примера)
@@ -498,3 +520,8 @@ AppleDouble-файлы на внешнем macOS-томе. Исключите и
 find satellite tests -name '*.py' ! -name '._*' -print0 \
   | xargs -0 python -m py_compile
 ```
+
+---
+
+**Далее:** [operations.md](operations.md) · [configuration.md](configuration.md) ·
+[testing.md](testing.md)

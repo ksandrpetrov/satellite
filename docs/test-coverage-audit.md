@@ -4,6 +4,25 @@
 
 Цель документа: ни один из перечисленных сценариев не должен незаметно сломаться на релизе. Если строка в колонке **Тесты после аудита** упоминает файл, упавший в нём тест означает блок релиза.
 
+**См. также:** [карта документов](README.md) · [testing.md](testing.md) ·
+[telegram-ux.md](telegram-ux.md) · [AGENTS.md](../AGENTS.md)
+
+## Содержание
+
+- [Легенда](#легенда)
+- [1. Доступ и onboarding](#1-доступ-и-onboarding)
+- [2. Web App](#2-подключение-календаря-через-web-app)
+- [3. План дня](#3-план-дня-td-tm-dat-today-tomorrow-aftertomorrow-after_tomorrow)
+- [4. `/upcoming`](#4-upcoming)
+- [5. `/invitations`](#5-invitations)
+- [6. `/manage`](#6-manage)
+- [7. `/create`](#7-create-fsm-создания-события)
+- [8–17. Настройки, scheduler, analytics…](#8-settings-hub)
+- [Release-blocking сводка](#release-blocking-файлы-сводка)
+- [Что не покрыто](#что-сознательно-не-покрыто)
+
+---
+
 Источники инвариантов:
 
 - [AGENTS.md](../AGENTS.md) — карта проекта и инварианты.
@@ -232,3 +251,8 @@
 - Полная end-to-end интеграция бота через long-polling — поведение покрывается на уровне dispatch + handlers + scheduler по отдельности.
 - Bash-скрипты деплоя (`scripts/ci-deploy-remote.sh`, `scripts/migrate-legacy-logs.sh`) — последняя линия защиты протестирована в Python (`test_persistence_warning.py`).
 - Внешний рендер PNG через PIL — покрывается `tests/test_analytics_card.py`; пиксельные snapshot-сравнения не делаем умышленно.
+
+---
+
+**Далее:** [testing.md](testing.md) · [telegram-ux.md](telegram-ux.md) ·
+[refactor-log.md](refactor-log.md)

@@ -1,5 +1,21 @@
 # Тестирование
 
+**См. также:** [карта документов](README.md) · [test-coverage-audit.md](test-coverage-audit.md) ·
+[AGENTS.md § тесты](../AGENTS.md#тесты-и-регрессии-для-агентов)
+
+## Содержание
+
+- [Установка dev-зависимостей](#установка-dev-зависимостей)
+- [Полный прогон](#полный-прогон)
+- [Smoke](#smoke-образ-и-production-url)
+- [Целевые прогоны](#быстрые-целевые-прогоны)
+- [Release-blocking](#release-blocking-бизнес-сценарии)
+- [Фикстуры](#фикстуры)
+- [Что покрыто](#что-покрыто)
+- [Static Checks](#static-checks)
+
+---
+
 ## Установка dev-зависимостей
 
 Через bootstrap-скрипт (создаст venv, поставит prod + dev зависимости,
@@ -285,3 +301,8 @@ find satellite tests -name '*.py' ! -name '._*' -print0 \
 ```
 
 Эквивалент через Makefile: `make compile`.
+
+---
+
+**Далее:** [test-coverage-audit.md](test-coverage-audit.md) · [troubleshooting.md](troubleshooting.md) ·
+[operations.md](operations.md)

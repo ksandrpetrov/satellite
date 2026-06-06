@@ -10,6 +10,18 @@ Production Telegram-бот для календарных дайджестов и
 к боту выдаётся админом после заявки. Глобальных Mail.ru-паролей и карты
 `USER_CALENDAR_MAP` больше нет.
 
+## Содержание
+
+- [Возможности](#возможности)
+- [Быстрый старт](#быстрый-старт)
+- [Запуск на сервере](#запуск-на-сервере)
+- [Конфигурация](#главное-про-конфиг)
+- [Документация](#документация)
+- [Runtime-файлы](#runtime-файлы)
+- [Диагностика](#короткая-диагностика)
+
+---
+
 ## Возможности
 
 - Команды `td`, `tm`, `dat`.
@@ -181,15 +193,20 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 
 ## Документация
 
-- [Архитектура](docs/architecture.md)
-- [Конфигурация](docs/configuration.md)
-- [Telegram UX](docs/telegram-ux.md)
-- [Эксплуатация и деплой](docs/operations.md)
-- [Docker-деплой (Ansible)](deploy/README.md)
-- [Тестирование](docs/testing.md) (в т.ч. [smoke образа и prod URL](docs/testing.md#smoke-образ-и-production-url))
-- [Troubleshooting](docs/troubleshooting.md)
-- [Refactor log](docs/refactor-log.md) — фазы рефакторинга и инварианты для агентов
-- [AGENTS.md](AGENTS.md) — карта модулей, инварианты и скрипты для правок кода и AI-агентов
+**Полный индекс:** [docs/README.md](docs/README.md) — карта по ролям и темам.
+
+| Раздел | Документ |
+|--------|----------|
+| Архитектура | [docs/architecture.md](docs/architecture.md) |
+| Конфигурация | [docs/configuration.md](docs/configuration.md) |
+| Telegram UX | [docs/telegram-ux.md](docs/telegram-ux.md) |
+| Эксплуатация и деплой | [docs/operations.md](docs/operations.md) |
+| Docker (Ansible) | [deploy/README.md](deploy/README.md) |
+| Тестирование | [docs/testing.md](docs/testing.md) ([smoke](docs/testing.md#smoke-образ-и-production-url)) |
+| Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| Refactor log | [docs/refactor-log.md](docs/refactor-log.md) |
+| Покрытие сценариев | [docs/test-coverage-audit.md](docs/test-coverage-audit.md) |
+| Карта кода (агенты) | [AGENTS.md](AGENTS.md) |
 
 Скрипты установки и диагностики: `scripts/install.sh`, `install-server.sh`,
 `bootstrap-server.sh`, `diagnose_caldav.py`, `diagnose_invitation.py`,

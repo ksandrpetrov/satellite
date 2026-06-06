@@ -8,6 +8,22 @@ Reverse proxy и TLS для `cassinilab.ru` — ваш существующий 
 
 Никаких Traefik/Certbot/nginx-acme в стеке нет — они конфликтовали бы с вашим nginx за порт 443.
 
+**См. также:** [карта документов](../docs/README.md) · [operations.md](../docs/operations.md) ·
+[configuration.md](../docs/configuration.md) · [troubleshooting.md](../docs/troubleshooting.md)
+
+## Содержание
+
+- [CI/CD (GitHub Actions)](#cicd-github-actions-под-ключ)
+- [Секреты деплоя](#секреты-для-деплоя-settings--secrets-and-variables--actions)
+- [Перед деплоем](#перед-деплоем)
+- [Деплой одной командой](#деплой-одной-командой)
+- [Что поднимается](#что-поднимается-на-сервере)
+- [Обновление образа](#обновление-образа-после-первичного-деплоя)
+- [Переменные Ansible](#переменные-ansible-group_varsallyml)
+- [Локальный compose](#локальный-запуск-на-ноутбуке)
+
+---
+
 ## CI/CD: GitHub Actions под ключ
 
 Workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на каждый push в `main`
@@ -163,3 +179,8 @@ Health: `curl http://127.0.0.1:8080/healthz` или `make docker-smoke` (имп�
 Диагностика: [docs/troubleshooting.md](../docs/troubleshooting.md)
 (сбои Actions/deploy — [автодеплой](../docs/troubleshooting.md#автодеплой-github-actions-и-docker-на-сервере)),
 эксплуатация: [docs/operations.md](../docs/operations.md).
+
+---
+
+**Далее:** [docs/operations.md](../docs/operations.md) · [docs/testing.md](../docs/testing.md) ·
+[docs/troubleshooting.md](../docs/troubleshooting.md)

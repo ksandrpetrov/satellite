@@ -6,6 +6,18 @@
 callback_data, HTTP-ответы) не менялся без явной продуктовой задачи; baseline
 pytest оставался зелёным.
 
+**См. также:** [карта документов](README.md) · [AGENTS.md](../AGENTS.md) ·
+[architecture.md](architecture.md)
+
+## Содержание
+
+- [Фазы 1–11](#фазы)
+- [Что НЕ менялось](#что-не-менялось)
+- [Техдолг](#что-осталось-дешёвым-техдолгом)
+- [Хронология по датам](#messages_ru-разбиение-по-сценариям-2026-05-22) (подразделы ниже)
+
+---
+
 ## Фазы
 
 1. **`satellite/web/server.py` → пакет `satellite/web/`** — 917-строчный
@@ -289,3 +301,8 @@ pytest оставался зелёным.
 - `resolve_target_date`: неизвестный режим → `today` (раньше — `tomorrow`).
 - Документация и `.env.example`: README, configuration, architecture, telegram-ux,
   troubleshooting, AGENTS.md, refactor-log.
+
+---
+
+**Далее:** [architecture.md](architecture.md) · [AGENTS.md](../AGENTS.md) ·
+[test-coverage-audit.md](test-coverage-audit.md)

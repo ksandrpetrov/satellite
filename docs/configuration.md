@@ -1,6 +1,25 @@
 # Конфигурация
 
-Настройки читаются из `.env` и переменных окружения. Файл по умолчанию:
+Настройки читаются из `.env` и переменных окружения.
+
+**См. также:** [карта документов](README.md) · [архитектура](architecture.md) ·
+[troubleshooting.md](troubleshooting.md) · [.env.example](../.env.example)
+
+## Содержание
+
+- [Обязательные переменные](#обязательные-переменные-для-production-бота)
+- [Telegram Web App](#telegram-web-app-встроенный-http)
+- [Валидация при старте](#валидация-при-старте)
+- [План и CalDAV](#план-и-caldav-глобальные-флаги-фильтрации)
+- [Пользователи (`users.json`)](#пользователи-и-доступ-logsusersjson)
+- [Digest](#digest)
+- [Weather](#weather)
+- [Connect-токены](#web-app-connect-токены)
+- [Smoke и CI](#smoke-и-ci-не-в-env-бота)
+
+---
+
+Файл по умолчанию:
 
 ```text
 .env
@@ -317,3 +336,8 @@ LOG_LEVEL=INFO
 - `logs/` (включая `users.json`, `subscriptions.json`, `connect-tokens.json`,
   `backups/`, `bot.log`, lock, offset);
 - `venv/`.
+
+---
+
+**Далее:** [operations.md](operations.md) · [troubleshooting.md](troubleshooting.md) ·
+[telegram-ux.md](telegram-ux.md)

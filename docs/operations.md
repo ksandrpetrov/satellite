@@ -2,6 +2,24 @@
 
 Репозиторий: <https://github.com/ksandrpetrov/satellite>.
 
+**См. также:** [карта документов](README.md) · [deploy/README.md](../deploy/README.md) ·
+[configuration.md](configuration.md) · [troubleshooting.md](troubleshooting.md)
+
+## Содержание
+
+- [Локальный запуск](#локальный-запуск)
+- [Запуск на сервере](#запуск-на-сервере)
+  - [systemd](#развертывание-одной-командой-systemd)
+  - [Docker](#docker)
+- [Production-процесс](#production-процесс)
+- [Reverse proxy](#reverse-proxy-для-web-app)
+- [Runtime State](#runtime-state)
+- [Scheduler Lifecycle](#scheduler-lifecycle)
+- [Обновление](#обновление)
+- [Наблюдение](#наблюдение)
+
+---
+
 ## Локальный запуск
 
 Из корня репозитория:
@@ -658,3 +676,8 @@ sudo systemctl restart satellite-bot.service
 - stack trace в сообщениях пользователю;
 - токенов в логах TelegramError;
 - частых логов каждую секунду без событий.
+
+---
+
+**Далее:** [troubleshooting.md](troubleshooting.md) · [testing.md](testing.md) ·
+[deploy/README.md](../deploy/README.md)

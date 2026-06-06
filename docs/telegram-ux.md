@@ -1,5 +1,29 @@
 # Telegram UX
 
+Публичный контракт бота: команды, кнопки, FSM, streaming, guard'ы.
+
+**См. также:** [карта документов](README.md) · [architecture.md](architecture.md) ·
+[configuration.md](configuration.md) · [troubleshooting.md](troubleshooting.md)
+
+## Содержание
+
+- [Commands](#commands)
+- [Access](#access-and-calendar-connection)
+- [Reply keyboard](#reply-keyboard-approved)
+- [Upcoming](#upcoming-events)
+- [Invitations](#invitations-partstat)
+- [Manage](#manage-events-partstat)
+- [Create event](#create-event)
+- [Settings hub](#settings-hub)
+- [Calendar sources](#calendar-sources-план-и-дайджест)
+- [Foreign calendars](#foreign-shared-calendars)
+- [Time input](#time-input)
+- [Streaming delivery](#streaming-delivery)
+- [Authorization](#authorization-кратко)
+- [Web App](#web-app-подключение-календаря)
+
+---
+
 ## Commands
 
 Interactive-бот распознает:
@@ -330,3 +354,8 @@ manage — молча; аналитика — toast «Уже строю отчё
   (не из бота, другой токен в `.env`, nginx без прокси API); `connect_token_invalid` —
   истёк connect-token или ссылка скопирована не из бота — откройте Web App снова из чата.
   См. [troubleshooting.md](troubleshooting.md).
+
+---
+
+**Далее:** [architecture.md](architecture.md) · [testing.md](testing.md) ·
+[test-coverage-audit.md](test-coverage-audit.md)

@@ -4,6 +4,27 @@
 entrypoint уже используют текущие импорты, а структура пакета достаточно
 модульная для production-поддержки.
 
+**См. также:** [карта документов](README.md) · [конфигурация](configuration.md) ·
+[Telegram UX](telegram-ux.md) · [эксплуатация](operations.md) · [AGENTS.md](../AGENTS.md)
+
+## Содержание
+
+- [Слои](#слои)
+- [Entry Points](#entry-points)
+- [Interactive Flow](#interactive-flow-целевая-модель)
+- [Users and Security](#users-and-security)
+- [Telegram Layer](#telegram-layer)
+- [Calendar Layer](#calendar-layer)
+- [Digest Layer](#digest-layer)
+- [Weather Layer](#weather-layer)
+- [Storage](#storage)
+- [Scheduler](#scheduler)
+- [Web App HTTP](#web-app-http)
+- [Logging](#logging)
+- [Deployment](#deployment-production)
+
+---
+
 ## Слои
 
 ```text
@@ -396,3 +417,8 @@ push в `main` или тег `v*` — reusable `_checks.yml` (ruff + mypy + `py_
 
 Состояние (`users.json`, `subscriptions.json`, offset, lock) всегда в `logs/`.
 Подробности: [operations.md](operations.md), [deploy/README.md](../deploy/README.md).
+
+---
+
+**Далее:** [configuration.md](configuration.md) · [telegram-ux.md](telegram-ux.md) ·
+[operations.md](operations.md) · [testing.md](testing.md)
