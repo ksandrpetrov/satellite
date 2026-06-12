@@ -53,11 +53,17 @@ from ...messages_ru import (
     manage_detail_html,
     manage_list_html,
 )
+from ...messages_ru.rich_lists import manage_detail_rich_html, manage_list_rich_html
 from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .access import ensure_calendar_connected
 from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from .delivery import edit_callback_message, open_streaming_reply, safe_answer_callback
+from .delivery import (
+    edit_callback_message,
+    edit_callback_rich_or_html,
+    open_streaming_reply,
+    safe_answer_callback,
+)
 from .partstat_flow import PartstatFlow, find_event_by_token, respond_partstat
 
 log = logging.getLogger(__name__)
@@ -126,9 +132,10 @@ def _format_list_lines(events: list, tz, reference_date: date) -> list[str]:
 
 def _build_list_screen(
     events: list, *, tz, reference_date: date, truncated: bool
-) -> tuple[str, dict]:
+) -> tuple[str, str, dict]:
     if not events:
-        return MANAGE_EMPTY_HTML, build_manage_list_keyboard([])
+        empty = MANAGE_EMPTY_HTML
+        return empty, empty, build_manage_list_keyboard([])
     body = _format_list_lines(events, tz, reference_date)
     rows: list[tuple[str, str]] = []
     for idx, ev in enumerate(events):
@@ -137,27 +144,35 @@ def _build_list_screen(
         title = str(ev.get("summary") or "—")
         when = format_time_range(ev, tz)
         rows.append((token, f"{marker} {when} · {title}"))
-    text = manage_list_html(body_lines=body, truncated=truncated)
-    return text, build_manage_list_keyboard(rows)
+    fallback = manage_list_html(body_lines=body, truncated=truncated)
+    rich = manage_list_rich_html(
+        body_events=events,
+        tz=tz,
+        reference_date=reference_date,
+        truncated=truncated,
+    )
+    return rich, fallback, build_manage_list_keyboard(rows)
 
 
-def _load_list_screen(ctx: HandlerContext, user_id: int) -> tuple[str, dict]:
+def _load_list_screen(ctx: HandlerContext, user_id: int) -> tuple[str, str, dict]:
     events, _login, truncated = _fetch_manageable(ctx, user_id)
     today = datetime.now(tz=ctx.tz).date()
     return _build_list_screen(events, tz=ctx.tz, reference_date=today, truncated=truncated)
 
 
-def _detail_screen_for(ctx: HandlerContext, event, login: str) -> tuple[str, dict]:
+def _detail_screen_for(ctx: HandlerContext, event, login: str) -> tuple[str, str, dict]:
     token = event_callback_token(str(event.get("url") or ""))
-    title = html.escape(str(event.get("summary") or "—"))
+    title_raw = str(event.get("summary") or "—")
+    title = html.escape(title_raw)
     day = event_local_start_date(event, ctx.tz)
     today = datetime.now(tz=ctx.tz).date()
     day_header = format_upcoming_day_header(day, today) if day is not None else "—"
     when = f"{day_header} · {format_time_range(event, ctx.tz)}"
     partstat = user_partstat(event, login)
-    text = manage_detail_html(title=title, when=when, partstat=partstat)
+    fallback = manage_detail_html(title=title, when=when, partstat=partstat)
+    rich = manage_detail_rich_html(title=title_raw, when=when, partstat=partstat)
     keyboard = build_manage_detail_keyboard(token, partstat=partstat)
-    return text, keyboard
+    return rich, fallback, keyboard
 
 
 # --- entry points ----------------------------------------------------------
@@ -171,20 +186,25 @@ def handle_open_manage_events(ctx: HandlerContext, msg: IncomingMessage) -> None
         return
     sent = False
     try:
-        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
+        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id, rich=True)
         stream.push(MANAGE_FETCH_STATUS)
 
         try:
-            text, keyboard = _load_list_screen(ctx, msg.user_id)
+            rich_text, fallback_text, keyboard = _load_list_screen(ctx, msg.user_id)
         except CalendarNotConnectedError:
             log.error("Manage list failed user_id=%s: not connected", msg.user_id)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
             return
         except CalendarProviderError as exc:
             log.error("Manage list failed user_id=%s: %s", msg.user_id, exc.error_code)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
             return
-        stream.finish(text, reply_markup=keyboard)
+        stream.finish(
+            rich_text,
+            fallback_html=fallback_text,
+            rich=True,
+            reply_markup=keyboard,
+        )
         sent = True
         log.info("Opened manage events: user_id=%s", msg.user_id)
     finally:
@@ -196,10 +216,17 @@ def _refresh_list(ctx: HandlerContext, cb: IncomingCallback, toast: str | None =
         safe_answer_callback(ctx, cb, text=toast)
         return
     try:
-        text, keyboard = _load_list_screen(ctx, cb.user_id)
+        rich_text, fallback_text, keyboard = _load_list_screen(ctx, cb.user_id)
     except (CalendarNotConnectedError, CalendarProviderError):
-        text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
-    edit_callback_message(ctx, cb, text, keyboard)
+        rich_text = fallback_text = ERR_CALDAV_UNAVAILABLE_TEXT
+        keyboard = None
+    edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=rich_text,
+        fallback_html=fallback_text,
+        reply_markup=keyboard,
+    )
     safe_answer_callback(ctx, cb, text=toast)
 
 
@@ -217,8 +244,14 @@ def _open_detail(ctx: HandlerContext, cb: IncomingCallback, token: str) -> None:
     if event is None:
         _refresh_list(ctx, cb, toast=MANAGE_NOT_FOUND_TEXT)
         return
-    text, keyboard = _detail_screen_for(ctx, event, login)
-    edit_callback_message(ctx, cb, text, keyboard)
+    rich_text, fallback_text, keyboard = _detail_screen_for(ctx, event, login)
+    edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=rich_text,
+        fallback_html=fallback_text,
+        reply_markup=keyboard,
+    )
     safe_answer_callback(ctx, cb)
 
 

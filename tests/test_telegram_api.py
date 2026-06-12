@@ -39,6 +39,31 @@ def test_network_error_does_not_leak_bot_token() -> None:
     assert "<telegram-token>" in message
 
 
+def test_send_rich_message_posts_json_payload() -> None:
+    client = TelegramClient("token")
+    client._session.request = MagicMock(  # noqa: SLF001
+        return_value=_ok_response({"message_id": 11})
+    )
+    payload = {"html": "<p>hi</p>", "skip_entity_detection": True}
+    result = client.send_rich_message(123, payload)
+    assert result == {"message_id": 11}
+    call = client._session.request.call_args  # noqa: SLF001
+    assert "sendRichMessage" in call[0][1]
+    assert '"html": "<p>hi</p>"' in call.kwargs["data"]["rich_message"]
+
+
+def test_send_rich_message_draft_posts_to_dedicated_method() -> None:
+    client = TelegramClient("token")
+    client._session.request = MagicMock(  # noqa: SLF001
+        return_value=_ok_response(True)
+    )
+    payload = {"html": "<p>draft</p>"}
+    assert client.send_rich_message_draft(123, 42, payload) is True
+    call = client._session.request.call_args  # noqa: SLF001
+    assert "sendRichMessageDraft" in call[0][1]
+    assert call.kwargs["data"]["draft_id"] == 42
+
+
 def test_send_message_draft_posts_to_dedicated_method() -> None:
     client = TelegramClient("token")
     client._session.request = MagicMock(  # noqa: SLF001

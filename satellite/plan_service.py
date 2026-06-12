@@ -15,10 +15,14 @@ from dataclasses import dataclass
 from datetime import date, tzinfo
 
 from .calendar.events import filter_events_for_user
-from .calendar.stats import WorkdayOptions
+from .calendar.stats import DayCalendarStats, NormalizedEvent, WorkdayOptions
 from .calendar.user_calendar_service import UserCalendarService
 from .config import PlanConfig, WeatherConfig
-from .seagull.digest import prepare_seagull_stats, render_digest_from_stats
+from .seagull.digest import (
+    prepare_seagull_stats,
+    render_digest_from_stats,
+    render_digest_rich_from_stats,
+)
 from .weather.analyzer import summarize_for_digest_day
 from .weather.client import WeatherForecastClient
 from .weather.templates import build_weather_message
@@ -27,6 +31,14 @@ log = logging.getLogger(__name__)
 
 _WEATHER_PREFETCH_JOIN_SEC = 17.0
 _WEATHER_FETCH_INLINE = object()
+
+
+@dataclass(frozen=True)
+class PlanTextBundle:
+    """Пара rich + legacy HTML для доставки плана."""
+
+    rich_html: str
+    fallback_html: str
 
 
 @dataclass(frozen=True)
@@ -39,6 +51,30 @@ class PlanBuilder:
     weather_config: WeatherConfig | None = None
     weather_client: WeatherForecastClient | None = None
 
+    def build_plan_bundle(
+        self,
+        *,
+        telegram_user_id: int,
+        target_date: date,
+        reference_date: date,
+        on_progress: Callable[[str], None] | None = None,
+        weather_in_plan_enabled: bool = True,
+    ) -> PlanTextBundle:
+        fallback, weather_line, stats, meal_footer = self._build_plan_parts(
+            telegram_user_id=telegram_user_id,
+            target_date=target_date,
+            reference_date=reference_date,
+            on_progress=on_progress,
+            weather_in_plan_enabled=weather_in_plan_enabled,
+        )
+        rich = render_digest_rich_from_stats(
+            stats,
+            meal_footer,
+            weather_line=weather_line,
+            tz=self.tz,
+        )
+        return PlanTextBundle(rich_html=rich, fallback_html=fallback)
+
     def build_text(
         self,
         *,
@@ -48,6 +84,24 @@ class PlanBuilder:
         on_progress: Callable[[str], None] | None = None,
         weather_in_plan_enabled: bool = True,
     ) -> str:
+        fallback, _, _, _ = self._build_plan_parts(
+            telegram_user_id=telegram_user_id,
+            target_date=target_date,
+            reference_date=reference_date,
+            on_progress=on_progress,
+            weather_in_plan_enabled=weather_in_plan_enabled,
+        )
+        return fallback
+
+    def _build_plan_parts(
+        self,
+        *,
+        telegram_user_id: int,
+        target_date: date,
+        reference_date: date,
+        on_progress: Callable[[str], None] | None,
+        weather_in_plan_enabled: bool,
+    ) -> tuple[str, str | None, DayCalendarStats, tuple[NormalizedEvent, ...]]:
         started_at = time.monotonic()
         cfg = self.weather_config
         client = self.weather_client
@@ -143,7 +197,7 @@ class PlanBuilder:
             weather_elapsed,
             time.monotonic() - started_at,
         )
-        return rendered
+        return rendered, weather_line, stats, meal_footer
 
     def _build_weather_line(
         self,

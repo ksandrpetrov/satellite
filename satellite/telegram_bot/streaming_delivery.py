@@ -20,6 +20,11 @@ from typing import Any, Literal
 
 from .api import TelegramClient, TelegramError
 from .message_editing import edit_or_send_message
+from .rich_message import (
+    RICH_MESSAGE_SAFETY_CAP,
+    input_rich_message,
+    rich_blocks_for_streaming,
+)
 from .visual import TypingIndicator, is_private_chat
 
 log = logging.getLogger(__name__)
@@ -42,6 +47,7 @@ _TYPEWRITER_MIN_TEXT_LEN = 120  # короче — не имеет смысла 
 # Описания/коды, при которых черновики недоступны — переходим на legacy.
 _DRAFT_UNAVAILABLE_MARKERS = (
     "sendmessagedraft",
+    "sendrichmessagedraft",
     "textdraft",
     "method is not found",
     "method not found",
@@ -130,6 +136,17 @@ def _close_open_tags(html_text: str) -> str:
     return html_text + "".join(f"</{tag}>" for tag in reversed(stack))
 
 
+def _clip_text(text: str, *, rich: bool) -> str:
+    limit = RICH_MESSAGE_SAFETY_CAP if rich else _TELEGRAM_TEXT_LIMIT
+    if len(text) <= limit:
+        return text
+    if rich:
+        from .rich_message import truncate_rich_html
+
+        return truncate_rich_html(text, max_len=limit)
+    return _clip_telegram_text(text)
+
+
 def _clip_telegram_text(text: str) -> str:
     """Усекает текст до Telegram-лимита 4096, не разрывая HTML-теги/сущности.
 
@@ -148,13 +165,23 @@ def _clip_telegram_text(text: str) -> str:
     return text[:_TELEGRAM_TEXT_LIMIT]
 
 
-def _typewriter_chunks(text: str) -> list[str]:
+def _typewriter_chunks(text: str, *, rich: bool = False) -> list[str]:
     """Постепенно растущие префиксы текста для эффекта «печатает»."""
     if len(text) < _TYPEWRITER_MIN_TEXT_LEN:
         return []
+    if rich:
+        blocks = rich_blocks_for_streaming(text)
+        if len(blocks) <= 1:
+            return []
+        chunks: list[str] = []
+        acc = ""
+        for block in blocks:
+            acc += block
+            chunks.append(acc)
+        return chunks[:-1]
     target_frames = min(_TYPEWRITER_MAX_FRAMES, max(2, len(text) // _TYPEWRITER_MIN_CHUNK))
     step = max(_TYPEWRITER_MIN_CHUNK, len(text) // target_frames)
-    chunks: list[str] = []
+    chunks = []
     cursor = step
     while cursor < len(text):
         chunks.append(_safe_slice(text, cursor))
@@ -187,6 +214,7 @@ class StreamingReply:
         message_thread_id: int | None = None,
         parse_mode: str | None = "HTML",
         disable_web_page_preview: bool = True,
+        rich: bool = False,
     ) -> None:
         self._telegram = telegram
         self._chat_id = chat_id
@@ -194,6 +222,10 @@ class StreamingReply:
         self._message_thread_id = message_thread_id
         self._parse_mode = parse_mode
         self._disable_web_page_preview = disable_web_page_preview
+        self._rich = rich
+        self._rich_draft_active = False
+        self._rich_draft_disabled = False
+        self._last_fallback_html: str | None = None
 
         self._mode: _DraftMode = "legacy"
         self._loading_message_id: int | None = None
@@ -215,6 +247,7 @@ class StreamingReply:
         parse_mode: str | None = "HTML",
         disable_web_page_preview: bool = True,
         chat_action: str | None = "typing",
+        rich: bool = False,
     ) -> StreamingReply:
         """Старт сессии: пробует черновик, иначе loading-сообщение.
 
@@ -237,8 +270,9 @@ class StreamingReply:
             message_thread_id=message_thread_id,
             parse_mode=parse_mode,
             disable_web_page_preview=disable_web_page_preview,
+            rich=rich,
         )
-        clipped = _clip_telegram_text(initial_text)
+        clipped = _clip_text(initial_text, rich=rich)
         if session._try_start_draft(clipped):
             session._last_pushed = clipped
             session._last_draft_at = time.monotonic()
@@ -250,18 +284,24 @@ class StreamingReply:
         session._start_typing(chat_action)
         return session
 
-    def push(self, text: str) -> None:
+    def push(self, text: str, *, fallback_html: str | None = None) -> None:
         """Промежуточное обновление: throttle по времени и приросту."""
         if self._closed:
             return
-        clipped = _clip_telegram_text(text)
-        if not self._should_push(clipped):
+        clipped_rich = _clip_text(text, rich=self._rich)
+        clipped_fallback = (
+            _clip_text(fallback_html, rich=False) if fallback_html is not None else None
+        )
+        if clipped_fallback is not None:
+            self._last_fallback_html = clipped_fallback
+        draft_text = self._draft_text(clipped_rich, clipped_fallback)
+        if not self._should_push(draft_text):
             return
-        self._last_pushed = clipped
+        self._last_pushed = draft_text
         if self._mode == "draft":
-            self._push_draft(clipped)
+            self._push_draft(clipped_rich, fallback_html=clipped_fallback)
         elif self._loading_message_id is not None:
-            self._push_legacy_edit(clipped)
+            self._push_legacy_edit(draft_text)
 
     def dismiss(self) -> None:
         """Завершить сессию без финального текста (например, перед sendPhoto).
@@ -295,6 +335,8 @@ class StreamingReply:
         reply_markup: dict | list | str | None = None,
         typewriter: bool = True,
         message_effect_id: str | None = None,
+        fallback_html: str | None = None,
+        rich: bool | None = None,
     ) -> dict[str, Any] | None:
         """Финальная доставка: ``sendMessage`` (draft) или edit/send (legacy).
 
@@ -310,16 +352,22 @@ class StreamingReply:
             return None
         self._closed = True
         self._stop_typing()
-        clipped = _clip_telegram_text(text)
+        use_rich = self._rich if rich is None else rich
+        clipped = _clip_text(text, rich=use_rich)
+        if fallback_html is not None:
+            self._last_fallback_html = _clip_text(fallback_html, rich=False)
         if self._mode == "draft":
             if typewriter:
-                self._run_typewriter(clipped)
+                self._run_typewriter(clipped, rich=use_rich)
             return self._finish_draft(
                 clipped,
                 reply_markup=reply_markup,
                 message_effect_id=message_effect_id,
+                fallback_html=fallback_html,
+                rich=use_rich,
             )
-        return self._finish_legacy(clipped, reply_markup=reply_markup)
+        final_legacy = fallback_html if (use_rich and fallback_html) else clipped
+        return self._finish_legacy(final_legacy, reply_markup=reply_markup)
 
     # --- internals --------------------------------------------------------
 
@@ -339,15 +387,45 @@ class StreamingReply:
             self._typing.stop()
             self._typing = None
 
+    def _draft_text(self, rich_html: str, fallback_html: str | None) -> str:
+        """Текст для plain draft / legacy edit при rich-сессии."""
+        if self._rich and self._rich_draft_disabled:
+            return fallback_html or self._last_fallback_html or rich_html
+        return rich_html
+
+    def _send_draft(self, rich_html: str, *, fallback_html: str | None = None) -> bool:
+        if self._rich and not self._rich_draft_disabled:
+            try:
+                ok = self._telegram.send_rich_message_draft(
+                    self._chat_id,
+                    self._draft_id,
+                    input_rich_message(rich_html),
+                    message_thread_id=self._message_thread_id,
+                )
+            except TelegramError as exc:
+                if _draft_unavailable(exc):
+                    log.info("sendRichMessageDraft unavailable, using plain draft: %s", exc)
+                    self._rich_draft_disabled = True
+                    ok = False
+                else:
+                    log.warning("sendRichMessageDraft failed: %s", exc)
+                    ok = False
+            if ok is True:
+                self._rich_draft_active = True
+                return True
+            self._rich_draft_disabled = True
+        plain_text = self._draft_text(rich_html, fallback_html)
+        return self._telegram.send_message_draft(
+            self._chat_id,
+            self._draft_id,
+            plain_text,
+            message_thread_id=self._message_thread_id,
+            parse_mode=self._parse_mode,
+        )
+
     def _try_start_draft(self, initial_text: str) -> bool:
         try:
-            ok = self._telegram.send_message_draft(
-                self._chat_id,
-                self._draft_id,
-                initial_text,
-                message_thread_id=self._message_thread_id,
-                parse_mode=self._parse_mode,
-            )
+            ok = self._send_draft(initial_text)
         except TelegramError as exc:
             if _draft_unavailable(exc):
                 log.info("sendMessageDraft unavailable, using legacy delivery: %s", exc)
@@ -397,20 +475,14 @@ class StreamingReply:
             return True
         return False
 
-    def _push_draft(self, text: str) -> None:
+    def _push_draft(self, rich_html: str, *, fallback_html: str | None = None) -> None:
         try:
-            self._telegram.send_message_draft(
-                self._chat_id,
-                self._draft_id,
-                text,
-                message_thread_id=self._message_thread_id,
-                parse_mode=self._parse_mode,
-            )
+            self._send_draft(rich_html, fallback_html=fallback_html)
             self._last_draft_at = time.monotonic()
         except TelegramError as exc:
             if _draft_unavailable(exc):
                 log.info("Draft stream lost mid-flight, switching to legacy: %s", exc)
-                self._fallback_draft_to_legacy(text)
+                self._fallback_draft_to_legacy(rich_html)
                 return
             log.warning("sendMessageDraft update failed: %s", exc)
         except Exception as exc:  # noqa: BLE001
@@ -436,29 +508,24 @@ class StreamingReply:
     def _fallback_draft_to_legacy(self, current_text: str) -> None:
         """После сбоя черновика продолжаем через loading + edit."""
         self._mode = "legacy"
+        legacy_text = self._draft_text(current_text, self._last_fallback_html)
         if self._loading_message_id is None:
-            self._start_legacy_loading(current_text or "⏳")
+            self._start_legacy_loading(legacy_text or "⏳")
         else:
-            self._push_legacy_edit(current_text)
+            self._push_legacy_edit(legacy_text)
 
-    def _run_typewriter(self, final_text: str) -> None:
+    def _run_typewriter(self, final_text: str, *, rich: bool = False) -> None:
         """Анимация роста текста в черновике перед финалом.
 
         Не использует ``_should_push`` (там throttle — а здесь мы наоборот
         хотим равномерные кадры). Каждый кадр проходит через ``_safe_slice``
         в ``_typewriter_chunks``, поэтому HTML остаётся валидным.
         """
-        for chunk in _typewriter_chunks(final_text):
+        for chunk in _typewriter_chunks(final_text, rich=rich):
             if chunk == self._last_pushed:
                 continue
             try:
-                self._telegram.send_message_draft(
-                    self._chat_id,
-                    self._draft_id,
-                    chunk,
-                    message_thread_id=self._message_thread_id,
-                    parse_mode=self._parse_mode,
-                )
+                self._send_draft(chunk)
             except TelegramError as exc:
                 if _draft_unavailable(exc):
                     log.info("Typewriter aborted (draft unsupported): %s", exc)
@@ -479,12 +546,22 @@ class StreamingReply:
         *,
         reply_markup: dict | list | str | None,
         message_effect_id: str | None,
+        fallback_html: str | None,
+        rich: bool,
     ) -> dict[str, Any] | None:
-        # message_effect_id Telegram принимает только в личных чатах; для групп
-        # и каналов гасим эффект здесь, чтобы не тратить попытку и не получать
-        # ошибку API. Fallback на «без эффекта» при отказе Telegram (включая
-        # `PREMIUM_ACCOUNT_REQUIRED`) живёт в `TelegramClient.send_message`.
         effect = message_effect_id if is_private_chat(self._chat_id) else None
+        if rich:
+            from .message_delivery import deliver_rich_or_html
+
+            legacy = fallback_html or text
+            return deliver_rich_or_html(
+                self._telegram,
+                self._chat_id,
+                rich_html=text,
+                fallback_html=legacy,
+                reply_markup=reply_markup,
+                message_effect_id=effect,
+            )
         return self._telegram.send_message(
             self._chat_id,
             text,
@@ -522,6 +599,7 @@ def open_streaming_reply(
     parse_mode: str | None = "HTML",
     disable_web_page_preview: bool = True,
     chat_action: str | None = "typing",
+    rich: bool = False,
 ) -> StreamingReply:
     """Удобная фабрика (без ``HandlerContext`` — меньше связности).
 
@@ -537,4 +615,5 @@ def open_streaming_reply(
         parse_mode=parse_mode,
         disable_web_page_preview=disable_web_page_preview,
         chat_action=chat_action,
+        rich=rich,
     )

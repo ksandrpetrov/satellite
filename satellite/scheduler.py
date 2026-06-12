@@ -316,7 +316,7 @@ class DigestScheduler:
         user_record = self._users.get(telegram_user_id)
         weather_in_plan = user_record.weather_in_plan_enabled if user_record is not None else True
         try:
-            plan_text = self._plan_builder.build_text(
+            plan_bundle = self._plan_builder.build_plan_bundle(
                 telegram_user_id=telegram_user_id,
                 target_date=target_date,
                 reference_date=today,
@@ -331,11 +331,19 @@ class DigestScheduler:
             )
             return False
 
-        effect = pick_plan_message_effect(plan_text) if is_private_chat(sub.chat_id) else None
+        from .telegram_bot.message_delivery import deliver_rich_or_html
+
+        effect = (
+            pick_plan_message_effect(plan_bundle.fallback_html)
+            if is_private_chat(sub.chat_id)
+            else None
+        )
         try:
-            self._telegram.send_message(
+            deliver_rich_or_html(
+                self._telegram,
                 sub.chat_id,
-                plan_text,
+                rich_html=plan_bundle.rich_html,
+                fallback_html=plan_bundle.fallback_html,
                 message_effect_id=effect,
             )
             log.info(
@@ -390,10 +398,14 @@ class DigestScheduler:
             )
             return None
 
+        from .telegram_bot.message_delivery import deliver_rich_or_html
+
         try:
-            self._telegram.send_message(
+            deliver_rich_or_html(
+                self._telegram,
                 sub.chat_id,
-                screen.text,
+                rich_html=screen.rich_text,
+                fallback_html=screen.text,
                 reply_markup=screen.keyboard,
             )
             log.info(

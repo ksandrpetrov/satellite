@@ -106,6 +106,9 @@ def make_fake_telegram() -> MagicMock:
     tg = MagicMock()
     tg.send_message = MagicMock(return_value={"message_id": 100})
     tg.send_message_draft = MagicMock(return_value=False)
+    tg.send_rich_message_draft = MagicMock(return_value=False)
+    tg.send_rich_message = MagicMock(return_value={"message_id": 1})
+    tg.edit_message_rich = MagicMock(return_value={"message_id": 100})
     tg.edit_message_text = MagicMock(return_value={"message_id": 100})
     tg.answer_callback_query = MagicMock(return_value=True)
     tg.send_photo = MagicMock(return_value={"message_id": 101})
@@ -114,6 +117,38 @@ def make_fake_telegram() -> MagicMock:
     tg.set_chat_menu_button = MagicMock(return_value=True)
     tg.bot_token = "test-token:12345"
     return tg
+
+
+def final_message_html(telegram: MagicMock) -> str:
+    """HTML финального ответа: ``sendRichMessage`` или fallback ``sendMessage``."""
+    if telegram.send_rich_message.called:
+        payload = telegram.send_rich_message.call_args[0][1]
+        return str(payload["html"])
+    assert telegram.send_message.called
+    return str(telegram.send_message.call_args[0][1])
+
+
+def final_reply_markup(telegram: MagicMock):
+    """``reply_markup`` из финальной доставки (rich или legacy)."""
+    if telegram.send_rich_message.called:
+        return telegram.send_rich_message.call_args.kwargs.get("reply_markup")
+    return telegram.send_message.call_args.kwargs.get("reply_markup")
+
+
+def callback_edit_html(telegram: MagicMock) -> str:
+    """HTML после ``editMessageText`` (rich или legacy)."""
+    if telegram.edit_message_rich.called:
+        payload = telegram.edit_message_rich.call_args[0][2]
+        return str(payload["html"])
+    assert telegram.edit_message_text.called
+    return str(telegram.edit_message_text.call_args[0][2])
+
+
+def callback_edit_markup(telegram: MagicMock):
+    """``reply_markup`` из callback-edit (rich или legacy)."""
+    if telegram.edit_message_rich.called:
+        return telegram.edit_message_rich.call_args.kwargs.get("reply_markup")
+    return telegram.edit_message_text.call_args.kwargs.get("reply_markup")
 
 
 # --- IncomingMessage / IncomingCallback builders ---------------------------

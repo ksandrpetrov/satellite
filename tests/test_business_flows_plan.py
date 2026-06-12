@@ -24,6 +24,7 @@ from satellite.calendar.providers.base import (
     CalendarProviderError,
 )
 from satellite.messages_ru import ERR_CALDAV_UNAVAILABLE_TEXT, PLAN_BUSY_TEXT
+from satellite.plan_service import PlanTextBundle
 from satellite.telegram_bot.handlers import handle_message
 from satellite.telegram_bot.handlers import plan as plan_module
 from satellite.users import UserStore
@@ -44,8 +45,12 @@ def _build_ctx(users: UserStore) -> MagicMock:
     ctx = make_ctx(users, admin_ids=(ADMIN_ID,))
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 7000})
     ctx.telegram.send_message_draft = MagicMock(return_value=True)
+    ctx.telegram.send_rich_message_draft = MagicMock(return_value=True)
+    ctx.telegram.send_rich_message = MagicMock(return_value={"message_id": 7000})
     ctx.telegram.edit_message_text = MagicMock(return_value={"message_id": 7000})
     pb = MagicMock()
+    bundle = PlanTextBundle(rich_html="<h2>Plan</h2>", fallback_html="<b>Plan HTML</b>")
+    pb.build_plan_bundle = MagicMock(return_value=bundle)
     pb.build_text = MagicMock(return_value="<b>Plan HTML</b>")
     ctx._plan_builder = pb
     ctx.plan_builder = MagicMock(return_value=pb)
@@ -84,8 +89,8 @@ def test_plan_aliases_call_plan_builder_with_correct_target_date(
     handle_message(ctx, msg)
 
     pb = ctx.plan_builder()
-    pb.build_text.assert_called_once()
-    kwargs = pb.build_text.call_args.kwargs
+    pb.build_plan_bundle.assert_called_once()
+    kwargs = pb.build_plan_bundle.call_args.kwargs
     assert kwargs["telegram_user_id"] == USER_ID
     expected_today = date(2026, 5, 22)
     assert kwargs["reference_date"] == expected_today
@@ -98,7 +103,7 @@ def test_plan_does_not_run_for_unknown_user(tmp_path: Path) -> None:
     ctx = _build_ctx(users)
     msg = make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID)
     handle_message(ctx, msg)
-    ctx.plan_builder().build_text.assert_not_called()
+    ctx.plan_builder().build_plan_bundle.assert_not_called()
 
 
 def test_plan_releases_guard_after_caldav_failure(
@@ -116,22 +121,24 @@ def test_plan_releases_guard_after_caldav_failure(
 
     ctx = _build_ctx(approved_user_store)
     pb = ctx.plan_builder()
-    pb.build_text = MagicMock(
+    pb.build_plan_bundle = MagicMock(
         side_effect=CalendarProviderError("boom", error_code="CALDAV_UNAVAILABLE")
     )
 
     msg1 = make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=1)
     handle_message(ctx, msg1)
-    assert pb.build_text.call_count == 1
+    assert pb.build_plan_bundle.call_count == 1
     # пользователь увидел safe текст
     sent_texts = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
     assert ERR_CALDAV_UNAVAILABLE_TEXT in sent_texts
 
     # Guard должен быть отпущен — второй /td сразу триггерит build_text
-    pb.build_text = MagicMock(return_value="<b>Plan HTML</b>")
+    pb.build_plan_bundle = MagicMock(
+        return_value=PlanTextBundle(rich_html="<h2>Plan</h2>", fallback_html="<b>Plan HTML</b>")
+    )
     msg2 = make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=2)
     handle_message(ctx, msg2)
-    pb.build_text.assert_called_once()
+    pb.build_plan_bundle.assert_called_once()
 
 
 def test_plan_releases_guard_after_unexpected_exception(
@@ -144,16 +151,18 @@ def test_plan_releases_guard_after_unexpected_exception(
 
     ctx = _build_ctx(approved_user_store)
     pb = ctx.plan_builder()
-    pb.build_text = MagicMock(side_effect=ModuleNotFoundError("PIL"))
+    pb.build_plan_bundle = MagicMock(side_effect=ModuleNotFoundError("PIL"))
 
     msg1 = make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=11)
     handle_message(ctx, msg1)
 
     # И ещё раз — без cooldown
-    pb.build_text = MagicMock(return_value="<b>Plan HTML</b>")
+    pb.build_plan_bundle = MagicMock(
+        return_value=PlanTextBundle(rich_html="<h2>Plan</h2>", fallback_html="<b>Plan HTML</b>")
+    )
     msg2 = make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=12)
     handle_message(ctx, msg2)
-    pb.build_text.assert_called_once()
+    pb.build_plan_bundle.assert_called_once()
 
 
 def test_plan_releases_guard_after_calendar_not_connected(
@@ -165,12 +174,14 @@ def test_plan_releases_guard_after_calendar_not_connected(
 
     ctx = _build_ctx(approved_user_store)
     pb = ctx.plan_builder()
-    pb.build_text = MagicMock(side_effect=CalendarNotConnectedError())
+    pb.build_plan_bundle = MagicMock(side_effect=CalendarNotConnectedError())
 
     handle_message(ctx, make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=21))
-    pb.build_text = MagicMock(return_value="<b>Plan HTML</b>")
+    pb.build_plan_bundle = MagicMock(
+        return_value=PlanTextBundle(rich_html="<h2>Plan</h2>", fallback_html="<b>Plan HTML</b>")
+    )
     handle_message(ctx, make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=22))
-    pb.build_text.assert_called_once()
+    pb.build_plan_bundle.assert_called_once()
 
 
 def test_plan_no_post_success_cooldown_allows_immediate_retry(
@@ -193,7 +204,7 @@ def test_plan_no_post_success_cooldown_allows_immediate_retry(
     handle_message(ctx, make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=1))
     handle_message(ctx, make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=2))
 
-    assert pb.build_text.call_count == 2
+    assert pb.build_plan_bundle.call_count == 2
     busy_calls = [
         c[0][1] for c in ctx.telegram.send_message.call_args_list if c[0][1] == PLAN_BUSY_TEXT
     ]
@@ -217,7 +228,7 @@ def test_plan_busy_message_when_build_in_progress(
     finally:
         plan_module._plan_run_guard.release(USER_ID, "plan:today")
 
-    pb.build_text.assert_not_called()
+    pb.build_plan_bundle.assert_not_called()
     busy_calls = [
         c[0][1] for c in ctx.telegram.send_message.call_args_list if c[0][1] == PLAN_BUSY_TEXT
     ]
@@ -238,10 +249,10 @@ def test_plan_independent_action_keys_per_mode(
 
     handle_message(ctx, make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=1))
     handle_message(ctx, make_msg(text="/tm", chat_id=USER_ID, user_id=USER_ID, update_id=2))
-    assert pb.build_text.call_count == 2
+    assert pb.build_plan_bundle.call_count == 2
 
-    today_call = pb.build_text.call_args_list[0]
-    tomorrow_call = pb.build_text.call_args_list[1]
+    today_call = pb.build_plan_bundle.call_args_list[0]
+    tomorrow_call = pb.build_plan_bundle.call_args_list[1]
     assert today_call.kwargs["target_date"] == date(2026, 5, 22)
     assert tomorrow_call.kwargs["target_date"] == date(2026, 5, 23)
 
@@ -252,7 +263,7 @@ def test_plan_blocks_for_not_connected_user(tmp_path: Path) -> None:
     ctx = _build_ctx(users)
     msg = make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID)
     handle_message(ctx, msg)
-    ctx.plan_builder().build_text.assert_not_called()
+    ctx.plan_builder().build_plan_bundle.assert_not_called()
 
 
 # --- HIDE_ALL_DAY_EVENTS / pending invitations через build_plan_for_user --
@@ -270,6 +281,6 @@ def test_build_plan_for_user_passes_reference_and_target(
     plan_module.build_plan_for_user(ctx, telegram_user_id=USER_ID, mode="day_after_tomorrow")
 
     pb = ctx.plan_builder()
-    kwargs = pb.build_text.call_args.kwargs
+    kwargs = pb.build_plan_bundle.call_args.kwargs
     assert kwargs["reference_date"] == date(2026, 1, 7)
     assert kwargs["target_date"] == date(2026, 1, 9)

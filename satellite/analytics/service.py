@@ -14,6 +14,7 @@ from ..calendar.user_calendar_service import UserCalendarService
 from ..users import UserStore
 from .caption import build_analytics_caption
 from .render_card import render_analytics_card
+from .rich_caption import build_analytics_rich_caption
 
 
 def build_week_analytics(
@@ -23,7 +24,7 @@ def build_week_analytics(
     tz: tzinfo,
     calendar_service: UserCalendarService,
     users: UserStore,
-) -> tuple[bytes, str]:
+) -> tuple[bytes, str, str]:
     connected = calendar_service.require_connection(telegram_user_id)
     login = connected.context.login
     record = connected.record
@@ -48,4 +49,5 @@ def build_week_analytics(
     )
     png = render_analytics_card(report)
     caption = build_analytics_caption(report)
-    return png, caption
+    rich_caption = build_analytics_rich_caption(report)
+    return png, caption, rich_caption

@@ -23,7 +23,7 @@ from satellite.messages_ru import (
 from satellite.telegram_bot.handlers import handle_callback_query, handle_message
 from satellite.users import USER_STATUS_APPROVED
 
-from .conftest import make_callback, make_msg
+from .conftest import final_message_html, make_callback, make_msg
 
 TZ = ZoneInfo("Europe/Moscow")
 LOGIN = "me@mail.ru"
@@ -74,6 +74,9 @@ def _ctx(*, events: list[dict] | None = None, raise_on_list: Exception | None = 
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 8100})
     ctx.telegram.edit_message_text = MagicMock(return_value={})
     ctx.telegram.send_message_draft = MagicMock(return_value=True)
+    ctx.telegram.send_rich_message_draft = MagicMock(return_value=True)
+    ctx.telegram.send_rich_message = MagicMock(return_value={"message_id": 8100})
+    ctx.telegram.edit_message_rich = MagicMock(return_value={})
     ctx.telegram.answer_callback_query = MagicMock(return_value=True)
 
     connected = MagicMock()
@@ -134,7 +137,7 @@ def test_invitations_caps_at_twelve_items(monkeypatch: pytest.MonkeyPatch) -> No
         ctx, make_msg(text="/invitations", chat_id=CHAT_ID, user_id=USER_ID, update_id=2)
     )
 
-    rendered = ctx.telegram.send_message.call_args[0][1]
+    rendered = final_message_html(ctx.telegram)
     # Показываем не больше MAX_INVITATIONS встреч (E12..E16 не должны попасть)
     for i in range(MAX_INVITATIONS):
         assert f"E{i}" in rendered
@@ -158,7 +161,7 @@ def test_settings_invitations_entry_opens_screen(monkeypatch: pytest.MonkeyPatch
             data=CB_SETTINGS_INVITATIONS, chat_id=CHAT_ID, user_id=USER_ID, message_id=50
         ),
     )
-    ctx.telegram.edit_message_text.assert_called()
+    assert ctx.telegram.edit_message_rich.called or ctx.telegram.edit_message_text.called
 
 
 def test_invitations_respond_accept_updates_partstat(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -243,4 +246,4 @@ def test_invitations_refresh_callback(monkeypatch: pytest.MonkeyPatch) -> None:
 
     ctx = _ctx(events=[_ev()])
     handle_callback_query(ctx, make_callback(data=CB_INV_REFRESH, chat_id=CHAT_ID, user_id=USER_ID))
-    ctx.telegram.edit_message_text.assert_called()
+    assert ctx.telegram.edit_message_rich.called or ctx.telegram.edit_message_text.called

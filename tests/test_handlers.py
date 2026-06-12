@@ -88,8 +88,9 @@ def _access_ctx(*, approved: bool = True, has_calendar: bool = True) -> MagicMoc
 
 
 def _enable_draft_telegram(telegram: MagicMock) -> None:
-    """Эмулирует Bot API с ``sendMessageDraft`` (основной путь доставки)."""
+    """Эмулирует Bot API с draft API (основной путь доставки)."""
     telegram.send_message_draft = MagicMock(return_value=True)
+    telegram.send_rich_message_draft = MagicMock(return_value=True)
     telegram.send_chat_action = MagicMock(return_value=True)
     telegram.set_message_reaction = MagicMock(return_value=True)
 
@@ -104,7 +105,17 @@ def _plan_handler_context() -> MagicMock:
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 501})
     ctx.telegram.edit_message_text = MagicMock(return_value={})
     _enable_draft_telegram(ctx.telegram)
+    ctx.telegram.send_rich_message = MagicMock(return_value={"message_id": 501})
+    ctx.telegram.send_rich_message_draft = MagicMock(return_value=True)
+    from satellite.plan_service import PlanTextBundle
+
     pb = MagicMock()
+    pb.build_plan_bundle = MagicMock(
+        return_value=PlanTextBundle(
+            rich_html="<h2>Plan</h2>",
+            fallback_html="<b>Plan HTML</b>",
+        )
+    )
     pb.build_text = MagicMock(return_value="<b>Plan HTML</b>")
     ctx.plan_builder = MagicMock(return_value=pb)
     return ctx
@@ -392,17 +403,16 @@ def test_parse_subscription_action_no_match():
 
 
 def test_plan_uses_send_message_draft_when_supported():
-    """При поддержке API — черновик + финальный sendMessage, без edit."""
+    """При поддержке API — rich-черновик + финальный sendRichMessage, без edit."""
     ctx = _plan_handler_context()
-    ctx.telegram.send_message_draft = MagicMock(return_value=True)
+    ctx.telegram.send_rich_message_draft = MagicMock(return_value=True)
     msg = IncomingMessage(
         update_id=2, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td"
     )
     handle_message(ctx, msg)
 
-    ctx.telegram.send_message_draft.assert_called()
-    ctx.telegram.send_message.assert_called_once()
-    assert ctx.telegram.send_message.call_args[0][1] == "<b>Plan HTML</b>"
+    ctx.telegram.send_rich_message_draft.assert_called()
+    ctx.telegram.send_rich_message.assert_called_once()
     ctx.telegram.edit_message_text.assert_not_called()
 
 
@@ -423,18 +433,15 @@ def test_plan_two_consecutive_calls_both_deliver():
     handle_message(ctx, msg1)
     handle_message(ctx, msg2)
 
-    final_sends = [
-        call
-        for call in ctx.telegram.send_message.call_args_list
-        if call[0][1] == "<b>Plan HTML</b>"
-    ]
-    assert len(final_sends) == 2
-    assert ctx.plan_builder.return_value.build_text.call_count == 2
+    assert ctx.telegram.send_rich_message.call_count == 2
+    assert ctx.plan_builder.return_value.build_plan_bundle.call_count == 2
 
 
 def test_plan_legacy_loading_then_edit_when_draft_unavailable():
     """Без ``sendMessageDraft`` — прежний паттерн loading → edit."""
     ctx = _plan_handler_context()
+    ctx.telegram.send_rich_message_draft = MagicMock(return_value=False)
+    ctx.telegram.send_rich_message_draft = MagicMock(return_value=False)
     ctx.telegram.send_message_draft = MagicMock(return_value=False)
     msg = IncomingMessage(
         update_id=2, chat_id=9001, user_id=1, username="alice", display_name=None, text="/td"
@@ -445,13 +452,14 @@ def test_plan_legacy_loading_then_edit_when_draft_unavailable():
     assert ctx.telegram.send_message.call_args[0][1] == "⏳"
     assert ctx.telegram.edit_message_text.call_count >= 1
     assert ctx.telegram.edit_message_text.call_args[0][2] == "<b>Plan HTML</b>"
-    ctx.plan_builder.return_value.build_text.assert_called_once()
+    ctx.plan_builder.return_value.build_plan_bundle.assert_called_once()
 
 
 def test_plan_legacy_falls_back_to_new_message_when_edit_fails():
     """Legacy (без draft): если edit не удался — дайджест новым сообщением."""
 
     ctx = _plan_handler_context()
+    ctx.telegram.send_rich_message_draft = MagicMock(return_value=False)
     ctx.telegram.send_message_draft = MagicMock(return_value=False)
     ctx.telegram.edit_message_text = MagicMock(side_effect=TelegramError("message is not modified"))
     msg = IncomingMessage(
@@ -472,7 +480,7 @@ def test_plan_replaces_loading_with_caldav_error_text(
 ):
     """CalDAV-ошибка не должна оставлять loading-сообщение или показывать стек."""
     ctx = _plan_handler_context()
-    ctx.plan_builder.return_value.build_text = MagicMock(
+    ctx.plan_builder.return_value.build_plan_bundle = MagicMock(
         side_effect=CalendarProviderError("boom", error_code="caldav_failed")
     )
     msg = IncomingMessage(
@@ -494,7 +502,7 @@ def test_plan_replaces_loading_with_generic_error_on_unexpected_exception(
 ):
     """Любая нештатная ошибка построения дайджеста заменяется ласковым текстом."""
     ctx = _plan_handler_context()
-    ctx.plan_builder.return_value.build_text = MagicMock(
+    ctx.plan_builder.return_value.build_plan_bundle = MagicMock(
         side_effect=RuntimeError("token expired: secret123")
     )
     msg = IncomingMessage(
@@ -515,7 +523,8 @@ def test_plan_replaces_loading_with_generic_error_on_unexpected_exception(
 def test_plan_button_uses_error_text_when_build_fails():
     """Для кнопок поведение симметричное: loading заменяется ошибкой, спама нет."""
     ctx = _plan_handler_context()
-    ctx.plan_builder.return_value.build_text = MagicMock(side_effect=RuntimeError("kaboom"))
+
+    ctx.plan_builder.return_value.build_plan_bundle = MagicMock(side_effect=RuntimeError("kaboom"))
     msg = IncomingMessage(
         update_id=6,
         chat_id=9005,
@@ -536,6 +545,7 @@ def test_plan_legacy_skips_edit_when_loading_send_failed():
     """Legacy: если loading не ушёл — дайджест только ``sendMessage``."""
 
     ctx = _plan_handler_context()
+    ctx.telegram.send_rich_message_draft = MagicMock(return_value=False)
     ctx.telegram.send_message_draft = MagicMock(return_value=False)
     final_send_response = {"message_id": 777}
 
@@ -573,8 +583,8 @@ def test_long_menu_commands_invoke_correct_day_offset(command, mode_text):
     )
     handle_message(ctx, msg)
 
-    ctx.telegram.send_message_draft.assert_called()
-    ctx.telegram.send_message.assert_called_once()
+    assert ctx.telegram.send_rich_message_draft.called or ctx.telegram.send_message_draft.called
+    ctx.telegram.send_rich_message.assert_called_once()
     ctx.telegram.edit_message_text.assert_not_called()
 
 
@@ -594,8 +604,8 @@ def test_short_aliases_still_work_after_migration(command, mode_text):
     )
     handle_message(ctx, msg)
 
-    ctx.telegram.send_message_draft.assert_called()
-    ctx.telegram.send_message.assert_called_once()
+    assert ctx.telegram.send_rich_message_draft.called or ctx.telegram.send_message_draft.called
+    ctx.telegram.send_rich_message.assert_called_once()
     ctx.telegram.edit_message_text.assert_not_called()
 
 

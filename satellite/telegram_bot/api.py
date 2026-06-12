@@ -58,6 +58,19 @@ def is_html_entities_rejected(exc: BaseException) -> bool:
     )
 
 
+def is_rich_message_unavailable(exc: BaseException) -> bool:
+    """``sendRichMessage`` / ``sendRichMessageDraft`` недоступны (старый Bot API)."""
+    text = str(exc).lower()
+    return (
+        "sendrichmessage" in text
+        or "rich_message" in text
+        or "method is not found" in text
+        or "method not found" in text
+        or "unknown method" in text
+        or "not implemented" in text
+    )
+
+
 def is_message_effect_rejected(exc: BaseException) -> bool:
     """Telegram отказался применять ``message_effect_id``.
 
@@ -381,6 +394,102 @@ class TelegramClient:
             max_retries=_DRAFT_MESSAGE_MAX_RETRIES,
         )
         return result is True
+
+    def send_rich_message(
+        self,
+        chat_id: int | str,
+        rich_message: dict[str, Any],
+        *,
+        reply_markup: dict | list | str | None = None,
+        disable_notification: bool = False,
+        message_thread_id: int | None = None,
+        message_effect_id: str | None = None,
+    ) -> dict[str, Any]:
+        """``sendRichMessage``: структурированное сообщение (Bot API 10.1)."""
+        data: dict[str, Any] = {
+            "chat_id": chat_id,
+            "rich_message": json.dumps(rich_message, ensure_ascii=False),
+        }
+        if disable_notification:
+            data["disable_notification"] = "true"
+        if message_thread_id is not None:
+            data["message_thread_id"] = message_thread_id
+        if message_effect_id:
+            data["message_effect_id"] = message_effect_id
+        if reply_markup is not None:
+            data["reply_markup"] = (
+                json.dumps(reply_markup, ensure_ascii=False)
+                if isinstance(reply_markup, (dict, list))
+                else reply_markup
+            )
+        call_kw: dict[str, Any] = {
+            "timeout": _SEND_MESSAGE_TIMEOUT_SEC,
+            "max_retries": _SEND_MESSAGE_MAX_RETRIES,
+        }
+        try:
+            return self._call("sendRichMessage", data=data, **call_kw)
+        except TelegramError as exc:
+            if message_effect_id and is_message_effect_rejected(exc):
+                log.info(
+                    "sendRichMessage message_effect_id rejected, retrying without effect: %s",
+                    exc,
+                )
+                data.pop("message_effect_id", None)
+                return self._call("sendRichMessage", data=data, **call_kw)
+            raise
+
+    def send_rich_message_draft(
+        self,
+        chat_id: int,
+        draft_id: int,
+        rich_message: dict[str, Any],
+        *,
+        message_thread_id: int | None = None,
+    ) -> bool:
+        """``sendRichMessageDraft``: потоковый rich-черновик (Bot API 10.1)."""
+        if not draft_id:
+            raise ValueError("draft_id must be non-zero")
+        data: dict[str, Any] = {
+            "chat_id": chat_id,
+            "draft_id": draft_id,
+            "rich_message": json.dumps(rich_message, ensure_ascii=False),
+        }
+        if message_thread_id is not None:
+            data["message_thread_id"] = message_thread_id
+        result = self._call(
+            "sendRichMessageDraft",
+            data=data,
+            timeout=_DRAFT_MESSAGE_TIMEOUT_SEC,
+            max_retries=_DRAFT_MESSAGE_MAX_RETRIES,
+        )
+        return result is True
+
+    def edit_message_rich(
+        self,
+        chat_id: int | str,
+        message_id: int,
+        rich_message: dict[str, Any],
+        *,
+        reply_markup: dict | list | str | None = None,
+    ) -> dict[str, Any]:
+        """``editMessageText`` с ``rich_message`` вместо plain text."""
+        data: dict[str, Any] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "rich_message": json.dumps(rich_message, ensure_ascii=False),
+        }
+        if reply_markup is not None:
+            data["reply_markup"] = (
+                json.dumps(reply_markup, ensure_ascii=False)
+                if isinstance(reply_markup, (dict, list))
+                else reply_markup
+            )
+        return self._call(
+            "editMessageText",
+            data=data,
+            timeout=_EDIT_MESSAGE_TIMEOUT_SEC,
+            max_retries=_EDIT_MESSAGE_MAX_RETRIES,
+        )
 
     def send_chat_action(
         self,

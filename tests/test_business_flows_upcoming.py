@@ -32,6 +32,8 @@ def _upcoming_ctx(users: UserStore, calendar: FakeCalendarService | MagicMock) -
     ctx = make_ctx(users)
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 8000})
     ctx.telegram.send_message_draft = MagicMock(return_value=True)
+    ctx.telegram.send_rich_message_draft = MagicMock(return_value=True)
+    ctx.telegram.send_rich_message = MagicMock(return_value={"message_id": 8000})
     ctx.telegram.edit_message_text = MagicMock(return_value={"message_id": 8000})
     ctx.calendar_service = calendar
     return ctx

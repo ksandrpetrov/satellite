@@ -34,6 +34,13 @@ from satellite.telegram_bot.handlers import (
 from satellite.telegram_bot.handlers.routing import ManageEventsCommand
 from satellite.users import USER_STATUS_APPROVED
 
+from .conftest import (
+    callback_edit_html,
+    callback_edit_markup,
+    final_message_html,
+    final_reply_markup,
+)
+
 TZ = ZoneInfo("Europe/Moscow")
 LOGIN = "me@mail.ru"
 
@@ -196,6 +203,9 @@ def _ctx(*, events: list[dict] | None = None) -> MagicMock:
     ctx.telegram.send_message = MagicMock(return_value={"message_id": 999})
     ctx.telegram.edit_message_text = MagicMock(return_value={})
     ctx.telegram.send_message_draft = MagicMock(return_value=True)
+    ctx.telegram.send_rich_message_draft = MagicMock(return_value=True)
+    ctx.telegram.send_rich_message = MagicMock(return_value={"message_id": 999})
+    ctx.telegram.edit_message_rich = MagicMock(return_value={})
     ctx.telegram.send_chat_action = MagicMock(return_value=True)
     ctx.telegram.answer_callback_query = MagicMock(return_value=True)
     ctx.calendar_service = MagicMock()
@@ -250,12 +260,12 @@ def test_handle_open_manage_events_shows_list_with_buttons(monkeypatch):
     )
     handle_message(ctx, msg)
 
-    ctx.telegram.send_message_draft.assert_called()
-    ctx.telegram.send_message.assert_called_once()
+    assert ctx.telegram.send_rich_message_draft.called or ctx.telegram.send_message_draft.called
+    ctx.telegram.send_rich_message.assert_called_once()
     ctx.telegram.edit_message_text.assert_not_called()
-    rendered = ctx.telegram.send_message.call_args[0][1]
+    rendered = final_message_html(ctx.telegram)
     assert "Standup" in rendered
-    keyboard = ctx.telegram.send_message.call_args.kwargs.get("reply_markup")
+    keyboard = final_reply_markup(ctx.telegram)
     assert isinstance(keyboard, dict)
     callbacks = [btn["callback_data"] for row in keyboard["inline_keyboard"] for btn in row]
     expected_token = event_callback_token("https://e/standup")
@@ -285,7 +295,7 @@ def test_handle_open_manage_events_empty_when_nothing_to_manage(monkeypatch):
     )
     handle_message(ctx, msg)
 
-    assert ctx.telegram.send_message.call_args[0][1] == MANAGE_EMPTY_HTML
+    assert final_message_html(ctx.telegram) == MANAGE_EMPTY_HTML
 
 
 def test_manage_pick_opens_detail_with_action_buttons(monkeypatch):
@@ -307,10 +317,9 @@ def test_manage_pick_opens_detail_with_action_buttons(monkeypatch):
 
     handle_callback_query(ctx, _cb(900, f"{CB_MANAGE_PICK_PREFIX}{token}"))
 
-    edit_kw = ctx.telegram.edit_message_text.call_args
-    text = edit_kw[0][2]
+    text = callback_edit_html(ctx.telegram)
     assert "Standup" in text
-    keyboard = edit_kw.kwargs.get("reply_markup")
+    keyboard = callback_edit_markup(ctx.telegram)
     labels = [btn["text"] for row in keyboard["inline_keyboard"] for btn in row]
     # Текущий статус TENTATIVE подсвечен «✓»
     assert any("Может быть" in lbl and "✓" in lbl for lbl in labels)
@@ -520,5 +529,5 @@ def test_manage_back_from_detail_returns_to_list(monkeypatch):
     handle_callback_query(ctx, _cb(952, f"{CB_MANAGE_PICK_PREFIX}{token}"))
     handle_callback_query(ctx, _cb(952, CB_MANAGE_BACK, message_id=42))
     # Последний edit — список с BackTest
-    text = ctx.telegram.edit_message_text.call_args[0][2]
+    text = callback_edit_html(ctx.telegram)
     assert "BackTest" in text

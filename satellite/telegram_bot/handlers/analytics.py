@@ -23,6 +23,7 @@ from ...messages_ru import (
     build_analytics_options_keyboard,
 )
 from ..api import TelegramError
+from ..message_delivery import deliver_rich_or_html
 from ..visual import EFFECT_SPARKLES, is_private_chat
 from .access import ensure_calendar_connected
 from .action_guard import ActionGuard
@@ -85,7 +86,7 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         )
         stream.push(ANALYTICS_FETCH_STATUS)
 
-        def build() -> tuple[bytes, str]:
+        def build() -> tuple[bytes, str, str]:
             today = datetime.now(tz=ctx.tz).date()
             return build_week_analytics(
                 telegram_user_id=user_id,
@@ -96,17 +97,17 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
             )
 
         try:
-            png, caption = build()
+            png, caption, rich_caption = build()
         except CalendarNotConnectedError:
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
             return
         except CalendarProviderError as exc:
             log.error("Analytics failed user_id=%s: %s", cb.user_id, exc.error_code)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
             return
         except Exception:  # noqa: BLE001 - не оставляем «сводит неделю…» висеть в чате
             log.exception("Analytics build failed user_id=%s", cb.user_id)
-            stream.finish(ERR_GENERIC_HANDLER_TEXT)
+            stream.finish(ERR_GENERIC_HANDLER_TEXT, rich=False)
             return
 
         effect = EFFECT_SPARKLES if is_private_chat(cb.chat_id) else None
@@ -114,7 +115,6 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
             ctx.telegram.send_photo(
                 cb.chat_id,
                 png,
-                caption=caption,
                 message_effect_id=effect,
             )
         except TelegramError as exc:
@@ -124,9 +124,14 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
                 cb.chat_id,
                 exc,
             )
-            stream.finish(ERR_GENERIC_HANDLER_TEXT)
+            stream.finish(ERR_GENERIC_HANDLER_TEXT, rich=False)
             return
-
+        deliver_rich_or_html(
+            ctx.telegram,
+            cb.chat_id,
+            rich_html=rich_caption,
+            fallback_html=caption,
+        )
         stream.dismiss()
         sent = True
         log.info("Sent weekly analytics user_id=%s chat_id=%s", cb.user_id, cb.chat_id)

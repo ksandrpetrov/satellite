@@ -31,6 +31,7 @@ class InvitationsScreen:
 
     pending: list[Event]
     text: str
+    rich_text: str
     keyboard: dict
     truncated: bool
     login: str
@@ -87,16 +88,25 @@ def screen_from_pending(
     *,
     reference_date: date,
     truncated: bool,
-) -> tuple[str, dict]:
+) -> tuple[str, str, dict]:
     if not pending:
-        return INVITATIONS_EMPTY_HTML, build_invitations_keyboard([])
+        empty = INVITATIONS_EMPTY_HTML
+        return empty, empty, build_invitations_keyboard([])
     body = format_invitation_list_lines(pending, tz, reference_date)
     keyboard_rows = [
         (event_callback_token(str(ev.get("url") or "")), str(idx + 1))
         for idx, ev in enumerate(pending)
     ]
     text = invitations_list_html(body_lines=body, truncated=truncated)
-    return text, build_invitations_keyboard(keyboard_rows)
+    from .messages_ru.rich_lists import invitations_list_rich_html
+
+    rich_text = invitations_list_rich_html(
+        body_events=pending,
+        tz=tz,
+        reference_date=reference_date,
+        truncated=truncated,
+    )
+    return text, rich_text, build_invitations_keyboard(keyboard_rows)
 
 
 def load_pending_invitations_screen(
@@ -115,7 +125,7 @@ def load_pending_invitations_screen(
     )
     pending, truncated = collect_pending_from_events(events, login, tz, now=moment)
     today = moment.date()
-    text, keyboard = screen_from_pending(
+    text, rich_text, keyboard = screen_from_pending(
         pending,
         tz,
         reference_date=today,
@@ -124,6 +134,7 @@ def load_pending_invitations_screen(
     return InvitationsScreen(
         pending=pending,
         text=text,
+        rich_text=rich_text,
         keyboard=keyboard,
         truncated=truncated,
         login=login,

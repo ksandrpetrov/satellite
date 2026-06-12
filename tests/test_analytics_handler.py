@@ -70,6 +70,7 @@ def _ctx(tmp_path: Path, *, build_side_effect):
     ctx.telegram.send_message_draft = MagicMock(return_value=True)
     ctx.telegram.send_chat_action = MagicMock(return_value=True)
     ctx.telegram.send_photo = MagicMock(return_value={"message_id": 7778})
+    ctx.telegram.send_rich_message = MagicMock(return_value={"message_id": 7779})
     ctx.telegram.delete_message = MagicMock(return_value=True)
     ctx.telegram.answer_callback_query = MagicMock(return_value=True)
     ctx.calendar_service = MagicMock()
@@ -133,11 +134,24 @@ def test_not_connected_error_uses_caldav_text(tmp_path: Path, monkeypatch):
     )
 
 
+def test_successful_run_sends_photo_and_rich_caption(tmp_path: Path, monkeypatch):
+    ctx, _users = _ctx(tmp_path, build_side_effect=(b"\x89PNG\x00", "caption", "<h3>cap</h3>"))
+    _run_analytics_callback(
+        ctx, build_side_effect=(b"\x89PNG\x00", "caption", "<h3>cap</h3>"), monkeypatch=monkeypatch
+    )
+
+    ctx.telegram.send_photo.assert_called_once()
+    assert ctx.telegram.send_photo.call_args.kwargs.get("caption") is None
+    ctx.telegram.send_rich_message.assert_called_once()
+    payload = ctx.telegram.send_rich_message.call_args[0][1]
+    assert payload["html"] == "<h3>cap</h3>"
+
+
 def test_send_photo_failure_replaces_loading_message(tmp_path: Path, monkeypatch):
-    ctx, _users = _ctx(tmp_path, build_side_effect=(b"\x89PNG\x00", "caption"))
+    ctx, _users = _ctx(tmp_path, build_side_effect=(b"\x89PNG\x00", "caption", "<h3>cap</h3>"))
     ctx.telegram.send_photo.side_effect = TelegramError("Bad Request: can't parse entities")
     _run_analytics_callback(
-        ctx, build_side_effect=(b"\x89PNG\x00", "caption"), monkeypatch=monkeypatch
+        ctx, build_side_effect=(b"\x89PNG\x00", "caption", "<h3>cap</h3>"), monkeypatch=monkeypatch
     )
 
     ctx.telegram.send_message.assert_called_once()
@@ -145,8 +159,8 @@ def test_send_photo_failure_replaces_loading_message(tmp_path: Path, monkeypatch
 
 
 def test_duplicate_run_within_cooldown_skips_second_photo(tmp_path: Path, monkeypatch):
-    ctx, _users = _ctx(tmp_path, build_side_effect=(b"\x89PNG\x00", "caption"))
-    payload = (b"\x89PNG\x00", "caption")
+    ctx, _users = _ctx(tmp_path, build_side_effect=(b"\x89PNG\x00", "caption", "<h3>cap</h3>"))
+    payload = (b"\x89PNG\x00", "caption", "<h3>cap</h3>")
 
     def fake_build(**_kwargs):
         return payload

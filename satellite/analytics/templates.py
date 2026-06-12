@@ -21,3 +21,12 @@ SUMMARY_LINE = (
     "<b>{busy}</b> во встречах · <b>{free}</b> свободно · "
     "загрузка <b>{load}%</b> <i>(было {prev_load}%)</i>"
 )
+
+# Rich Message: таблица в подписи (``rich_caption``)
+RICH_TABLE_HEADER_METRIC = ""
+RICH_TABLE_HEADER_THIS_WEEK = "Эта неделя"
+RICH_TABLE_HEADER_LAST_WEEK = "Прошлая"
+RICH_TABLE_ROW_BUSY = "Занято"
+RICH_TABLE_ROW_FREE = "Свободно"
+RICH_TABLE_ROW_LOAD = "Загрузка"
+RICH_WEEK_LABEL = "Неделя {start}–{end}"

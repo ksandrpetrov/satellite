@@ -36,6 +36,7 @@ from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
     edit_callback_message,
+    edit_callback_rich_or_html,
     open_streaming_reply,
     safe_answer_callback,
 )
@@ -62,13 +63,13 @@ _INVITATIONS_OPEN_ACTION = "invitations:open"
 _invitations_open_guard = ActionGuard(cooldown_sec=10.0)
 
 
-def _load_screen(ctx: HandlerContext, user_id: int) -> tuple[str, dict]:
+def _load_screen(ctx: HandlerContext, user_id: int) -> tuple[str, str, dict]:
     screen = load_pending_invitations_screen(
         ctx.calendar_service,
         user_id,
         tz=ctx.tz,
     )
-    return screen.text, screen.keyboard
+    return screen.rich_text, screen.text, screen.keyboard
 
 
 def _fetch_all_for_token_lookup(ctx: HandlerContext, user_id: int) -> list:
@@ -84,20 +85,25 @@ def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
         return
     sent = False
     try:
-        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
+        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id, rich=True)
         stream.push(INVITATIONS_FETCH_STATUS)
 
         try:
-            text, keyboard = _load_screen(ctx, msg.user_id)
+            rich_text, fallback_text, keyboard = _load_screen(ctx, msg.user_id)
         except CalendarNotConnectedError:
             log.error("Invitations list failed user_id=%s: not connected", msg.user_id)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
             return
         except CalendarProviderError as exc:
             log.error("Invitations list failed user_id=%s: %s", msg.user_id, exc.error_code)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
             return
-        stream.finish(text, reply_markup=keyboard)
+        stream.finish(
+            rich_text,
+            fallback_html=fallback_text,
+            rich=True,
+            reply_markup=keyboard,
+        )
         sent = True
         log.info("Opened invitations: user_id=%s", msg.user_id)
     finally:
@@ -113,10 +119,17 @@ def _edit_invitations_screen(
         safe_answer_callback(ctx, cb, text=toast)
         return
     try:
-        text, keyboard = _load_screen(ctx, cb.user_id)
+        rich_text, fallback_text, keyboard = _load_screen(ctx, cb.user_id)
     except (CalendarNotConnectedError, CalendarProviderError):
-        text, keyboard = ERR_CALDAV_UNAVAILABLE_TEXT, None
-    edit_callback_message(ctx, cb, text, keyboard)
+        rich_text = fallback_text = ERR_CALDAV_UNAVAILABLE_TEXT
+        keyboard = None
+    edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=rich_text,
+        fallback_html=fallback_text,
+        reply_markup=keyboard,
+    )
     safe_answer_callback(ctx, cb, text=toast)
 
 

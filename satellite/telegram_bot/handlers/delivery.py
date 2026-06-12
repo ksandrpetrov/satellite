@@ -13,6 +13,7 @@ from urllib.parse import quote
 from ...config import WebAppConfig
 from ...messages_ru import ERR_GENERIC_HANDLER_TEXT
 from ..api import TelegramError
+from ..message_delivery import edit_rich_or_html
 from ..streaming_delivery import StreamingReply
 from ..streaming_delivery import open_streaming_reply as _open_streaming_reply
 from .context import HandlerContext, IncomingCallback
@@ -41,6 +42,7 @@ def open_streaming_reply(
     draft_id: int | None = None,
     message_thread_id: int | None = None,
     chat_action: str | None = "typing",
+    rich: bool = False,
 ) -> StreamingReply:
     """Потоковый ответ: ``sendMessageDraft`` с fallback на loading+edit.
 
@@ -54,7 +56,34 @@ def open_streaming_reply(
         draft_id=draft_id,
         message_thread_id=message_thread_id,
         chat_action=chat_action,
+        rich=rich,
     )
+
+
+def edit_callback_rich_or_html(
+    ctx: HandlerContext,
+    cb: IncomingCallback,
+    *,
+    rich_html: str,
+    fallback_html: str,
+    reply_markup: dict | None,
+) -> None:
+    """Редактирует callback-сообщение rich HTML с fallback."""
+    if cb.chat_id is None or cb.message_id is None:
+        return
+    try:
+        edit_rich_or_html(
+            ctx.telegram,
+            cb.chat_id,
+            cb.message_id,
+            rich_html=rich_html,
+            fallback_html=fallback_html,
+            reply_markup=reply_markup,
+        )
+    except TelegramError as exc:
+        log.info("Edit callback rich message ignored: %s", exc)
+    except Exception as error:  # noqa: BLE001
+        log.warning("Unexpected error editing rich callback message: %s", error)
 
 
 def edit_callback_message(

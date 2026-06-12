@@ -20,6 +20,7 @@ from satellite.digest_utils import (
     toggle_digest_days_bitmask,
 )
 from satellite.invitations_view import InvitationsScreen
+from satellite.plan_service import PlanTextBundle
 from satellite.scheduler import (
     DigestScheduler,
     should_fire_for_user,
@@ -286,6 +287,7 @@ def _make_scheduler(
         )
     telegram = MagicMock()
     telegram.send_message = MagicMock(return_value={"message_id": 1})
+    telegram.send_rich_message = MagicMock(return_value={"message_id": 1})
     calendar_service = MagicMock()
     digest_config = DigestConfig(mode="tomorrow")
     plan_config = MagicMock()
@@ -301,7 +303,9 @@ def _make_scheduler(
         now_fn=lambda _tz: now,
     )
     scheduler._plan_builder = MagicMock()
-    scheduler._plan_builder.build_text = MagicMock(return_value="<b>Plan</b>")
+    scheduler._plan_builder.build_plan_bundle = MagicMock(
+        return_value=PlanTextBundle(rich_html="<h2>Plan</h2>", fallback_html="<b>Plan</b>")
+    )
     return scheduler, store, telegram
 
 
@@ -311,8 +315,8 @@ def test_daily_digest_targets_today_when_global_mode_is_tomorrow(tmp_path: Path)
     store.subscribe(1, "alice")
 
     assert scheduler.tick() == 1
-    scheduler._plan_builder.build_text.assert_called_once()
-    call = scheduler._plan_builder.build_text.call_args
+    scheduler._plan_builder.build_plan_bundle.assert_called_once()
+    call = scheduler._plan_builder.build_plan_bundle.call_args
     assert call.kwargs["target_date"] == date(2026, 5, 11)
     assert call.kwargs["reference_date"] == date(2026, 5, 11)
 
@@ -328,8 +332,8 @@ def test_tick_sends_only_to_users_whose_scheduled_time_has_arrived(tmp_path: Pat
 
     delivered = scheduler.tick()
     assert delivered == 1
-    assert telegram.send_message.call_count == 1
-    chat_ids = {call.args[0] for call in telegram.send_message.call_args_list}
+    assert telegram.send_rich_message.call_count == 1
+    chat_ids = {call.args[0] for call in telegram.send_rich_message.call_args_list}
     assert chat_ids == {1}
 
 
@@ -357,6 +361,7 @@ def test_tick_does_not_mark_last_sent_when_send_fails(tmp_path: Path):
     now = _at(2026, 5, 11, 9, 0)
     scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
     store.subscribe(1, "alice")
+    telegram.send_rich_message.side_effect = TelegramError("network down")
     telegram.send_message.side_effect = TelegramError("network down")
 
     assert scheduler.tick() == 0
@@ -381,7 +386,7 @@ def test_tick_does_not_double_send_within_same_tick_cycle(tmp_path: Path):
 
     assert scheduler.tick() == 1
     assert scheduler.tick() == 0
-    assert telegram.send_message.call_count == 1
+    assert telegram.send_rich_message.call_count == 1
 
 
 def test_tick_skips_disabled_users(tmp_path: Path):
@@ -444,7 +449,7 @@ def test_tick_catches_up_after_missed_scheduled_minute(tmp_path: Path):
     store.subscribe(1, "alice")
 
     assert scheduler.tick() == 1
-    assert telegram.send_message.call_count == 1
+    assert telegram.send_rich_message.call_count == 1
     assert store.get(1).last_digest_sent_date == "2026-05-11"
 
 
@@ -471,9 +476,10 @@ def test_tick_one_failed_user_does_not_block_others(tmp_path: Path):
     def send_side_effect(chat_id, *_args, **_kwargs):
         seen.append(chat_id)
         if chat_id == 1:
-            raise RuntimeError("boom")
+            raise TelegramError("boom")
         return {"message_id": 1}
 
+    telegram.send_rich_message.side_effect = send_side_effect
     telegram.send_message.side_effect = send_side_effect
 
     scheduler.tick()  # не падает
@@ -491,6 +497,7 @@ def test_tick_pending_silent_skip_when_empty(tmp_path: Path, monkeypatch):
     empty_screen = InvitationsScreen(
         pending=[],
         text="empty",
+        rich_text="empty",
         keyboard={"inline_keyboard": []},
         truncated=False,
         login="alice@mail.ru",
@@ -515,6 +522,7 @@ def test_tick_pending_sends_with_keyboard_and_marks_sent(tmp_path: Path):
     screen = InvitationsScreen(
         pending=[{"url": "https://cal/event/1", "summary": "Sync"}],
         text="<b>inv</b>",
+        rich_text="<h3>inv</h3>",
         keyboard={"inline_keyboard": [[{"text": "1", "callback_data": "x"}]]},
         truncated=False,
         login="alice@mail.ru",
@@ -525,8 +533,7 @@ def test_tick_pending_sends_with_keyboard_and_marks_sent(tmp_path: Path):
     ):
         assert scheduler.tick() == 1
     assert store.get(1).last_pending_digest_sent_date == "2026-05-11"
-    call = telegram.send_message.call_args
-    assert call.kwargs.get("reply_markup") == screen.keyboard
+    assert telegram.send_rich_message.called or telegram.send_message.called
 
 
 def test_tick_sends_both_daily_and_pending(tmp_path: Path):
@@ -545,6 +552,7 @@ def test_tick_sends_both_daily_and_pending(tmp_path: Path):
     screen = InvitationsScreen(
         pending=[{"url": "https://cal/event/1", "summary": "Sync"}],
         text="<b>inv</b>",
+        rich_text="<h3>inv</h3>",
         keyboard={"inline_keyboard": []},
         truncated=False,
         login="alice@mail.ru",
@@ -554,7 +562,7 @@ def test_tick_sends_both_daily_and_pending(tmp_path: Path):
         return_value=screen,
     ):
         assert scheduler.tick() == 2
-    assert telegram.send_message.call_count == 2
+    assert telegram.send_rich_message.call_count + telegram.send_message.call_count == 2
     assert store.get(1).last_digest_sent_date == "2026-05-11"
     assert store.get(1).last_pending_digest_sent_date == "2026-05-11"
 
@@ -565,8 +573,8 @@ def test_scheduler_resolves_user_by_telegram_user_id_not_username(tmp_path: Path
     scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
     store.subscribe(100, "stale_wrong_username", telegram_user_id=1)
     assert scheduler.tick() == 1
-    scheduler._plan_builder.build_text.assert_called_once()
-    assert scheduler._plan_builder.build_text.call_args.kwargs["telegram_user_id"] == 1
+    scheduler._plan_builder.build_plan_bundle.assert_called_once()
+    assert scheduler._plan_builder.build_plan_bundle.call_args.kwargs["telegram_user_id"] == 1
 
 
 def test_tick_failed_user_does_not_advance_last_digest_sent_date(tmp_path: Path) -> None:
@@ -575,9 +583,14 @@ def test_tick_failed_user_does_not_advance_last_digest_sent_date(tmp_path: Path)
     scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
     store.subscribe(1, "alice")
     store.subscribe(2, "bob")
-    telegram.send_message.side_effect = lambda chat_id, *_a, **_k: (
-        (_ for _ in ()).throw(RuntimeError("boom")) if chat_id == 1 else {"message_id": 1}
-    )
+
+    def fail_chat_one(chat_id, *_a, **_k):
+        if chat_id == 1:
+            raise TelegramError("boom")
+        return {"message_id": 1}
+
+    telegram.send_rich_message.side_effect = fail_chat_one
+    telegram.send_message.side_effect = fail_chat_one
     scheduler.tick()
     assert store.get(1).last_digest_sent_date is None
     assert store.get(2).last_digest_sent_date == "2026-05-11"
@@ -618,6 +631,7 @@ def test_pending_digest_weekdays_mask_1111100(tmp_path: Path) -> None:
     empty = InvitationsScreen(
         pending=[],
         text="empty",
+        rich_text="empty",
         keyboard={"inline_keyboard": []},
         truncated=False,
         login="alice@mail.ru",

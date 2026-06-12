@@ -306,13 +306,29 @@ Callback data хаба: `CB_SETTINGS_*` / `CB_ANALYTICS_*` в [`messages_ru/_cor
 FSM создания события (`handlers/calendar_state`) не пересекается с digest time
 state (`handlers/digest_state`).
 
+## Rich Messages (Bot API 10.1)
+
+Дайджест, списки событий и подпись к аналитике собираются как Rich HTML
+([`rich_message.py`](../satellite/telegram_bot/rich_message.py),
+[`render_rich.py`](../satellite/seagull/render_rich.py),
+[`rich_lists.py`](../satellite/messages_ru/rich_lists.py)) и доставляются через
+`sendRichMessage` с fallback на legacy `sendMessage` HTML
+([`message_delivery.py`](../satellite/telegram_bot/message_delivery.py)).
+
+- Лимит rich-сообщения — до 32 768 символов (safety-cap 30 000 в рендерах).
+- Legacy HTML (`<b>`, `<blockquote>`) остаётся для fallback и callback-edit при
+  отказе API.
+- Потоковая доставка: `sendRichMessageDraft` → `sendRichMessage` (см. ниже).
+
 ## Streaming delivery
 
 План дня (`/today`, `/tomorrow`, …), `/upcoming`, `/invitations`, `/manage` и
-недельная аналитика используют `streaming_delivery.open_streaming_reply`: черновик
-через draft API (`sendMessageDraft` + промежуточные `push`), финал — `finish`
-(текст + inline-клавиатура) или отдельный `sendPhoto` (аналитика). При ошибке
-CalDAV/сборки черновик заменяется безопасным текстом (`ERR_*` из `messages_ru`).
+недельная аналитика используют `streaming_delivery.open_streaming_reply`: rich-
+черновик через `sendRichMessageDraft` (или legacy `sendMessageDraft`), финал —
+`finish` → `sendRichMessage` + fallback HTML (текст + inline-клавиатура) или
+`sendPhoto` без подписи + отдельное rich-сообщение с таблицей (аналитика).
+При ошибке CalDAV/сборки
+черновик заменяется безопасным текстом (`ERR_*` из `messages_ru`).
 
 Повтор команды или кнопки открытия, пока первый запрос ещё идёт или сразу после
 успеха, блокируется `ActionGuard` в

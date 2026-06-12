@@ -12,6 +12,7 @@ from ...messages_ru import (
     UPCOMING_FETCH_STATUS,
     upcoming_events_day_sections,
 )
+from ...messages_ru.rich_lists import upcoming_events_rich_html
 from ..visual import is_private_chat, pick_upcoming_message_effect
 from .access import ensure_calendar_connected
 from .action_guard import ActionGuard
@@ -36,7 +37,7 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
         return
     sent = False
     try:
-        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id)
+        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id, rich=True)
         stream.push(UPCOMING_FETCH_STATUS)
 
         try:
@@ -49,25 +50,41 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
                 tz=ctx.tz,
             )
             day_sections = upcoming_events_day_sections(events, ctx.tz, today, days=_UPCOMING_DAYS)
+            rich_html = upcoming_events_rich_html(events, ctx.tz, today, days=_UPCOMING_DAYS)
             if not day_sections:
-                stream.finish(UPCOMING_EMPTY_HTML)
+                stream.finish(UPCOMING_EMPTY_HTML, rich=False)
                 sent = True
                 return
             parts = ["🗓 <b>Ближайшие события</b>"]
-            for section in day_sections:
+            for group_idx, section in enumerate(day_sections, start=1):
                 parts.append(section)
-                stream.push("\n\n".join(parts))
-            text = "\n\n".join(parts)
+                fallback_text = "\n\n".join(parts)
+                rich_partial = upcoming_events_rich_html(
+                    events,
+                    ctx.tz,
+                    today,
+                    days=_UPCOMING_DAYS,
+                    max_groups=group_idx,
+                )
+                stream.push(rich_partial or fallback_text, fallback_html=fallback_text)
+            fallback_text = "\n\n".join(parts)
         except CalendarNotConnectedError:
             log.error("Upcoming list failed user_id=%s: not connected", msg.user_id)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
             return
         except CalendarProviderError as exc:
             log.error("Upcoming list failed user_id=%s: %s", msg.user_id, exc.error_code)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
             return
-        effect = pick_upcoming_message_effect(text) if is_private_chat(msg.chat_id) else None
-        stream.finish(text, message_effect_id=effect)
+        effect = (
+            pick_upcoming_message_effect(fallback_text) if is_private_chat(msg.chat_id) else None
+        )
+        stream.finish(
+            rich_html,
+            fallback_html=fallback_text,
+            rich=True,
+            message_effect_id=effect,
+        )
         sent = True
     finally:
         _upcoming_guard.release(msg.chat_id, _UPCOMING_ACTION, sent=sent)

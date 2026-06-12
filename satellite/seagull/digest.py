@@ -19,6 +19,7 @@ from ..calendar.stats import (
 )
 from . import templates as t
 from .render import render_daily_digest
+from .render_rich import render_daily_digest_rich
 from .rules import build_seagull_texts
 
 _LABEL_BY_DELTA = {
@@ -59,6 +60,24 @@ def prepare_seagull_stats(
 
     stats = calculate_day_stats(normalized, date_label=label, plan_date=plan_date, options=opts)
     return stats, tuple(meal_footer)
+
+
+def render_digest_rich_from_stats(
+    stats: DayCalendarStats,
+    meal_footer: Sequence[NormalizedEvent] = (),
+    *,
+    weather_line: str | None = None,
+    tz: tzinfo,
+) -> str:
+    """Rich HTML дайджест для ``sendRichMessage``."""
+    texts = build_seagull_texts(stats)
+    return render_daily_digest_rich(
+        stats,
+        texts,
+        meal_footer_events=meal_footer,
+        weather_line=weather_line,
+        tz=tz,
+    )
 
 
 def render_digest_from_stats(
