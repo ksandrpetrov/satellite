@@ -12,7 +12,6 @@ from ..telegram_bot.rich_message import (
     details_block,
     escape_rich,
     join_blocks,
-    marked,
     paragraph,
     section_heading,
     truncate_rich_html,
@@ -214,7 +213,7 @@ def manage_detail_rich_html(*, title: str, when: str, partstat: str | None) -> s
     blocks = [
         section_heading(escape_rich(title), level=3),
         paragraph(escape_rich(when)),
-        paragraph(f"📌 Сейчас: {marked(bold(escape_rich(label)))}"),
+        paragraph(f"📌 Сейчас: {bold(escape_rich(label))}"),
         paragraph("<i>Поменять решение можно сколько угодно — Чайка пошлёт ответ в календарь.</i>"),
     ]
     return join_blocks(blocks)

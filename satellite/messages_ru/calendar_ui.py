@@ -74,6 +74,37 @@ def upcoming_events_html(
     )
 
 
+def upcoming_events_plain_fallback_html(
+    events,
+    tz,
+    reference_date,
+    *,
+    days: int = 7,
+    max_events: int = 30,
+) -> str:
+    """Plain HTML fallback без ``<blockquote>`` — не мигает с rich ``<details>``."""
+    from html import escape
+
+    from ..calendar.events import build_upcoming_events_groups
+
+    sections: list[str] = ["🗓 <b>Ближайшие события</b>"]
+    for group in build_upcoming_events_groups(
+        events, tz, reference_date, days=days, max_events=max_events
+    ):
+        header = f"<b>{group['header']}</b>"
+        event_lines: list[str] = []
+        for item in group["events"]:
+            title = escape(str(item["title"]))
+            event_lines.append(f"{item['marker']} {item['time_range']} — {title}")
+        if not event_lines:
+            sections.append(header)
+            continue
+        sections.append(f"{header}\n" + "\n".join(event_lines))
+    if len(sections) <= 1:
+        return ""
+    return "\n\n".join(sections)
+
+
 CREATE_EVENT_ASK_TITLE = "➕ Как назвать встречу? Напиши одной строкой."
 CREATE_EVENT_ASK_DATE = (
     "📅 На какой день? Жми кнопку ниже или напиши:\n"

@@ -71,6 +71,7 @@ BUSY_LINE = "👨‍💻 Занято: {value}"
 FREE_LINE = "🧘 Свободно: {value}"
 
 # Rich Message: таблица метрик дня (``render_rich``)
+RICH_STATS_HEADER_METRIC = "Показатель"
 RICH_STATS_HEADER_VALUE = "Значение"
 RICH_STATS_ROW_BUSY = "Занято"
 RICH_STATS_ROW_FREE = "Свободно"

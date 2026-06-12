@@ -112,7 +112,7 @@ def _schedule_block(
 
 def _stats_table(stats: DayCalendarStats) -> str:
     return table(
-        ["", t.RICH_STATS_HEADER_VALUE],
+        [t.RICH_STATS_HEADER_METRIC, t.RICH_STATS_HEADER_VALUE],
         [
             [t.RICH_STATS_ROW_BUSY, escape_rich(format_duration_ru(stats.busy_minutes))],
             [t.RICH_STATS_ROW_FREE, escape_rich(format_duration_ru(stats.free_minutes))],

@@ -5,12 +5,13 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
+from ...calendar.events import build_upcoming_events_groups
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...messages_ru import (
     ERR_CALDAV_UNAVAILABLE_TEXT,
     UPCOMING_EMPTY_HTML,
     UPCOMING_FETCH_STATUS,
-    upcoming_events_day_sections,
+    upcoming_events_plain_fallback_html,
 )
 from ...messages_ru.rich_lists import upcoming_events_rich_html
 from ..visual import is_private_chat, pick_upcoming_message_effect
@@ -49,16 +50,18 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
                 end_date=end,
                 tz=ctx.tz,
             )
-            day_sections = upcoming_events_day_sections(events, ctx.tz, today, days=_UPCOMING_DAYS)
+            groups = build_upcoming_events_groups(
+                events, ctx.tz, today, days=_UPCOMING_DAYS
+            )
             rich_html = upcoming_events_rich_html(events, ctx.tz, today, days=_UPCOMING_DAYS)
-            if not day_sections:
+            fallback_text = upcoming_events_plain_fallback_html(
+                events, ctx.tz, today, days=_UPCOMING_DAYS
+            )
+            if not groups:
                 stream.finish(UPCOMING_EMPTY_HTML, rich=False)
                 sent = True
                 return
-            parts = ["🗓 <b>Ближайшие события</b>"]
-            for group_idx, section in enumerate(day_sections, start=1):
-                parts.append(section)
-                fallback_text = "\n\n".join(parts)
+            for group_idx in range(1, len(groups) + 1):
                 rich_partial = upcoming_events_rich_html(
                     events,
                     ctx.tz,
@@ -66,8 +69,8 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
                     days=_UPCOMING_DAYS,
                     max_groups=group_idx,
                 )
-                stream.push(rich_partial or fallback_text, fallback_html=fallback_text)
-            fallback_text = "\n\n".join(parts)
+                if rich_partial:
+                    stream.push(rich_partial)
         except CalendarNotConnectedError:
             log.error("Upcoming list failed user_id=%s: not connected", msg.user_id)
             stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)

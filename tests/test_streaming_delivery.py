@@ -192,6 +192,15 @@ def test_typewriter_chunks_skipped_on_short_text() -> None:
     assert _typewriter_chunks("x" * 50) == []
 
 
+def test_typewriter_chunks_rich_use_character_steps() -> None:
+    html = "<h2>Title</h2><p>" + ("word " * 40) + "</p>"
+    chunks = _typewriter_chunks(html, rich=True)
+    assert len(chunks) >= 3
+    for prev, curr in zip(chunks, chunks[1:]):
+        assert len(curr) > len(prev)
+    assert chunks[-1].count("<h2>") == chunks[-1].count("</h2>")
+
+
 def test_clip_to_telegram_limit_preserves_html() -> None:
     long = "<b>" + ("a" * 5000) + "</b>"
     tg = _telegram()

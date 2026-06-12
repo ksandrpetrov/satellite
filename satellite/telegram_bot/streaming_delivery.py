@@ -22,8 +22,8 @@ from .api import TelegramClient, TelegramError
 from .message_editing import edit_or_send_message
 from .rich_message import (
     RICH_MESSAGE_SAFETY_CAP,
+    _safe_html_prefix,
     input_rich_message,
-    rich_blocks_for_streaming,
 )
 from .visual import TypingIndicator, is_private_chat
 
@@ -39,10 +39,10 @@ _TELEGRAM_TEXT_LIMIT = 4096
 
 # Typewriter: чем короче итоговый текст, тем меньше кадров; чтобы воркер-пул
 # хендлеров не блокировался дольше ~1.5 с, выбираем разумный разброс.
-_TYPEWRITER_MAX_FRAMES = 9
-_TYPEWRITER_MIN_CHUNK = 60
-_TYPEWRITER_FRAME_INTERVAL_SEC = 0.16
-_TYPEWRITER_MIN_TEXT_LEN = 120  # короче — не имеет смысла «печатать»
+_TYPEWRITER_MAX_FRAMES = 12
+_TYPEWRITER_MIN_CHUNK = 40
+_TYPEWRITER_FRAME_INTERVAL_SEC = 0.14
+_TYPEWRITER_MIN_TEXT_LEN = 60  # короче — не имеет смысла «печатать»
 
 # Описания/коды, при которых черновики недоступны — переходим на legacy.
 _DRAFT_UNAVAILABLE_MARKERS = (
@@ -169,22 +169,16 @@ def _typewriter_chunks(text: str, *, rich: bool = False) -> list[str]:
     """Постепенно растущие префиксы текста для эффекта «печатает»."""
     if len(text) < _TYPEWRITER_MIN_TEXT_LEN:
         return []
-    if rich:
-        blocks = rich_blocks_for_streaming(text)
-        if len(blocks) <= 1:
-            return []
-        chunks: list[str] = []
-        acc = ""
-        for block in blocks:
-            acc += block
-            chunks.append(acc)
-        return chunks[:-1]
-    target_frames = min(_TYPEWRITER_MAX_FRAMES, max(2, len(text) // _TYPEWRITER_MIN_CHUNK))
-    step = max(_TYPEWRITER_MIN_CHUNK, len(text) // target_frames)
-    chunks = []
+    safe_slice = _safe_html_prefix if rich else _safe_slice
+    min_chunk = 32 if rich else _TYPEWRITER_MIN_CHUNK
+    target_frames = min(_TYPEWRITER_MAX_FRAMES, max(3, len(text) // min_chunk))
+    step = max(min_chunk, len(text) // target_frames)
+    chunks: list[str] = []
     cursor = step
     while cursor < len(text):
-        chunks.append(_safe_slice(text, cursor))
+        chunk = safe_slice(text, cursor)
+        if chunk and (not chunks or chunk != chunks[-1]):
+            chunks.append(chunk)
         cursor += step
     return chunks
 
