@@ -30,3 +30,28 @@ def test_rich_digest_contains_table_and_details():
     assert "<table>" in html
     assert "<details" in html
     assert "<time datetime=" in html
+
+
+def test_rich_digest_stats_table_speaks_type_and_time():
+    """Таблица метрик — «Тип / Время»; счётчик встреч не дублируется строкой.
+
+    Абстрактные «Показатель / Значение» читались как тех-жаргон, а строка
+    «Встреч — 4» в колонке времени выглядела ошибкой: количество уже есть
+    в заголовке расписания («Расписание — N встреч»).
+    """
+    events = [
+        make_event("A", "10:00", "11:00"),
+        make_event("B", "12:00", "13:00"),
+        make_event("C", "14:00", "15:00"),
+        make_event("D", "16:00", "17:00"),
+    ]
+    stats = calculate_day_stats(events, date_label="Сегодня", plan_date=date(2026, 6, 12))
+    texts = build_seagull_texts(stats)
+    html = render_daily_digest_rich(stats, texts, tz=ZoneInfo("Europe/Moscow"))
+    assert "<th>Тип</th><th>Время</th>" in html
+    assert "👨‍💻 Занято" in html
+    assert "🧘 Свободно" in html
+    assert "Показатель" not in html
+    assert "Значение" not in html
+    assert "<td>Встреч</td>" not in html
+    assert "— 4 встреч" in html  # количество живёт в заголовке расписания

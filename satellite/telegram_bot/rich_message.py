@@ -91,10 +91,6 @@ def anchor_link(text: str, name: str) -> str:
     return f'<a href="#{escape_rich(name)}">{text}</a>'
 
 
-def marked(text: str) -> str:
-    return f"<mark>{text}</mark>"
-
-
 def bold(text: str) -> str:
     return f"<b>{text}</b>"
 
@@ -156,42 +152,35 @@ def truncate_rich_html(html: str, *, max_len: int = RICH_MESSAGE_SAFETY_CAP) -> 
     return _safe_html_prefix(html, budget) + notice
 
 
-def rich_blocks_for_streaming(html: str) -> list[str]:
-    """Разбивает rich HTML на завершённые блоки для потоковой нарезки.
+_STREAM_CONTAINER_TAGS = frozenset({"details", "table", "ul", "ol"})
+_STREAM_BOUNDARY_TAGS = frozenset(
+    {"p", "h1", "h2", "h3", "h4", "h5", "h6", "details", "table", "ul", "ol"}
+)
 
-    Режет по границам ``</details>``, ``</table>``, ``</ul>``, ``</p>``,
-    ``</h1>``–``</h6>``, ``<hr>`` — чтобы draft не ломал разметку.
+
+def rich_blocks_for_streaming(html: str) -> list[str]:
+    """Разбивает rich HTML на завершённые блоки верхнего уровня.
+
+    Режет по границам ``</p>``, ``</h1>``–``</h6>``, ``<hr>``, ``</details>``,
+    ``</table>``, ``</ul>``, ``</ol>`` — но только вне контейнеров: вложенные
+    ``</ul>`` / ``</p>`` внутри ``<details>`` не должны разрывать
+    сворачиваемый блок пополам (полуоткрытый блок промаргивает в draft).
     """
     if not html:
         return []
-    markers = (
-        "</details>",
-        "</table>",
-        "</ul>",
-        "</p>",
-        "</h1>",
-        "</h2>",
-        "</h3>",
-        "</h4>",
-        "</h5>",
-        "</h6>",
-        "<hr>",
-    )
     blocks: list[str] = []
     start = 0
-    i = 0
-    while i < len(html):
-        matched = False
-        for marker in markers:
-            if html.startswith(marker, i):
-                end = i + len(marker)
-                blocks.append(html[start:end])
-                start = end
-                i = end
-                matched = True
-                break
-        if not matched:
-            i += 1
+    depth = 0
+    for match in _HTML_TAG_RE.finditer(html):
+        closing, tag = bool(match.group(1)), match.group(2).lower()
+        if tag in _STREAM_CONTAINER_TAGS:
+            depth = max(0, depth - 1) if closing else depth + 1
+        if depth > 0:
+            continue
+        is_boundary = (closing and tag in _STREAM_BOUNDARY_TAGS) or (not closing and tag == "hr")
+        if is_boundary:
+            blocks.append(html[start : match.end()])
+            start = match.end()
     if start < len(html):
         blocks.append(html[start:])
     return [b for b in blocks if b]

@@ -70,12 +70,12 @@ LAST_LINE_EMPTY = "Последняя встреча: {value}"
 BUSY_LINE = "👨‍💻 Занято: {value}"
 FREE_LINE = "🧘 Свободно: {value}"
 
-# Rich Message: таблица метрик дня (``render_rich``)
-RICH_STATS_HEADER_METRIC = "Показатель"
-RICH_STATS_HEADER_VALUE = "Значение"
-RICH_STATS_ROW_BUSY = "Занято"
-RICH_STATS_ROW_FREE = "Свободно"
-RICH_STATS_ROW_MEETINGS = "Встреч"
+# Rich Message: таблица времени дня (``render_rich``). Эмодзи — те же, что
+# в legacy-строках BUSY_LINE / FREE_LINE, чтобы оба рендера читались одинаково.
+RICH_STATS_HEADER_TYPE = "Тип"
+RICH_STATS_HEADER_TIME = "Время"
+RICH_STATS_ROW_BUSY = "👨‍💻 Занято"
+RICH_STATS_ROW_FREE = "🧘 Свободно"
 SCHEDULE_TITLE_WITH_COUNT = "{title} — {count} встреч"
 
 ROOM_LINE = "Переговорная: {location}"

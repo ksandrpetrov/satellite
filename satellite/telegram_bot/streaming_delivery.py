@@ -24,6 +24,7 @@ from .rich_message import (
     RICH_MESSAGE_SAFETY_CAP,
     _safe_html_prefix,
     input_rich_message,
+    rich_blocks_for_streaming,
 )
 from .visual import TypingIndicator, is_private_chat
 
@@ -37,12 +38,25 @@ _MIN_DRAFT_INTERVAL_SEC = 0.28
 _MIN_DRAFT_CHAR_DELTA = 24
 _TELEGRAM_TEXT_LIMIT = 4096
 
-# Typewriter: чем короче итоговый текст, тем меньше кадров; чтобы воркер-пул
-# хендлеров не блокировался дольше ~1.5 с, выбираем разумный разброс.
-_TYPEWRITER_MAX_FRAMES = 12
-_TYPEWRITER_MIN_CHUNK = 40
-_TYPEWRITER_FRAME_INTERVAL_SEC = 0.14
+# Typewriter: кадры реже ~0.2 s — клиент не успевает дорисовать анимацию
+# предыдущего кадра, и «печать» дёргается. Чтобы воркер-пул хендлеров не
+# блокировался дольше ~2 с, кадров не больше _TYPEWRITER_MAX_FRAMES.
+_TYPEWRITER_MAX_FRAMES = 9
+_TYPEWRITER_MIN_CHUNK = 24
+_TYPEWRITER_FRAME_INTERVAL_SEC = 0.22
 _TYPEWRITER_MIN_TEXT_LEN = 60  # короче — не имеет смысла «печатать»
+
+# Rich-typewriter: блоки с состоянием/структурой появляются только целиком —
+# полуоткрытый <details>/<table>/<ul> промаргивает свёрнутым или пустым.
+_RICH_ATOMIC_PREFIXES = ("<details", "<table", "<ul", "<ol")
+_RICH_TEXT_SUBCHUNK = 56  # длинные текстовые блоки дорезаем по словам этим шагом
+
+# Теги rich message, которых нет в legacy parse_mode=HTML: такой контент
+# нельзя отправлять в plain-черновик — Telegram ответит 400.
+_RICH_ONLY_TAG_RE = re.compile(
+    r"</?(?:details|summary|table|thead|tbody|tr|th|td|h[1-6]|ul|ol|li|hr|time|mark|p)\b",
+    re.IGNORECASE,
+)
 
 # Описания/коды, при которых черновики недоступны — переходим на legacy.
 _DRAFT_UNAVAILABLE_MARKERS = (
@@ -165,22 +179,82 @@ def _clip_telegram_text(text: str) -> str:
     return text[:_TELEGRAM_TEXT_LIMIT]
 
 
+def _snap_to_word_end(text: str, cut: int) -> int:
+    """Двигает позицию реза вперёд до конца текущего слова.
+
+    Обрыв на полуслове заставляет клиент перевёрстывать хвост строки на
+    каждом кадре — текст «дёргается». Кадр допечатывает слово целиком.
+    """
+    while cut < len(text) and not text[cut].isspace():
+        cut += 1
+    return cut
+
+
+def _append_growing(frames: list[str], candidate: str) -> None:
+    """Добавляет кадр, только если он строго длиннее предыдущего."""
+    if candidate and len(candidate) > len(frames[-1] if frames else ""):
+        frames.append(candidate)
+
+
+def _evenly_capped(frames: list[str], limit: int) -> list[str]:
+    """Равномерно прореживает кадры до ``limit``, сохраняя последний."""
+    if len(frames) <= limit:
+        return frames
+    picked = sorted({round((i + 1) * len(frames) / limit) - 1 for i in range(limit)})
+    return [frames[i] for i in picked]
+
+
+def _rich_typewriter_chunks(html_text: str) -> list[str]:
+    """Кадры rich-typewriter: целые блоки; длинные текстовые — по словам.
+
+    Резать rich HTML по символам нельзя: полуоткрытый ``<details>`` /
+    ``<table>`` промаргивает то свёрнутым, то пустым блоком. Поэтому кадр —
+    это завершённые блоки целиком, а длинные ``<p>``/``<h*>`` дорезаются по
+    границам слов через ``_safe_html_prefix``.
+    """
+    frames: list[str] = []
+    prefix = ""
+    for block in rich_blocks_for_streaming(html_text):
+        atomic = block.lstrip().lower().startswith(_RICH_ATOMIC_PREFIXES)
+        if not atomic and len(block) > _RICH_TEXT_SUBCHUNK * 2:
+            cursor = _RICH_TEXT_SUBCHUNK
+            while cursor < len(block):
+                cut = _snap_to_word_end(block, cursor)
+                if cut >= len(block):
+                    break
+                piece = _safe_html_prefix(block, cut)
+                if piece:
+                    _append_growing(frames, prefix + piece)
+                cursor = max(cursor + _RICH_TEXT_SUBCHUNK, cut + 1)
+        prefix += block
+        _append_growing(frames, prefix)
+    if frames and frames[-1] == html_text:
+        frames.pop()  # полный текст отправит финальная доставка
+    return _evenly_capped(frames, _TYPEWRITER_MAX_FRAMES)
+
+
 def _typewriter_chunks(text: str, *, rich: bool = False) -> list[str]:
-    """Постепенно растущие префиксы текста для эффекта «печатает»."""
+    """Постепенно растущие префиксы текста для эффекта «печатает».
+
+    Plain — рез по границам слов; rich — по завершённым блокам (см.
+    ``_rich_typewriter_chunks``). Длина кадров строго растёт: текст
+    «дописывается», а не перевёрстывается.
+    """
     if len(text) < _TYPEWRITER_MIN_TEXT_LEN:
         return []
-    safe_slice = _safe_html_prefix if rich else _safe_slice
-    min_chunk = 32 if rich else _TYPEWRITER_MIN_CHUNK
-    target_frames = min(_TYPEWRITER_MAX_FRAMES, max(3, len(text) // min_chunk))
-    step = max(min_chunk, len(text) // target_frames)
-    chunks: list[str] = []
+    if rich:
+        return _rich_typewriter_chunks(text)
+    target_frames = min(_TYPEWRITER_MAX_FRAMES, max(3, len(text) // _TYPEWRITER_MIN_CHUNK))
+    step = max(_TYPEWRITER_MIN_CHUNK, len(text) // target_frames)
+    frames: list[str] = []
     cursor = step
     while cursor < len(text):
-        chunk = safe_slice(text, cursor)
-        if chunk and (not chunks or chunk != chunks[-1]):
-            chunks.append(chunk)
-        cursor += step
-    return chunks
+        cut = _snap_to_word_end(text, cursor)
+        if cut >= len(text):
+            break
+        _append_growing(frames, _safe_slice(text, cut))
+        cursor = max(cursor + step, cut + 1)
+    return frames
 
 
 class StreamingReply:
@@ -289,7 +363,7 @@ class StreamingReply:
         if clipped_fallback is not None:
             self._last_fallback_html = clipped_fallback
         draft_text = self._draft_text(clipped_rich, clipped_fallback)
-        if not self._should_push(draft_text):
+        if draft_text is None or not self._should_push(draft_text):
             return
         self._last_pushed = draft_text
         if self._mode == "draft":
@@ -353,13 +427,14 @@ class StreamingReply:
         if self._mode == "draft":
             if typewriter:
                 self._run_typewriter(clipped, rich=use_rich)
-            return self._finish_draft(
-                clipped,
-                reply_markup=reply_markup,
-                message_effect_id=message_effect_id,
-                fallback_html=fallback_html,
-                rich=use_rich,
-            )
+            if self._mode == "draft":  # typewriter мог уронить сессию в legacy
+                return self._finish_draft(
+                    clipped,
+                    reply_markup=reply_markup,
+                    message_effect_id=message_effect_id,
+                    fallback_html=fallback_html,
+                    rich=use_rich,
+                )
         final_legacy = fallback_html if (use_rich and fallback_html) else clipped
         return self._finish_legacy(final_legacy, reply_markup=reply_markup)
 
@@ -381,11 +456,22 @@ class StreamingReply:
             self._typing.stop()
             self._typing = None
 
-    def _draft_text(self, rich_html: str, fallback_html: str | None) -> str:
-        """Текст для plain draft / legacy edit при rich-сессии."""
-        if self._rich and self._rich_draft_disabled:
-            return fallback_html or self._last_fallback_html or rich_html
-        return rich_html
+    def _draft_text(self, rich_html: str, fallback_html: str | None) -> str | None:
+        """Текст кадра для plain draft / legacy edit; ``None`` — кадр пропустить.
+
+        Когда rich-черновики недоступны, показываем только явный fallback
+        этого кадра либо контент без rich-тегов (статусные строки).
+        Накопленный ``_last_fallback_html`` сюда сознательно не подставляем:
+        кадры в старом оформлении (expandable blockquote, другие отступы)
+        «промаргивают» поверх финального rich-сообщения.
+        """
+        if not (self._rich and self._rich_draft_disabled):
+            return rich_html
+        if fallback_html:
+            return fallback_html
+        if not _RICH_ONLY_TAG_RE.search(rich_html):
+            return rich_html
+        return None
 
     def _send_draft(self, rich_html: str, *, fallback_html: str | None = None) -> bool:
         if self._rich and not self._rich_draft_disabled:
@@ -409,6 +495,8 @@ class StreamingReply:
                 return True
             self._rich_draft_disabled = True
         plain_text = self._draft_text(rich_html, fallback_html)
+        if plain_text is None:
+            return False
         return self._telegram.send_message_draft(
             self._chat_id,
             self._draft_id,
@@ -505,17 +593,24 @@ class StreamingReply:
         legacy_text = self._draft_text(current_text, self._last_fallback_html)
         if self._loading_message_id is None:
             self._start_legacy_loading(legacy_text or "⏳")
-        else:
+        elif legacy_text:
             self._push_legacy_edit(legacy_text)
 
     def _run_typewriter(self, final_text: str, *, rich: bool = False) -> None:
         """Анимация роста текста в черновике перед финалом.
 
         Не использует ``_should_push`` (там throttle — а здесь мы наоборот
-        хотим равномерные кадры). Каждый кадр проходит через ``_safe_slice``
-        в ``_typewriter_chunks``, поэтому HTML остаётся валидным.
+        хотим равномерные кадры ≥ ~0.2 s: быстрее клиент не успевает дорисовать
+        анимацию предыдущего кадра). Если rich-черновики недоступны, кадров
+        нет вовсе: plain-черновик не отрисует rich-разметку, а подмена кадров
+        legacy fallback-текстом промаргивает старым оформлением поверх
+        будущего rich-сообщения.
         """
+        if rich and self._rich_draft_disabled:
+            return
         for chunk in _typewriter_chunks(final_text, rich=rich):
+            if rich and self._rich_draft_disabled:
+                return  # rich-draft отвалился на предыдущем кадре
             if chunk == self._last_pushed:
                 continue
             try:

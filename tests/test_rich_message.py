@@ -74,3 +74,21 @@ def test_rich_blocks_for_streaming_splits_on_block_end() -> None:
     assert blocks[2] == "<hr>"
     assert blocks[0] + blocks[1] + blocks[2] in html
     assert any("details" in block for block in blocks)
+
+
+def test_rich_blocks_for_streaming_keeps_nested_content_inside_details() -> None:
+    """Вложенные ``</ul>``/``</p>`` не разрывают сворачиваемый блок пополам."""
+    html = (
+        "<h2>T</h2>"
+        "<details open><summary>S</summary><ul><li>a</li><li>b</li></ul></details>"
+        "<table><tr><th>A</th></tr><tr><td>1</td></tr></table>"
+        "<p>tail</p>"
+    )
+    blocks = rich_blocks_for_streaming(html)
+    assert blocks[0] == "<h2>T</h2>"
+    assert blocks[1].startswith("<details open>")
+    assert blocks[1].endswith("</details>")
+    assert blocks[2].startswith("<table>")
+    assert blocks[2].endswith("</table>")
+    assert blocks[3] == "<p>tail</p>"
+    assert "".join(blocks) == html

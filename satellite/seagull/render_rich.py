@@ -111,12 +111,17 @@ def _schedule_block(
 
 
 def _stats_table(stats: DayCalendarStats) -> str:
+    """Таблица «Тип / Время»: занято и свободно за день.
+
+    Количество встреч строкой таблицы не дублируем — оно уже в заголовке
+    расписания («Расписание — N встреч»), а в колонке «Время» число без
+    единиц читалось как ошибка.
+    """
     return table(
-        [t.RICH_STATS_HEADER_METRIC, t.RICH_STATS_HEADER_VALUE],
+        [t.RICH_STATS_HEADER_TYPE, t.RICH_STATS_HEADER_TIME],
         [
             [t.RICH_STATS_ROW_BUSY, escape_rich(format_duration_ru(stats.busy_minutes))],
             [t.RICH_STATS_ROW_FREE, escape_rich(format_duration_ru(stats.free_minutes))],
-            [t.RICH_STATS_ROW_MEETINGS, str(stats.meetings_count)],
         ],
     )
 

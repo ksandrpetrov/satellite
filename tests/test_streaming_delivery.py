@@ -192,13 +192,79 @@ def test_typewriter_chunks_skipped_on_short_text() -> None:
     assert _typewriter_chunks("x" * 50) == []
 
 
-def test_typewriter_chunks_rich_use_character_steps() -> None:
+def test_typewriter_chunks_cut_on_word_boundaries() -> None:
+    """Кадры допечатывают слово целиком — обрыв на полуслове дёргает вёрстку."""
+    text = "слово " * 40
+    chunks = _typewriter_chunks(text)
+    assert chunks
+    for chunk in chunks:
+        assert text[len(chunk)].isspace()
+
+
+def test_typewriter_chunks_rich_grow_by_blocks_and_words() -> None:
+    """Rich-кадры: длинные тексты растут по словам, блоки появляются целиком."""
     html = "<h2>Title</h2><p>" + ("word " * 40) + "</p>"
     chunks = _typewriter_chunks(html, rich=True)
     assert len(chunks) >= 3
     for prev, curr in zip(chunks, chunks[1:]):
         assert len(curr) > len(prev)
-    assert chunks[-1].count("<h2>") == chunks[-1].count("</h2>")
+    for chunk in chunks:
+        assert chunk.count("<h2>") == chunk.count("</h2>")
+        assert chunk.count("<p>") == chunk.count("</p>")
+    assert chunks[-1] != html  # полный текст отправляет финальная доставка
+
+
+def test_typewriter_chunks_rich_never_split_details_or_table() -> None:
+    """Сворачиваемые блоки и таблицы не вскрываются посреди кадра.
+
+    Полуоткрытый ``<details>`` промаргивает то свёрнутым, то пустым блоком —
+    источник «мигания» в /upcoming. Каждый кадр обязан содержать details и
+    table только целиком.
+    """
+    html = (
+        "<h2>Ближайшие события</h2>"
+        "<details open><summary>▼ Сегодня — 3</summary>"
+        "<ul><li>a</li><li>b</li><li>c</li></ul></details>"
+        "<details open><summary>▼ Завтра — 2</summary>"
+        "<ul><li>d</li><li>e</li></ul></details>"
+        "<table><tr><th>Тип</th><th>Время</th></tr><tr><td>Занято</td><td>4 ч</td></tr></table>"
+        "<p>хвостовая строка дайджеста</p>"
+    )
+    chunks = _typewriter_chunks(html, rich=True)
+    assert chunks
+    for chunk in chunks:
+        assert chunk.count("<details") == chunk.count("</details>")
+        assert chunk.count("<table") == chunk.count("</table>")
+        assert chunk.count("<ul") == chunk.count("</ul>")
+
+
+def test_rich_typewriter_does_not_flash_legacy_fallback() -> None:
+    """Регрессия: rich-draft умер на кадре → никаких plain-кадров со старым оформлением.
+
+    Раньше ``_draft_text`` подставлял в кадры typewriter полный
+    ``_last_fallback_html`` (старый вариант с expandable blockquote) — он
+    «промаргивал» поверх будущего rich-сообщения. Теперь такие кадры просто
+    пропускаются, финал остаётся rich.
+    """
+    tg = _telegram()
+    tg.send_rich_message_draft = MagicMock(return_value=True)
+    tg.send_rich_message = MagicMock(return_value={"message_id": 7})
+    stream = open_streaming_reply(tg, 1200, "⏳ статус", draft_id=21, rich=True)
+    tg.send_message_draft.reset_mock()
+    tg.send_rich_message_draft.side_effect = TelegramError(
+        "Bad Request: method sendRichMessageDraft is not found"
+    )
+    rich_html = "<h2>Список</h2>" + "".join(
+        f"<p>Пункт {i} — длинная строка списка событий.</p>" for i in range(8)
+    )
+    legacy_html = "<b>Старый вариант</b><blockquote expandable>тело</blockquote>"
+
+    stream.finish(rich_html, fallback_html=legacy_html, rich=True)
+
+    plain_frames = [call.args[2] for call in tg.send_message_draft.call_args_list]
+    assert legacy_html not in plain_frames
+    assert all("<p>" not in frame for frame in plain_frames)
+    tg.send_rich_message.assert_called_once()
 
 
 def test_clip_to_telegram_limit_preserves_html() -> None:
