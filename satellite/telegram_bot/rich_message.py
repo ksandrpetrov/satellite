@@ -51,14 +51,9 @@ def divider() -> str:
 
 
 def details_block(summary: str, body: str, *, open: bool = True) -> str:
-    """Сворачиваемый блок; ``open=True`` — развёрнут по умолчанию.
-
-    Явная стрелка в summary: ▼ развёрнуто, ▶ свёрнуто — клиент Telegram
-    иногда рисует disclosure-треугольник «наоборот» относительно ожидания.
-    """
+    """Сворачиваемый блок; ``open=True`` — развёрнут по умолчанию."""
     open_attr = " open" if open else ""
-    arrow = "▼ " if open else "▶ "
-    return f"<details{open_attr}><summary>{arrow}{summary}</summary>{body}</details>"
+    return f"<details{open_attr}><summary>{summary}</summary>{body}</details>"
 
 
 def unordered_list(items: Sequence[str]) -> str:

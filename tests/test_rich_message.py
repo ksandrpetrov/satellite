@@ -27,14 +27,14 @@ def test_input_rich_message_skip_entity_detection() -> None:
 def test_details_block_open_by_default() -> None:
     html = details_block("<b>Summary</b>", "<p>body</p>")
     assert html.startswith("<details open>")
-    assert "<summary>▼ <b>Summary</b></summary>" in html
+    assert "<summary><b>Summary</b></summary>" in html
 
 
 def test_details_block_closed() -> None:
     html = details_block("S", "B", open=False)
     assert html.startswith("<details>")
     assert " open" not in html.split(">")[0]
-    assert "<summary>▶ S</summary>" in html
+    assert "<summary>S</summary>" in html
 
 
 def test_table_renders_headers_and_rows() -> None:

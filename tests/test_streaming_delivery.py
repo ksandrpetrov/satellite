@@ -223,9 +223,9 @@ def test_typewriter_chunks_rich_never_split_details_or_table() -> None:
     """
     html = (
         "<h2>Ближайшие события</h2>"
-        "<details open><summary>▼ Сегодня — 3</summary>"
+        "<details open><summary>Сегодня — 3</summary>"
         "<ul><li>a</li><li>b</li><li>c</li></ul></details>"
-        "<details open><summary>▼ Завтра — 2</summary>"
+        "<details open><summary>Завтра — 2</summary>"
         "<ul><li>d</li><li>e</li></ul></details>"
         "<table><tr><th>Тип</th><th>Время</th></tr><tr><td>Занято</td><td>4 ч</td></tr></table>"
         "<p>хвостовая строка дайджеста</p>"
