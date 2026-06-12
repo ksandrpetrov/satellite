@@ -7,7 +7,9 @@ from ..messages_ru import format_duration_ru
 from ..telegram_bot.rich_message import (
     bold,
     escape_rich,
+    footnote_def,
     join_blocks,
+    mark,
     paragraph,
     section_heading,
     table,
@@ -59,7 +61,23 @@ def build_analytics_rich_caption(report: AnalyticsReport) -> str:
                 ],
             ],
         ),
-        paragraph(escape_rich(_compare_line(report))),
+        paragraph(_compare_rich(report)),
         paragraph(escape_rich(_trend_line(report))),
+        footnote_def(
+            "metrics",
+            escape_rich(
+                "Занято — встречи в рабочем окне (без обедов и all-day); "
+                "сравнение — с прошлой неделей."
+            ),
+        ),
     ]
     return truncate_rich_html(join_blocks(blocks))
+
+
+def _compare_rich(report: AnalyticsReport) -> str:
+    line = _compare_line(report)
+    delta_pct = abs(report.current.load_percent - report.previous.load_percent)
+    escaped = escape_rich(line)
+    if delta_pct > 10:
+        return mark(escaped)
+    return escaped

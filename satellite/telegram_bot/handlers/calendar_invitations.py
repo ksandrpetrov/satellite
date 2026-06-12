@@ -30,7 +30,12 @@ from ...messages_ru import (
     INVITATIONS_RESPOND_FAIL_TEXT,
     INVITATIONS_RESPOND_TENTATIVE,
 )
-from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
+from ..visual import (
+    EFFECT_SPARKLES,
+    pick_invitations_effect,
+    private_message_effect,
+    send_with_effect,
+)
 from .access import ensure_calendar_connected
 from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback, IncomingMessage
@@ -86,7 +91,7 @@ def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
     sent = False
     try:
         stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id, rich=True)
-        stream.push(INVITATIONS_FETCH_STATUS)
+        stream.push_status(INVITATIONS_FETCH_STATUS)
 
         try:
             rich_text, fallback_text, keyboard = _load_screen(ctx, msg.user_id)
@@ -103,6 +108,7 @@ def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
             fallback_html=fallback_text,
             rich=True,
             reply_markup=keyboard,
+            message_effect_id=pick_invitations_effect(fallback_text),
         )
         sent = True
         log.info("Opened invitations: user_id=%s", msg.user_id)

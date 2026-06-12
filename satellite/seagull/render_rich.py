@@ -13,13 +13,18 @@ from ..messages_ru import (
 from ..telegram_bot.rich_message import (
     anchor,
     anchor_link,
+    blockquote,
     bold,
     datetime_link,
     details_block,
     divider,
     escape_rich,
+    footnote_def,
+    footnote_ref,
     join_blocks,
+    mark,
     paragraph,
+    pull_quote,
     section_heading,
     table,
     truncate_rich_html,
@@ -35,7 +40,9 @@ from .rules import SeagullTexts
 
 _SCHEDULE_DETAILS_MIN_MEETINGS = 4
 _ANCHOR_FORECAST = "forecast"
+_ANCHOR_SCHEDULE = "schedule"
 _LONG_DAY_MEETINGS = 10
+_DENSE_BUSY_MINUTES = 240
 
 
 def _relative_forecast_title(stats: DayCalendarStats) -> str:
@@ -105,9 +112,12 @@ def _schedule_block(
             )
         )
     )
-    if stats.meetings_count >= _SCHEDULE_DETAILS_MIN_MEETINGS:
-        return details_block(summary, body, open=True)
-    return paragraph(summary) + body
+    schedule = anchor(_ANCHOR_SCHEDULE) + (
+        details_block(summary, body, open=True)
+        if stats.meetings_count >= _SCHEDULE_DETAILS_MIN_MEETINGS
+        else paragraph(summary) + body
+    )
+    return schedule
 
 
 def _stats_table(stats: DayCalendarStats) -> str:
@@ -117,10 +127,13 @@ def _stats_table(stats: DayCalendarStats) -> str:
     расписания («Расписание — N встреч»), а в колонке «Время» число без
     единиц читалось как ошибка.
     """
+    busy_cell = escape_rich(format_duration_ru(stats.busy_minutes))
+    if stats.busy_minutes > _DENSE_BUSY_MINUTES:
+        busy_cell = mark(busy_cell)
     return table(
         [t.RICH_STATS_HEADER_TYPE, t.RICH_STATS_HEADER_TIME],
         [
-            [t.RICH_STATS_ROW_BUSY, escape_rich(format_duration_ru(stats.busy_minutes))],
+            [t.RICH_STATS_ROW_BUSY, busy_cell],
             [t.RICH_STATS_ROW_FREE, escape_rich(format_duration_ru(stats.free_minutes))],
         ],
     )
@@ -142,12 +155,12 @@ def render_daily_digest_rich(
     blocks: list[str] = [heading]
 
     if weather_line:
-        blocks.append(paragraph(escape_rich(weather_line)))
+        blocks.append(blockquote(escape_rich(weather_line)))
 
-    blocks.append(paragraph(escape_rich(texts.main)))
+    blocks.append(pull_quote(escape_rich(texts.main), author="Чайка"))
 
     if stats.meetings_count > 0 and texts.overlaps:
-        blocks.append(paragraph(escape_rich(texts.overlaps)))
+        blocks.append(blockquote(escape_rich(texts.overlaps)))
 
     blocks.append(divider())
 
@@ -165,7 +178,16 @@ def render_daily_digest_rich(
         blocks.append(paragraph(escape_rich(meal_line)))
 
     if stats.meetings_count > _LONG_DAY_MEETINGS:
-        blocks.append(paragraph(anchor_link("↑ К прогнозу", _ANCHOR_FORECAST)))
+        blocks.append(
+            paragraph(
+                footnote_ref("sched")
+                + " "
+                + anchor_link("Подробнее о расписании", _ANCHOR_SCHEDULE)
+                + " · "
+                + anchor_link("↑ К прогнозу", _ANCHOR_FORECAST)
+            )
+        )
+        blocks.append(footnote_def("sched", escape_rich("Полное расписание — в блоке ниже.")))
 
     html = join_blocks(blocks)
     return truncate_rich_html(html)

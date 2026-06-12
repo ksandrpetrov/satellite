@@ -9,6 +9,7 @@ from .buttons import (
     BUTTON_DISCONNECT_CALENDAR,
     BUTTON_INVITATIONS,
     BUTTON_RECONNECT_CALENDAR,
+    styled_button,
 )
 
 CB_SETTINGS_DIGEST = "settings_digest"
@@ -226,18 +227,21 @@ def build_invitations_keyboard(
     for token, label in events:
         rows.append(
             [
-                {
-                    "text": f"✅ {label}",
-                    "callback_data": f"{CB_INV_RESPOND_PREFIX}{token}:a",
-                },
-                {
-                    "text": f"❌ {label}",
-                    "callback_data": f"{CB_INV_RESPOND_PREFIX}{token}:d",
-                },
-                {
-                    "text": f"🤔 {label}",
-                    "callback_data": f"{CB_INV_RESPOND_PREFIX}{token}:t",
-                },
+                styled_button(
+                    f"✅ {label}",
+                    f"{CB_INV_RESPOND_PREFIX}{token}:a",
+                    style="success",
+                ),
+                styled_button(
+                    f"❌ {label}",
+                    f"{CB_INV_RESPOND_PREFIX}{token}:d",
+                    style="danger",
+                ),
+                styled_button(
+                    f"🤔 {label}",
+                    f"{CB_INV_RESPOND_PREFIX}{token}:t",
+                    style="primary",
+                ),
             ]
         )
     rows.append([{"text": "🔄 Обновить", "callback_data": CB_INV_REFRESH}])
@@ -332,20 +336,23 @@ def build_manage_detail_keyboard(token: str, *, partstat: str | None) -> dict:
     return {
         "inline_keyboard": [
             [
-                {
-                    "text": mark("ACCEPTED", "✅ Принять"),
-                    "callback_data": f"{CB_MANAGE_RESPOND_PREFIX}{token}:a",
-                },
-                {
-                    "text": mark("TENTATIVE", "🤔 Может быть"),
-                    "callback_data": f"{CB_MANAGE_RESPOND_PREFIX}{token}:t",
-                },
+                styled_button(
+                    mark("ACCEPTED", "✅ Принять"),
+                    f"{CB_MANAGE_RESPOND_PREFIX}{token}:a",
+                    style="success",
+                ),
+                styled_button(
+                    mark("TENTATIVE", "🤔 Может быть"),
+                    f"{CB_MANAGE_RESPOND_PREFIX}{token}:t",
+                    style="primary",
+                ),
             ],
             [
-                {
-                    "text": mark("DECLINED", "❌ Отклонить"),
-                    "callback_data": f"{CB_MANAGE_RESPOND_PREFIX}{token}:d",
-                },
+                styled_button(
+                    mark("DECLINED", "❌ Отклонить"),
+                    f"{CB_MANAGE_RESPOND_PREFIX}{token}:d",
+                    style="danger",
+                ),
             ],
             [{"text": "⬅️ К списку", "callback_data": CB_MANAGE_BACK}],
         ]
@@ -521,7 +528,13 @@ def build_digest_settings_keyboard(*, digest_enabled: bool, weather_in_plan_enab
                     "callback_data": CB_DIGEST_WEATHER_TOGGLE,
                 }
             ],
-            [{"text": toggle_label, "callback_data": CB_DIGEST_TOGGLE}],
+            [
+                styled_button(
+                    toggle_label,
+                    CB_DIGEST_TOGGLE,
+                    style="danger" if digest_enabled else "success",
+                )
+            ],
             [{"text": "⬅️ В настройки", "callback_data": CB_SETTINGS_BACK}],
         ]
     }
@@ -672,7 +685,13 @@ def build_pending_digest_settings_keyboard(*, digest_enabled: bool) -> dict:
         "inline_keyboard": [
             [{"text": "📆 Дни отправки", "callback_data": CB_PENDING_DIGEST_DAYS}],
             [{"text": "🕘 Время отправки", "callback_data": CB_PENDING_DIGEST_TIME}],
-            [{"text": toggle_label, "callback_data": CB_PENDING_DIGEST_TOGGLE}],
+            [
+                styled_button(
+                    toggle_label,
+                    CB_PENDING_DIGEST_TOGGLE,
+                    style="danger" if digest_enabled else "success",
+                )
+            ],
             [{"text": "⬅️ В настройки", "callback_data": CB_SETTINGS_BACK}],
         ]
     }

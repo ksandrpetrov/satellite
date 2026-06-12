@@ -12,6 +12,7 @@ from ..telegram_bot.rich_message import (
     details_block,
     escape_rich,
     join_blocks,
+    mark,
     paragraph,
     section_heading,
     truncate_rich_html,
@@ -20,6 +21,13 @@ from ..telegram_bot.rich_message import (
 
 _INVITATIONS_DETAILS_MIN = 5
 _MANAGE_DETAILS_MIN = 5
+
+
+def _day_header_rich(header: str) -> str:
+    escaped = escape_rich(header)
+    if header.startswith(("Сегодня", "Завтра", "Послезавтра")):
+        return mark(escaped)
+    return escaped
 
 
 def _event_start_unix(event: dict[str, Any], tz: tzinfo) -> int | None:
@@ -71,7 +79,8 @@ def upcoming_events_rich_html(
     by_url = _events_by_url(events)
     blocks: list[str] = [section_heading("Ближайшие события", level=2)]
     for group in groups:
-        header = escape_rich(str(group["header"]))
+        raw_header = str(group["header"])
+        header = _day_header_rich(raw_header)
         items = group["events"]
         if not items:
             blocks.append(paragraph(bold(header)))
@@ -115,7 +124,7 @@ def _invitation_items_rich(
         if not day_items:
             return
         body = unordered_list(day_items)
-        summary = bold(escape_rich(day_header))
+        summary = bold(_day_header_rich(day_header))
         open_day = len(day_items) < _INVITATIONS_DETAILS_MIN
         if len(day_items) >= 2:
             sections.append(details_block(summary, body, open=open_day))
@@ -178,7 +187,7 @@ def manage_list_rich_html(
         if not day_items:
             return
         body = unordered_list(day_items)
-        summary = bold(escape_rich(day_header))
+        summary = bold(_day_header_rich(day_header))
         open_default = len(day_items) < _MANAGE_DETAILS_MIN
         if len(day_items) >= 2:
             blocks.append(details_block(summary, body, open=open_default))

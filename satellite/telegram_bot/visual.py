@@ -50,8 +50,17 @@ def pick_plan_message_effect(plan_html: str) -> str | None:
     if seagull_templates.MAIN_EMPTY in plan_html:
         return EFFECT_SPARKLES
     if seagull_templates.MAIN_LIGHT in plan_html:
+        if seagull_templates.OVERLAP_NONE in plan_html:
+            return EFFECT_THUMBS_UP
         return EFFECT_SPARKLES
     return EFFECT_PARTY
+
+
+def pick_invitations_effect(text: str) -> str | None:
+    """Эффект для экрана приглашений, если есть что разбирать."""
+    if "Приглашения" in text and "нет" not in text.lower():
+        return EFFECT_SPARKLES
+    return None
 
 
 def pick_upcoming_message_effect(text: str) -> str | None:

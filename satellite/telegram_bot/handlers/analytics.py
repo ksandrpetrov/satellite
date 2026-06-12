@@ -84,7 +84,7 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
             draft_id=cb.update_id,
             chat_action="upload_photo",
         )
-        stream.push(ANALYTICS_FETCH_STATUS)
+        stream.push_status(ANALYTICS_FETCH_STATUS)
 
         def build() -> tuple[bytes, str, str]:
             today = datetime.now(tz=ctx.tz).date()

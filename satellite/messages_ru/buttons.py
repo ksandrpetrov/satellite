@@ -27,6 +27,22 @@ BUTTON_CHECK_CALENDAR = "✅ Проверить подключение"
 BUTTON_CALENDAR_SOURCES = "📚 Календари"
 BUTTON_FOREIGN_CALENDARS = "👥 Чужие календари"
 
+ButtonStyle = str  # "primary" | "success" | "danger"
+
+
+def styled_button(
+    text: str,
+    callback_data: str,
+    *,
+    style: ButtonStyle | None = None,
+) -> dict[str, str]:
+    """Inline-кнопка с опциональным цветом (Bot API: primary / success / danger)."""
+    btn: dict[str, str] = {"text": text, "callback_data": callback_data}
+    if style:
+        btn["style"] = style
+    return btn
+
+
 BUTTON_TO_PLAN_MODE: dict[str, str] = {
     BUTTON_TODAY: "today",
     BUTTON_TOMORROW: "tomorrow",

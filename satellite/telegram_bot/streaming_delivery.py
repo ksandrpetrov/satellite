@@ -18,6 +18,7 @@ import re
 import time
 from typing import Any, Literal
 
+from ..messages_ru.streaming_ui import DEFAULT_THINKING_TEXT, rich_thinking_status
 from .api import TelegramClient, TelegramError
 from .message_editing import edit_or_send_message
 from .rich_message import (
@@ -31,6 +32,7 @@ from .visual import TypingIndicator, is_private_chat
 log = logging.getLogger(__name__)
 
 _DraftMode = Literal["draft", "legacy"]
+_RevealMode = Literal["auto", "blocks", "chars"]
 
 # Throttle: Telegram бьёт по rate-limit'у уже на ~1 update/s, а draft-анимация
 # выглядит «дёрганой» при < 0.2 s между кадрами. Дросселируем посредине.
@@ -42,6 +44,8 @@ _TELEGRAM_TEXT_LIMIT = 4096
 # предыдущего кадра, и «печать» дёргается. Чтобы воркер-пул хендлеров не
 # блокировался дольше ~2 с, кадров не больше _TYPEWRITER_MAX_FRAMES.
 _TYPEWRITER_MAX_FRAMES = 9
+_TYPEWRITER_BLOCK_MAX_FRAMES = 12
+_TYPEWRITER_BLOCK_HERO_BLOCKS = 2
 _TYPEWRITER_MIN_CHUNK = 24
 _TYPEWRITER_FRAME_INTERVAL_SEC = 0.22
 _TYPEWRITER_MIN_TEXT_LEN = 60  # короче — не имеет смысла «печатать»
@@ -54,7 +58,8 @@ _RICH_TEXT_SUBCHUNK = 56  # длинные текстовые блоки дор�
 # Теги rich message, которых нет в legacy parse_mode=HTML: такой контент
 # нельзя отправлять в plain-черновик — Telegram ответит 400.
 _RICH_ONLY_TAG_RE = re.compile(
-    r"</?(?:details|summary|table|thead|tbody|tr|th|td|h[1-6]|ul|ol|li|hr|time|mark|p)\b",
+    r"</?(?:details|summary|table|thead|tbody|tr|th|td|h[1-6]|ul|ol|li|hr|time|mark|p|"
+    r"blockquote|cite|tg-pullquote|tg-reference|tg-thinking|u|s|spoiler|sub|sup|code)\b",
     re.IGNORECASE,
 )
 
@@ -204,6 +209,25 @@ def _evenly_capped(frames: list[str], limit: int) -> list[str]:
     return [frames[i] for i in picked]
 
 
+def _rich_block_stagger_chunks(html_text: str) -> list[str]:
+    """Кадры typewriter: hero-блоки целиком, затем по одному блоку."""
+    blocks = rich_blocks_for_streaming(html_text)
+    if not blocks:
+        return []
+    hero_count = min(_TYPEWRITER_BLOCK_HERO_BLOCKS, len(blocks))
+    frames: list[str] = []
+    prefix = ""
+    if hero_count:
+        prefix = "".join(blocks[:hero_count])
+        _append_growing(frames, prefix)
+    for block in blocks[hero_count:]:
+        prefix += block
+        _append_growing(frames, prefix)
+    if frames and frames[-1] == html_text:
+        frames.pop()
+    return _evenly_capped(frames, _TYPEWRITER_BLOCK_MAX_FRAMES)
+
+
 def _rich_typewriter_chunks(html_text: str) -> list[str]:
     """Кадры rich-typewriter: целые блоки; длинные текстовые — по словам.
 
@@ -233,7 +257,12 @@ def _rich_typewriter_chunks(html_text: str) -> list[str]:
     return _evenly_capped(frames, _TYPEWRITER_MAX_FRAMES)
 
 
-def _typewriter_chunks(text: str, *, rich: bool = False) -> list[str]:
+def _typewriter_chunks(
+    text: str,
+    *,
+    rich: bool = False,
+    reveal_mode: _RevealMode = "auto",
+) -> list[str]:
     """Постепенно растущие префиксы текста для эффекта «печатает».
 
     Plain — рез по границам слов; rich — по завершённым блокам (см.
@@ -243,6 +272,11 @@ def _typewriter_chunks(text: str, *, rich: bool = False) -> list[str]:
     if len(text) < _TYPEWRITER_MIN_TEXT_LEN:
         return []
     if rich:
+        use_blocks = reveal_mode == "blocks" or reveal_mode == "auto"
+        if use_blocks:
+            stagger = _rich_block_stagger_chunks(text)
+            if stagger:
+                return stagger
         return _rich_typewriter_chunks(text)
     target_frames = min(_TYPEWRITER_MAX_FRAMES, max(3, len(text) // _TYPEWRITER_MIN_CHUNK))
     step = max(_TYPEWRITER_MIN_CHUNK, len(text) // target_frames)
@@ -341,8 +375,11 @@ class StreamingReply:
             rich=rich,
         )
         clipped = _clip_text(initial_text, rich=rich)
-        if session._try_start_draft(clipped):
-            session._last_pushed = clipped
+        draft_start = (
+            rich_thinking_status(DEFAULT_THINKING_TEXT) if rich and not clipped else clipped
+        )
+        if session._try_start_draft(draft_start):
+            session._last_pushed = draft_start
             session._last_draft_at = time.monotonic()
             session._start_typing(chat_action)
             return session
@@ -351,6 +388,13 @@ class StreamingReply:
         session._start_legacy_loading(legacy_text)
         session._start_typing(chat_action)
         return session
+
+    def push_status(self, text: str, *, fallback_html: str | None = None) -> None:
+        """Статус в rich-draft через ``<tg-thinking>`` (или plain в legacy)."""
+        if self._rich and self._mode == "draft" and not self._rich_draft_disabled:
+            self.push(rich_thinking_status(text), fallback_html=fallback_html or text)
+        else:
+            self.push(text, fallback_html=fallback_html)
 
     def push(self, text: str, *, fallback_html: str | None = None) -> None:
         """Промежуточное обновление: throttle по времени и приросту."""
@@ -405,6 +449,7 @@ class StreamingReply:
         message_effect_id: str | None = None,
         fallback_html: str | None = None,
         rich: bool | None = None,
+        reveal_mode: _RevealMode = "auto",
     ) -> dict[str, Any] | None:
         """Финальная доставка: ``sendMessage`` (draft) или edit/send (legacy).
 
@@ -426,7 +471,7 @@ class StreamingReply:
             self._last_fallback_html = _clip_text(fallback_html, rich=False)
         if self._mode == "draft":
             if typewriter:
-                self._run_typewriter(clipped, rich=use_rich)
+                self._run_typewriter(clipped, rich=use_rich, reveal_mode=reveal_mode)
             if self._mode == "draft":  # typewriter мог уронить сессию в legacy
                 return self._finish_draft(
                     clipped,
@@ -596,7 +641,13 @@ class StreamingReply:
         elif legacy_text:
             self._push_legacy_edit(legacy_text)
 
-    def _run_typewriter(self, final_text: str, *, rich: bool = False) -> None:
+    def _run_typewriter(
+        self,
+        final_text: str,
+        *,
+        rich: bool = False,
+        reveal_mode: _RevealMode = "auto",
+    ) -> None:
         """Анимация роста текста в черновике перед финалом.
 
         Не использует ``_should_push`` (там throttle — а здесь мы наоборот
@@ -608,7 +659,7 @@ class StreamingReply:
         """
         if rich and self._rich_draft_disabled:
             return
-        for chunk in _typewriter_chunks(final_text, rich=rich):
+        for chunk in _typewriter_chunks(final_text, rich=rich, reveal_mode=reveal_mode):
             if rich and self._rich_draft_disabled:
                 return  # rich-draft отвалился на предыдущем кадре
             if chunk == self._last_pushed:

@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 from satellite.telegram_bot.rich_message import (
+    blockquote,
     details_block,
     escape_rich,
+    footnote_def,
+    footnote_ref,
     input_rich_message,
     join_blocks,
+    mark,
+    ordered_list,
+    pull_quote,
+    reference,
     rich_blocks_for_streaming,
     section_heading,
     table,
+    thinking_block,
     truncate_rich_html,
 )
 
@@ -74,6 +82,35 @@ def test_rich_blocks_for_streaming_splits_on_block_end() -> None:
     assert blocks[2] == "<hr>"
     assert blocks[0] + blocks[1] + blocks[2] in html
     assert any("details" in block for block in blocks)
+
+
+def test_inline_formatters() -> None:
+    assert mark("x") == "<mark>x</mark>"
+    assert pull_quote("q", author="A") == "<tg-pullquote>q<cite>A</cite></tg-pullquote>"
+    assert blockquote("t", cite="c") == "<blockquote>t<cite>c</cite></blockquote>"
+
+
+def test_ordered_list_renders_items() -> None:
+    assert ordered_list(["a", "b"]) == "<ol><li>a</li><li>b</li></ol>"
+
+
+def test_thinking_block_draft_only_tag() -> None:
+    assert thinking_block("…") == "<tg-thinking>…</tg-thinking>"
+
+
+def test_footnote_helpers() -> None:
+    assert footnote_ref("n1") == '<a href="#n1">[n1]</a>'
+    assert 'name="n1"' in footnote_def("n1", "body")
+
+
+def test_reference_tag() -> None:
+    assert reference("sched", "text") == '<tg-reference name="sched">text</tg-reference>'
+
+
+def test_rich_blocks_for_streaming_splits_blockquote() -> None:
+    html = "<h2>T</h2><blockquote>q</blockquote><p>x</p>"
+    blocks = rich_blocks_for_streaming(html)
+    assert blocks == ["<h2>T</h2>", "<blockquote>q</blockquote>", "<p>x</p>"]
 
 
 def test_rich_blocks_for_streaming_keeps_nested_content_inside_details() -> None:

@@ -94,6 +94,80 @@ def italic(text: str) -> str:
     return f"<i>{text}</i>"
 
 
+def underline(text: str) -> str:
+    return f"<u>{text}</u>"
+
+
+def strikethrough(text: str) -> str:
+    return f"<s>{text}</s>"
+
+
+def spoiler(text: str) -> str:
+    return f"<spoiler>{text}</spoiler>"
+
+
+def mark(text: str) -> str:
+    return f"<mark>{text}</mark>"
+
+
+def subscript(text: str) -> str:
+    return f"<sub>{text}</sub>"
+
+
+def superscript(text: str) -> str:
+    return f"<sup>{text}</sup>"
+
+
+def code(text: str) -> str:
+    return f"<code>{text}</code>"
+
+
+def blockquote(text: str, *, cite: str | None = None) -> str:
+    """Блочная цитата (``<blockquote>``). ``cite`` — автор в ``<cite>``."""
+    body = text
+    if cite:
+        body += f"<cite>{cite}</cite>"
+    return f"<blockquote>{body}</blockquote>"
+
+
+def pull_quote(text: str, *, author: str | None = None) -> str:
+    """Выделенная цитата (``<tg-pullquote>``). ``author`` — подпись в ``<cite>``."""
+    body = text
+    if author:
+        body += f"<cite>{escape_rich(author)}</cite>"
+    return f"<tg-pullquote>{body}</tg-pullquote>"
+
+
+def ordered_list(items: Sequence[str]) -> str:
+    if not items:
+        return ""
+    lines = "".join(f"<li>{item}</li>" for item in items)
+    return f"<ol>{lines}</ol>"
+
+
+def footnote_ref(ref_id: str) -> str:
+    """Ссылка на сноску ``[^id]`` в rich Markdown-стиле — через якорь."""
+    return f'<a href="#{escape_rich(ref_id)}">[{escape_rich(ref_id)}]</a>'
+
+
+def footnote_def(ref_id: str, body: str) -> str:
+    """Определение сноски (``<tg-reference>`` + якорь)."""
+    return (
+        f'<a name="{escape_rich(ref_id)}"></a>'
+        f'<tg-reference name="{escape_rich(ref_id)}">{body}</tg-reference>'
+    )
+
+
+def reference(name: str, text: str) -> str:
+    """Текст, на который можно сослаться через ``anchor_link`` / ``#name``."""
+    return f'<tg-reference name="{escape_rich(name)}">{text}</tg-reference>'
+
+
+def thinking_block(text: str) -> str:
+    """Draft-only placeholder (``<tg-thinking>``) — только ``sendRichMessageDraft``."""
+    return f"<tg-thinking>{text}</tg-thinking>"
+
+
 def join_blocks(blocks: Sequence[str]) -> str:
     """Склеивает блоки rich message без лишних переводов строк."""
     return "".join(block for block in blocks if block)
@@ -147,9 +221,24 @@ def truncate_rich_html(html: str, *, max_len: int = RICH_MESSAGE_SAFETY_CAP) -> 
     return _safe_html_prefix(html, budget) + notice
 
 
-_STREAM_CONTAINER_TAGS = frozenset({"details", "table", "ul", "ol"})
+_STREAM_CONTAINER_TAGS = frozenset({"details", "table", "ul", "ol", "blockquote", "tg-pullquote"})
 _STREAM_BOUNDARY_TAGS = frozenset(
-    {"p", "h1", "h2", "h3", "h4", "h5", "h6", "details", "table", "ul", "ol"}
+    {
+        "p",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "details",
+        "table",
+        "ul",
+        "ol",
+        "blockquote",
+        "tg-pullquote",
+        "tg-reference",
+    }
 )
 
 

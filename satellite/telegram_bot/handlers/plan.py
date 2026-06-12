@@ -17,6 +17,7 @@ from ...messages_ru import (
     ERR_DIGEST_BUILD_FAILED_TEXT,
     PLAN_BUSY_TEXT,
     PLAN_FETCH_STATUS_TEXT,
+    PLAN_PROGRESS_COMPUTING,
 )
 from ...plan_service import PlanTextBundle
 from ..visual import is_private_chat, pick_plan_message_effect
@@ -57,14 +58,14 @@ def handle_plan(ctx: HandlerContext, msg: IncomingMessage, mode: PlanMode) -> No
     sent = False
     try:
         stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id, rich=True)
-        stream.push(PLAN_FETCH_STATUS_TEXT[mode])
+        stream.push_status(PLAN_FETCH_STATUS_TEXT[mode])
 
         try:
             plan_bundle = build_plan_bundle_for_user(
                 ctx,
                 telegram_user_id=msg.user_id,
                 mode=mode,
-                on_progress=stream.push,
+                on_progress=lambda _: stream.push_status(PLAN_PROGRESS_COMPUTING),
             )
         except (CalendarNotConnectedError, CalendarProviderError) as exc:
             log.error("Calendar failure for user_id=%s: %s", msg.user_id, exc)

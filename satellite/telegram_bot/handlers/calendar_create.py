@@ -203,11 +203,13 @@ def _send_confirm(ctx: HandlerContext, chat_id: int, draft: CreateEventDraft) ->
         start=draft.start_time,
         end=end_time,
     )
+    from ...messages_ru import styled_button
+
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "✅ Создать", "callback_data": CB_CREATE_CONFIRM},
-                {"text": "❌ Отмена", "callback_data": CB_CREATE_CANCEL},
+                styled_button("✅ Создать", CB_CREATE_CONFIRM, style="success"),
+                styled_button("❌ Отмена", CB_CREATE_CANCEL, style="danger"),
             ]
         ]
     }

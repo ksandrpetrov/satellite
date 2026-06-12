@@ -8,6 +8,7 @@ from satellite.telegram_bot.api import TelegramError
 from satellite.telegram_bot.streaming_delivery import (
     StreamingReply,
     _close_open_tags,
+    _rich_block_stagger_chunks,
     _safe_slice,
     _typewriter_chunks,
     open_streaming_reply,
@@ -105,6 +106,17 @@ def test_native_thinking_placeholder_uses_empty_text() -> None:
     assert tg.send_message_draft.call_args[0][2] == ""
 
 
+def test_rich_open_uses_tg_thinking_draft() -> None:
+    """Rich-режим без initial_text → ``<tg-thinking>`` в ``sendRichMessageDraft``."""
+    tg = _telegram()
+    tg.send_rich_message_draft = MagicMock(return_value=True)
+    open_streaming_reply(tg, 701, "", draft_id=15, rich=True)
+    tg.send_rich_message_draft.assert_called_once()
+    rich_html = tg.send_rich_message_draft.call_args[0][2]["html"]
+    assert rich_html.startswith("<tg-thinking>")
+    assert "Чайка думает" in rich_html
+
+
 def test_empty_text_rejected_falls_back_to_placeholder() -> None:
     """Старый Bot API (< 10.0): после отказа на text='' пробуем '⏳'."""
     tg = _telegram()
@@ -199,6 +211,22 @@ def test_typewriter_chunks_cut_on_word_boundaries() -> None:
     assert chunks
     for chunk in chunks:
         assert text[len(chunk)].isspace()
+
+
+def test_rich_block_stagger_chunks_reveal_by_block() -> None:
+    html = "<h2>T</h2><p>intro</p><hr><p>tail</p>"
+    chunks = _rich_block_stagger_chunks(html)
+    assert len(chunks) >= 2
+    assert chunks[0] == "<h2>T</h2><p>intro</p>"
+    for prev, curr in zip(chunks, chunks[1:]):
+        assert len(curr) > len(prev)
+
+
+def test_typewriter_chunks_rich_block_mode_prefers_stagger() -> None:
+    html = "<h2>T</h2><p>a</p><p>b</p><p>c</p>" + ("<p>x</p>" * 6)
+    chunks = _typewriter_chunks(html, rich=True, reveal_mode="blocks")
+    assert len(chunks) >= 2
+    assert chunks[0].startswith("<h2>")
 
 
 def test_typewriter_chunks_rich_grow_by_blocks_and_words() -> None:

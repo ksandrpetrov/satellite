@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .buttons import styled_button
+
 # --- Admin ---
 CB_ADMIN_APPROVE_PREFIX = "admin:approve:"
 CB_ADMIN_REJECT_PREFIX = "admin:reject:"
@@ -25,14 +27,16 @@ def build_admin_access_keyboard(*, telegram_user_id: int) -> dict:
     return {
         "inline_keyboard": [
             [
-                {
-                    "text": "✅ Разрешить",
-                    "callback_data": f"{CB_ADMIN_APPROVE_PREFIX}{telegram_user_id}",
-                },
-                {
-                    "text": "❌ Отклонить",
-                    "callback_data": f"{CB_ADMIN_REJECT_PREFIX}{telegram_user_id}",
-                },
+                styled_button(
+                    "✅ Разрешить",
+                    f"{CB_ADMIN_APPROVE_PREFIX}{telegram_user_id}",
+                    style="success",
+                ),
+                styled_button(
+                    "❌ Отклонить",
+                    f"{CB_ADMIN_REJECT_PREFIX}{telegram_user_id}",
+                    style="danger",
+                ),
             ]
         ]
     }

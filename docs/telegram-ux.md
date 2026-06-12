@@ -316,9 +316,14 @@ state (`handlers/digest_state`).
 ([`message_delivery.py`](../satellite/telegram_bot/message_delivery.py)).
 
 - Лимит rich-сообщения — до 32 768 символов (safety-cap 30 000 в рендерах).
+- Примитивы: заголовки, `<details>`, таблицы, `<time>`, якоря, `<tg-pullquote>`,
+  `<blockquote>`, `<mark>`, сноски (`<tg-reference>`), inline-стили (`<u>`, `<s>`,
+  `<spoiler>`, `<sub>`, `<sup>`, `<code>`).
 - Legacy HTML (`<b>`, `<blockquote>`) остаётся для fallback и callback-edit при
   отказе API.
 - Потоковая доставка: `sendRichMessageDraft` → `sendRichMessage` (см. ниже).
+- Цветные inline-кнопки (`style`: `primary` / `success` / `danger`) — приглашения,
+  manage, create, дайджест, админ; хелпер `styled_button` в [`buttons.py`](../satellite/messages_ru/buttons.py).
 
 ## Streaming delivery
 
@@ -329,6 +334,16 @@ state (`handlers/digest_state`).
 `sendPhoto` без подписи + отдельное rich-сообщение с таблицей (аналитика).
 При ошибке CalDAV/сборки
 черновик заменяется безопасным текстом (`ERR_*` из `messages_ru`).
+
+**Rich-draft UX:**
+
+- Старт rich-сессии без текста — нативный `<tg-thinking>` (тексты в
+  [`streaming_ui.py`](../satellite/messages_ru/streaming_ui.py)); fallback —
+  пустой draft / `⏳` / legacy loading.
+- Промежуточные статусы — `stream.push_status(...)` (тот же `<tg-thinking>`).
+- Финал rich-ответа — block-stagger typewriter: hero-блоки целиком, затем по
+  одному блоку (`reveal_mode="auto"` по умолчанию для rich).
+- Аналитика: `sendChatAction("upload_photo")` на время сборки PNG.
 
 Повтор команды или кнопки открытия, пока первый запрос ещё идёт или сразу после
 успеха, блокируется `ActionGuard` в
