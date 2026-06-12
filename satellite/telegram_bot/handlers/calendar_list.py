@@ -50,9 +50,7 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
                 end_date=end,
                 tz=ctx.tz,
             )
-            groups = build_upcoming_events_groups(
-                events, ctx.tz, today, days=_UPCOMING_DAYS
-            )
+            groups = build_upcoming_events_groups(events, ctx.tz, today, days=_UPCOMING_DAYS)
             rich_html = upcoming_events_rich_html(events, ctx.tz, today, days=_UPCOMING_DAYS)
             fallback_text = upcoming_events_plain_fallback_html(
                 events, ctx.tz, today, days=_UPCOMING_DAYS
