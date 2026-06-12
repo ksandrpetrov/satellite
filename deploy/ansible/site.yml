@@ -262,6 +262,21 @@
         COMPOSE_PROJECT_NAME: "{{ deploy_compose_project }}"
       changed_when: true
 
+    - name: Install ensure-nginx-satellite script
+      ansible.builtin.copy:
+        src: "{{ satellite_repo_root }}/scripts/ensure-nginx-satellite.sh"
+        dest: "{{ deploy_dir }}/scripts/ensure-nginx-satellite.sh"
+        mode: "0755"
+
+    - name: Ensure nginx proxies Web App paths to satellite
+      ansible.builtin.command:
+        cmd: >-
+          bash {{ deploy_dir }}/scripts/ensure-nginx-satellite.sh
+      environment:
+        SATELLITE_HOST_PORT: "{{ satellite_host_port }}"
+        NGINX_DOMAIN: "{{ domain }}"
+      changed_when: true
+
   handlers:
     - name: Restart satellite
       ansible.builtin.command:

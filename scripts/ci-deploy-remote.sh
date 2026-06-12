@@ -191,7 +191,35 @@ sys.exit(0 if data == {'status': 'ok'} else 1)
 fi
 echo "Host /healthz OK" >&2
 docker compose ps satellite
+
+# Публичный smoke требует nginx location /connect, /api/calendar/, /healthz → бот.
+if [[ -f "${DEPLOY_DIR}/scripts/ensure-nginx-satellite.sh" ]]; then
+    echo "Ensuring nginx satellite locations…" >&2
+    SATELLITE_HOST_PORT=8080 NGINX_DOMAIN=cassinilab.ru \
+        bash "${DEPLOY_DIR}/scripts/ensure-nginx-satellite.sh"
+fi
 REMOTE
+}
+
+upload_ensure_nginx_script() {
+    local remote_script="${DEPLOY_DIR}/scripts/ensure-nginx-satellite.sh"
+    local local_script
+    local_script="$(cd "$(dirname "$0")" && pwd)/ensure-nginx-satellite.sh"
+    if [[ ! -f "${local_script}" ]]; then
+        return 0
+    fi
+    ssh -i "${DEPLOY_SSH_KEY}" \
+        -o IdentitiesOnly=yes \
+        -o BatchMode=yes \
+        "${SSH_OPTS[@]}" \
+        "${DEPLOY_USER}@${DEPLOY_HOST}" \
+        "mkdir -p ${DEPLOY_DIR}/scripts"
+    scp -i "${DEPLOY_SSH_KEY}" \
+        -o IdentitiesOnly=yes \
+        -o BatchMode=yes \
+        "${SSH_OPTS[@]}" \
+        "${local_script}" \
+        "${DEPLOY_USER}@${DEPLOY_HOST}:${remote_script}"
 }
 
 remote_smoke_public() {
@@ -212,6 +240,7 @@ main() {
 
     setup_ssh
     log "Deploy ${SATELLITE_IMAGE} → ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}"
+    upload_ensure_nginx_script
     remote_update
     remote_smoke_public
     log "Done"

@@ -25,7 +25,7 @@ err() { printf '[smoke-prod] FAIL %s\n' "$*" >&2; fail=1; }
 check_healthz() {
     local url="${BASE}/healthz"
     local code body
-    code="$("${CURL[@]}" -o /tmp/smoke-healthz.json -w '%{http_code}' "${url}" 2>/dev/null || echo "000")"
+    code="$(curl -sS -o /tmp/smoke-healthz.json -w '%{http_code}' --max-time 15 --retry 2 --retry-delay 1 "${url}" 2>/dev/null || echo "000")"
     if [[ "${code}" != "200" ]]; then
         err "${url} -> HTTP ${code} (ожидался 200; если 200 HTML главной — nginx не проксирует /healthz на бота)"
         return
