@@ -80,7 +80,7 @@ def upcoming_events_rich_html(
     blocks: list[str] = [section_heading("Ближайшие события", level=2)]
     for group in groups:
         raw_header = str(group["header"])
-        header = _day_header_rich(raw_header)
+        header = escape_rich(raw_header)
         items = group["events"]
         if not items:
             blocks.append(paragraph(bold(header)))

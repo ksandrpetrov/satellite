@@ -20,7 +20,6 @@ EFFECT_PARTY = "5046509860389126442"  # 🎉
 EFFECT_FIRE = "5104841245755180586"  # 🔥
 EFFECT_SPARKLES = "5089460564141278042"  # ✨
 EFFECT_HEART = "5159385139981059251"  # ❤️
-EFFECT_THUMBS_UP = "5107584321108051014"  # 👍
 
 _MENU_BUTTON_COMMANDS: dict[str, str] = {"type": "commands"}
 
@@ -50,8 +49,6 @@ def pick_plan_message_effect(plan_html: str) -> str | None:
     if seagull_templates.MAIN_EMPTY in plan_html:
         return EFFECT_SPARKLES
     if seagull_templates.MAIN_LIGHT in plan_html:
-        if seagull_templates.OVERLAP_NONE in plan_html:
-            return EFFECT_THUMBS_UP
         return EFFECT_SPARKLES
     return EFFECT_PARTY
 
