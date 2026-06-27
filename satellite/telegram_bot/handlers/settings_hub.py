@@ -43,6 +43,7 @@ from ...messages_ru import (
     CB_SETTINGS_DISCONNECT_CONFIRM,
     CB_SETTINGS_WEATHER_TOGGLE,
     ERR_GENERIC_HANDLER_TEXT,
+    ERR_SETTINGS_SAVE_FAILED_TEXT,
     SETTINGS_CALENDAR_MENU_TEXT,
     SETTINGS_DISCONNECT_CONFIRM_TEXT,
     SETTINGS_HUB_CLOSED_TEXT,
@@ -52,6 +53,7 @@ from ...messages_ru import (
     settings_hub_text,
     weather_in_plan_toggle_notice_text,
 )
+from ...subscriptions import SubscriptionStorePersistenceError
 from ...users.store import UserStorePersistenceError
 from ..api import TelegramError
 from ..visual import set_default_menu_button_for_chat
@@ -174,7 +176,16 @@ def handle_open_settings_hub(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if _close_tracked_hub_message(ctx, msg.chat_id):
         log.info("Closed settings hub via reply: chat_id=%s user_id=%s", msg.chat_id, msg.user_id)
         return
-    text, keyboard = _hub_text_and_keyboard(ctx, msg.user_id, msg.chat_id)
+    try:
+        text, keyboard = _hub_text_and_keyboard(ctx, msg.user_id, msg.chat_id)
+    except SubscriptionStorePersistenceError:
+        log.exception(
+            "Failed to persist settings hub state: chat_id=%s user_id=%s",
+            msg.chat_id,
+            msg.user_id,
+        )
+        send(ctx, msg.chat_id, ERR_SETTINGS_SAVE_FAILED_TEXT)
+        return
     sent = ctx.telegram.send_message(msg.chat_id, text, reply_markup=keyboard)
     message_id = sent.get("message_id") if isinstance(sent, dict) else None
     _track_hub_message(msg.chat_id, message_id)
@@ -229,6 +240,21 @@ def show_settings_disconnect_confirm(ctx: HandlerContext, cb: IncomingCallback) 
 
 
 def route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
+    try:
+        return _route_settings_hub_callback(ctx, cb)
+    except SubscriptionStorePersistenceError:
+        log.exception(
+            "Failed to persist settings hub callback state: chat_id=%s user_id=%s data=%r",
+            cb.chat_id,
+            cb.user_id,
+            cb.data,
+        )
+        safe_answer_callback(ctx, cb)
+        send(ctx, cb.chat_id, ERR_SETTINGS_SAVE_FAILED_TEXT)
+        return True
+
+
+def _route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
     data = (cb.data or "").strip()
     if data == CB_SETTINGS_DIGEST:
         show_digest_settings_screen(ctx, cb)

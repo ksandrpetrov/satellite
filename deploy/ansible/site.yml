@@ -168,15 +168,23 @@
         mode: "0750"
       when: satellite_image_source == 'build'
 
+    - name: Create scripts directory in build context
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}/image-build/scripts"
+        state: directory
+        mode: "0750"
+      when: satellite_image_source == 'build'
+
     - name: Copy satellite Docker build context files
       ansible.builtin.copy:
-        src: "{{ satellite_repo_root }}/{{ item }}"
-        dest: "{{ deploy_dir }}/image-build/{{ item }}"
+        src: "{{ satellite_repo_root }}/{{ item.src }}"
+        dest: "{{ deploy_dir }}/image-build/{{ item.dest | default(item.src) }}"
         mode: preserve
       loop:
-        - Dockerfile
-        - requirements.txt
-        - telegram_test_command.py
+        - { src: Dockerfile }
+        - { src: requirements.txt }
+        - { src: telegram_test_command.py }
+        - { src: scripts/smoke_container.py, dest: scripts/smoke_container.py }
       when: satellite_image_source == 'build'
 
     - name: Copy satellite package sources

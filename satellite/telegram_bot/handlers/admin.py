@@ -8,33 +8,14 @@ from ...messages_ru import (
     ADMIN_ACTION_FORBIDDEN_HTML,
     CB_ADMIN_APPROVE_PREFIX,
     CB_ADMIN_REJECT_PREFIX,
-    admin_access_request_html,
     admin_pending_list_html,
-    build_admin_access_keyboard,
 )
-from ..api import TelegramError
 from ..visual import set_default_menu_button_for_chat
-from .access import notify_user_access_decision
+from .access_notifications import notify_user_access_decision
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import safe_answer_callback, send, webapp_connect_url
 
 log = logging.getLogger(__name__)
-
-
-def notify_admins_new_request(ctx: HandlerContext, msg: IncomingMessage) -> None:
-    if msg.user_id is None:
-        return
-    text = admin_access_request_html(
-        display_name=msg.display_name,
-        username=msg.username,
-        telegram_user_id=msg.user_id,
-    )
-    keyboard = build_admin_access_keyboard(telegram_user_id=msg.user_id)
-    for admin_id in ctx.admin.telegram_ids:
-        try:
-            ctx.telegram.send_message(admin_id, text, reply_markup=keyboard)
-        except TelegramError as exc:
-            log.warning("Failed to notify admin %s: %s", admin_id, exc)
 
 
 def handle_pending_command(ctx: HandlerContext, msg: IncomingMessage) -> None:

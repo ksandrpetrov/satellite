@@ -35,6 +35,7 @@ from satellite.messages_ru import (
     DIGEST_DAYS_WEEKDAYS_APPLIED_TEXT,
     DIGEST_SETTINGS_CLOSED_TEXT,
     DIGEST_TIME_INVALID_TEXT,
+    ERR_SETTINGS_SAVE_FAILED_TEXT,
     build_digest_days_keyboard,
     build_digest_settings_keyboard,
     button_text_is_digest_settings,
@@ -49,6 +50,7 @@ from satellite.subscriptions import (
     DIGEST_DAYS_WEEKDAYS,
     DigestSettings,
     SubscriptionStore,
+    SubscriptionStorePersistenceError,
 )
 from satellite.telegram_bot.handlers import (
     IncomingCallback,
@@ -570,6 +572,25 @@ def test_callback_toggle_enables_and_disables(tmp_path: Path):
 
     handle_callback_query(ctx, _callback(900, CB_DIGEST_TOGGLE))
     assert store.get(900).digest_enabled is False
+
+
+def test_callback_toggle_persistence_failure_sends_safe_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx, store, _state = _ctx(tmp_path)
+    store.get_or_create(900, "alice")
+    monkeypatch.setattr(
+        store,
+        "_save_locked",
+        MagicMock(side_effect=SubscriptionStorePersistenceError("disk full")),
+    )
+
+    handle_callback_query(ctx, _callback(900, CB_DIGEST_TOGGLE))
+
+    sent_texts = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
+    assert ERR_SETTINGS_SAVE_FAILED_TEXT in sent_texts
+    ctx.telegram.edit_message_text.assert_not_called()
+    ctx.telegram.answer_callback_query.assert_called()
 
 
 def test_duplicate_callback_query_id_is_dropped(tmp_path: Path):

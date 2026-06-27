@@ -98,7 +98,7 @@ def screen_from_pending(
         for idx, ev in enumerate(pending)
     ]
     text = invitations_list_html(body_lines=body, truncated=truncated)
-    from .messages_ru.rich_lists import invitations_list_rich_html
+    from .telegram_bot.presenters.calendar_lists import invitations_list_rich_html
 
     rich_text = invitations_list_rich_html(
         body_events=pending,

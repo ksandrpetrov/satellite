@@ -19,9 +19,11 @@ from satellite.messages_ru import (
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_DIGEST_BUILD_FAILED_TEXT,
     ERR_GENERIC_HANDLER_TEXT,
+    ERR_SETTINGS_SAVE_FAILED_TEXT,
     PLAN_FETCH_STATUS_TEXT,
     REPLY_KEYBOARD_REMOVE,
 )
+from satellite.subscriptions import SubscriptionStorePersistenceError
 from satellite.telegram_bot.api import TelegramError
 from satellite.telegram_bot.handlers import (
     HandlerContext,
@@ -652,6 +654,25 @@ def test_unexpected_error_in_subscription_sends_generic_notice(
     assert all("secret123" not in (t or "") for t in sent_texts)
     # Стек обязан попасть в лог.
     assert any(record.exc_info is not None for record in caplog.records)
+
+
+def test_subscription_persistence_error_sends_save_failed_text():
+    ctx = _plan_handler_context()
+    settings = MagicMock()
+    settings.digest_enabled = False
+    ctx.subscriptions.get_or_create = MagicMock(return_value=settings)
+    ctx.subscriptions.update_settings = MagicMock(
+        side_effect=SubscriptionStorePersistenceError("disk full")
+    )
+    msg = IncomingMessage(
+        update_id=202, chat_id=8202, user_id=1, username="alice", display_name=None, text="/digest"
+    )
+
+    handle_message(ctx, msg)
+
+    sent_texts = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
+    assert sent_texts == [ERR_SETTINGS_SAVE_FAILED_TEXT]
+    ctx.telegram.set_message_reaction.assert_not_called()
 
 
 def test_unexpected_error_in_welcome_sends_generic_notice():

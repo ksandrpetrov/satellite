@@ -177,6 +177,9 @@ telegram_test_command.py
 - `satellite/telegram_bot/visual.py` — typing indicator, message effects, menu button.
 - `satellite/telegram_bot/streaming_delivery.py` — потоковый ответ (черновик → финал):
   plan, `/upcoming`, `/invitations`, `/manage`, недельная аналитика.
+- `satellite/telegram_bot/presenters/calendar_lists.py` — HTML/Rich HTML presenter'ы
+  списков событий (`/upcoming`, `/invitations`, `/manage`); тексты и callback-константы
+  остаются в `messages_ru/`.
 - `satellite/telegram_bot/message_editing.py` — `edit_callback_message`, fallback
   при неудачном edit (refresh PARTSTAT, хаб настроек).
 - `satellite/telegram_bot/handlers/digest_state.py` — in-memory state for digest

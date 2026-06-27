@@ -37,6 +37,7 @@ from ...messages_ru import (
     DIGEST_DAYS_WEEKDAYS_APPLIED_TEXT,
     DIGEST_SETTINGS_CLOSED_TEXT,
     DIGEST_TIME_INVALID_TEXT,
+    ERR_SETTINGS_SAVE_FAILED_TEXT,
     PENDING_DIGEST_DAYS_ALL_APPLIED_TEXT,
     PENDING_DIGEST_DAYS_WEEKDAYS_APPLIED_TEXT,
     PENDING_DIGEST_LAST_DAY_TEXT,
@@ -60,7 +61,12 @@ from ...messages_ru import (
     pending_digest_toggle_notice_text,
     weather_in_plan_toggle_notice_text,
 )
-from ...subscriptions import DIGEST_DAYS_ALL, DIGEST_DAYS_WEEKDAYS, DigestSettings
+from ...subscriptions import (
+    DIGEST_DAYS_ALL,
+    DIGEST_DAYS_WEEKDAYS,
+    DigestSettings,
+    SubscriptionStorePersistenceError,
+)
 from ...users.store import UserStorePersistenceError
 from .access import effective_username, effective_username_from_callback
 from .context import HandlerContext, IncomingCallback, IncomingMessage
@@ -222,14 +228,24 @@ def handle_digest_time_input(ctx: HandlerContext, msg: IncomingMessage) -> None:
         send(ctx, msg.chat_id, bindings.time_invalid_text)
         return
 
-    updated = _update_settings(
-        ctx,
-        msg.chat_id,
-        username,
-        telegram_user_id=msg.user_id,
-        bindings=bindings,
-        time=normalized,
-    )
+    try:
+        updated = _update_settings(
+            ctx,
+            msg.chat_id,
+            username,
+            telegram_user_id=msg.user_id,
+            bindings=bindings,
+            time=normalized,
+        )
+    except SubscriptionStorePersistenceError:
+        log.exception(
+            "Failed to persist %s from text input: chat_id=%s user_id=%s",
+            bindings.time_field,
+            msg.chat_id,
+            msg.user_id,
+        )
+        send(ctx, msg.chat_id, ERR_SETTINGS_SAVE_FAILED_TEXT)
+        return
     ctx.digest_state.clear(msg.chat_id)
     log.info(
         "Updated %s: chat_id=%s username=%s -> %s",
@@ -535,10 +551,21 @@ def route_settings_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
     data = (cb.data or "").strip()
     if not data:
         return False
-    if _route_pending_digest_day_toggle(ctx, cb):
-        return True
-    if _route_kind_callback(ctx, cb, _BINDINGS[DIGEST_KIND_DAILY]):
-        return True
-    if _route_kind_callback(ctx, cb, _BINDINGS[DIGEST_KIND_PENDING]):
+    try:
+        if _route_pending_digest_day_toggle(ctx, cb):
+            return True
+        if _route_kind_callback(ctx, cb, _BINDINGS[DIGEST_KIND_DAILY]):
+            return True
+        if _route_kind_callback(ctx, cb, _BINDINGS[DIGEST_KIND_PENDING]):
+            return True
+    except SubscriptionStorePersistenceError:
+        log.exception(
+            "Failed to persist digest settings from callback: chat_id=%s user_id=%s data=%r",
+            cb.chat_id,
+            cb.user_id,
+            data,
+        )
+        safe_answer_callback(ctx, cb)
+        send(ctx, cb.chat_id, ERR_SETTINGS_SAVE_FAILED_TEXT)
         return True
     return False

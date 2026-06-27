@@ -1,12 +1,26 @@
-"""Rich Message HTML для списков событий (/upcoming, /invitations, /manage)."""
+"""HTML/Rich HTML presenter'ы календарных списков."""
 
 from __future__ import annotations
 
 from datetime import date, datetime, tzinfo
+from html import escape
 from typing import Any
 
-from ..calendar.events import build_upcoming_events_groups, format_time_range, parse_iso
-from ..telegram_bot.rich_message import (
+from ...calendar.events import (
+    build_upcoming_events_groups,
+    event_index_marker,
+    event_local_start_date,
+    format_time_range,
+    format_upcoming_day_header,
+    parse_iso,
+)
+from ...messages_ru.settings_ui import (
+    INVITATIONS_INTRO_HTML,
+    MANAGE_INTRO_HTML,
+    manage_partstat_label,
+)
+from ..html_format import expandable_blockquote
+from ..rich_message import (
     bold,
     datetime_link,
     details_block,
@@ -19,8 +33,77 @@ from ..telegram_bot.rich_message import (
     unordered_list,
 )
 
+UPCOMING_DAY_EXPANDABLE_MIN_LINES = 2
 _INVITATIONS_DETAILS_MIN = 5
 _MANAGE_DETAILS_MIN = 5
+
+
+def upcoming_events_day_sections(
+    events,
+    tz,
+    reference_date,
+    *,
+    days: int = 7,
+    max_events: int = 30,
+) -> list[str]:
+    """Секции «Ближайшие события» по одному дню (заголовок + события)."""
+    sections: list[str] = []
+    for group in build_upcoming_events_groups(
+        events, tz, reference_date, days=days, max_events=max_events
+    ):
+        header = f"<b>{group['header']}</b>"
+        event_lines: list[str] = []
+        for item in group["events"]:
+            title = escape(str(item["title"]))
+            event_lines.append(f"{item['marker']} {item['time_range']} — {title}")
+        if not event_lines:
+            sections.append(header)
+            continue
+        body = "\n".join(event_lines)
+        wrapped = expandable_blockquote(body, threshold=UPCOMING_DAY_EXPANDABLE_MIN_LINES)
+        sections.append(f"{header}\n{wrapped}")
+    return sections
+
+
+def upcoming_events_html(
+    events,
+    tz,
+    reference_date,
+    *,
+    days: int = 7,
+    max_events: int = 30,
+) -> str:
+    """HTML тела «Ближайшие события» со сворачиванием по дням."""
+    return "\n\n".join(
+        upcoming_events_day_sections(events, tz, reference_date, days=days, max_events=max_events)
+    )
+
+
+def upcoming_events_plain_fallback_html(
+    events,
+    tz,
+    reference_date,
+    *,
+    days: int = 7,
+    max_events: int = 30,
+) -> str:
+    """Plain HTML fallback без ``<blockquote>`` — не мигает с rich ``<details>``."""
+    sections: list[str] = ["🗓 <b>Ближайшие события</b>"]
+    for group in build_upcoming_events_groups(
+        events, tz, reference_date, days=days, max_events=max_events
+    ):
+        header = f"<b>{group['header']}</b>"
+        event_lines: list[str] = []
+        for item in group["events"]:
+            title = escape(str(item["title"]))
+            event_lines.append(f"{item['marker']} {item['time_range']} — {title}")
+        if not event_lines:
+            sections.append(header)
+            continue
+        sections.append(f"{header}\n" + "\n".join(event_lines))
+    if len(sections) <= 1:
+        return ""
+    return "\n\n".join(sections)
 
 
 def _day_header_rich(header: str) -> str:
@@ -109,12 +192,6 @@ def _invitation_items_rich(
     tz: tzinfo,
     reference_date: date,
 ) -> list[str]:
-    from ..calendar.events import (
-        event_index_marker,
-        event_local_start_date,
-        format_upcoming_day_header,
-    )
-
     sections: list[str] = []
     last_day: date | None = None
     day_items: list[str] = []
@@ -154,8 +231,6 @@ def invitations_list_rich_html(
     reference_date: date,
     truncated: bool,
 ) -> str:
-    from .settings_ui import INVITATIONS_INTRO_HTML
-
     blocks: list[str] = [paragraph(INVITATIONS_INTRO_HTML)]
     blocks.extend(_invitation_items_rich(body_events, tz, reference_date))
     if truncated:
@@ -170,13 +245,6 @@ def manage_list_rich_html(
     reference_date: date,
     truncated: bool,
 ) -> str:
-    from ..calendar.events import (
-        event_index_marker,
-        event_local_start_date,
-        format_upcoming_day_header,
-    )
-    from .settings_ui import MANAGE_INTRO_HTML
-
     blocks: list[str] = [paragraph(MANAGE_INTRO_HTML)]
     last_day: date | None = None
     day_items: list[str] = []
@@ -216,8 +284,6 @@ def manage_list_rich_html(
 
 
 def manage_detail_rich_html(*, title: str, when: str, partstat: str | None) -> str:
-    from .settings_ui import manage_partstat_label
-
     label = manage_partstat_label(partstat) or "—"
     blocks = [
         section_heading(escape_rich(title), level=3),

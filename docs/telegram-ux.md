@@ -311,7 +311,7 @@ state (`handlers/digest_state`).
 Дайджест, списки событий и подпись к аналитике собираются как Rich HTML
 ([`rich_message.py`](../satellite/telegram_bot/rich_message.py),
 [`render_rich.py`](../satellite/seagull/render_rich.py),
-[`rich_lists.py`](../satellite/messages_ru/rich_lists.py)) и доставляются через
+[`calendar_lists.py`](../satellite/telegram_bot/presenters/calendar_lists.py)) и доставляются через
 `sendRichMessage` с fallback на legacy `sendMessage` HTML
 ([`message_delivery.py`](../satellite/telegram_bot/message_delivery.py)).
 

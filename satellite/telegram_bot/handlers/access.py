@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import logging
-
 from ...messages_ru import (
     ACCESS_APPROVED_HTML,
-    ACCESS_APPROVED_KEYBOARD_HINT,
     ACCESS_BLOCKED_HTML,
     ACCESS_PENDING_HTML,
     ACCESS_REJECTED_HTML,
@@ -25,17 +22,10 @@ from ...users import (
     USER_STATUS_PENDING,
     USER_STATUS_REJECTED,
 )
-from ..api import TelegramError
-from ..visual import (
-    EFFECT_HEART,
-    private_message_effect,
-    send_with_effect,
-    set_default_menu_button_for_chat,
-)
+from ..visual import set_default_menu_button_for_chat
+from .access_notifications import notify_admins_new_request
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import webapp_connect_url
-
-log = logging.getLogger(__name__)
 
 
 def effective_username(msg: IncomingMessage) -> str:
@@ -116,8 +106,6 @@ def _submit_access_request_if_needed(ctx: HandlerContext, msg: IncomingMessage) 
     assert msg.user_id is not None
     _record, is_new = ctx.users.submit_access_request(msg.user_id)
     if is_new:
-        from .admin import notify_admins_new_request
-
         notify_admins_new_request(ctx, msg)
     return is_new
 
@@ -181,37 +169,3 @@ def _resolve_chat_user(
     if msg is not None:
         return msg.chat_id, msg.user_id
     return chat_id, user_id
-
-
-def notify_user_access_decision(
-    ctx: HandlerContext, *, chat_id: int, approved: bool, webapp_url: str
-) -> None:
-    if approved:
-        try:
-            if webapp_url:
-                send_with_effect(
-                    ctx.telegram,
-                    chat_id,
-                    ACCESS_APPROVED_HTML,
-                    reply_markup=build_webapp_connect_keyboard(webapp_url),
-                    message_effect_id=private_message_effect(EFFECT_HEART, chat_id),
-                )
-                ctx.telegram.send_message(
-                    chat_id,
-                    ACCESS_APPROVED_KEYBOARD_HINT,
-                    reply_markup=build_approved_main_keyboard(),
-                )
-            else:
-                send_with_effect(
-                    ctx.telegram,
-                    chat_id,
-                    ACCESS_APPROVED_HTML,
-                    message_effect_id=private_message_effect(EFFECT_HEART, chat_id),
-                )
-        except TelegramError as exc:
-            log.warning("Failed to notify user %s about approval: %s", chat_id, exc)
-    else:
-        try:
-            ctx.telegram.send_message(chat_id, ACCESS_REJECTED_HTML)
-        except TelegramError as exc:
-            log.warning("Failed to notify user %s about rejection: %s", chat_id, exc)

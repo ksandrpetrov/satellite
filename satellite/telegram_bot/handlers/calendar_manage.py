@@ -53,7 +53,7 @@ from ...messages_ru import (
     manage_detail_html,
     manage_list_html,
 )
-from ...messages_ru.rich_lists import manage_detail_rich_html, manage_list_rich_html
+from ..presenters.calendar_lists import manage_detail_rich_html, manage_list_rich_html
 from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .access import ensure_calendar_connected
 from .action_guard import ActionGuard

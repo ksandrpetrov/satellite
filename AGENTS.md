@@ -111,6 +111,8 @@ satellite/
       calendar_create.py    # /create FSM
       digest_state.py, calendar_state.py  # FSM-сторы (in-memory)
       plan.py, settings.py, subscription.py, analytics.py
+    presenters/
+      calendar_lists.py  # HTML/Rich HTML списков (/upcoming, /invitations, /manage)
     api.py, message_editing.py, streaming_delivery.py, visual.py, commands.py
     offset_store.py, offset_tracker.py
     concurrency.py, instance_lock.py
@@ -224,7 +226,7 @@ satellite/
 - Прямые строки в хендлерах — все user-facing тексты в [`messages_ru/`](satellite/messages_ru/) (импорт через корневой фасад).
 - Свой `_webapp_url` в хендлерах — только [`delivery.webapp_connect_url`](satellite/telegram_bot/handlers/delivery.py).
 - Lazy-back-импорты `settings_hub` из `settings`/`analytics` для «Назад» — навигация только в хабе (см. инвариант 12).
-- Прямой `<blockquote>` / `<tg-emoji>` в хендлерах — только [`html_format.py`](satellite/telegram_bot/html_format.py); Rich HTML (`<details>`, `<table>`, `<h*>`) — только [`rich_message.py`](satellite/telegram_bot/rich_message.py) / сценарные [`render_rich.py`](satellite/seagull/render_rich.py), [`rich_lists.py`](satellite/messages_ru/rich_lists.py); доставка rich — [`message_delivery.py`](satellite/telegram_bot/message_delivery.py); fallback при отказе Telegram — в [`api.py`](satellite/telegram_bot/api.py), не дублировать в сценариях.
+- Прямой `<blockquote>` / `<tg-emoji>` в хендлерах — только [`html_format.py`](satellite/telegram_bot/html_format.py); Rich HTML (`<details>`, `<table>`, `<h*>`) — только [`rich_message.py`](satellite/telegram_bot/rich_message.py) / сценарные [`render_rich.py`](satellite/seagull/render_rich.py), [`calendar_lists.py`](satellite/telegram_bot/presenters/calendar_lists.py); доставка rich — [`message_delivery.py`](satellite/telegram_bot/message_delivery.py); fallback при отказе Telegram — в [`api.py`](satellite/telegram_bot/api.py), не дублировать в сценариях.
 - Свой retry без `<tg-emoji>` в хендлерах — только `TelegramClient.send_message` / `edit_message_text`.
 - Дублирование PARTSTAT-логики в [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) / [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — общий флоу только в [`partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py).
 - Свой cooldown/дедуп долгих команд — только [`ActionGuard`](satellite/telegram_bot/handlers/action_guard.py) (не дублировать `_running` set в хендлерах).

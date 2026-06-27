@@ -30,7 +30,11 @@ from .config import DigestConfig, PlanConfig, WeatherConfig
 from .digest_utils import DIGEST_MODE_TODAY, is_digest_day_allowed, resolve_target_date
 from .invitations_view import load_pending_invitations_screen
 from .plan_service import PlanBuilder
-from .subscriptions import DigestSettings, SubscriptionStore
+from .subscriptions import (
+    DigestSettings,
+    SubscriptionStore,
+    SubscriptionStorePersistenceError,
+)
 from .telegram_bot.api import TelegramClient, TelegramError
 from .telegram_bot.visual import is_private_chat, pick_plan_message_effect
 from .users import UserStore
@@ -261,8 +265,17 @@ class DigestScheduler:
             )
             delivered = self._deliver_daily(sub, today=today)
             if delivered:
-                daily_sent = 1
-                self._subscriptions.mark_digest_sent(sub.chat_id, today)
+                try:
+                    self._subscriptions.mark_digest_sent(sub.chat_id, today)
+                except SubscriptionStorePersistenceError:
+                    daily_failed = 1
+                    log.exception(
+                        "Daily digest sent but marker persist failed: chat_id=%s username=%s",
+                        sub.chat_id,
+                        sub.username,
+                    )
+                else:
+                    daily_sent = 1
             else:
                 daily_failed = 1
 
@@ -279,8 +292,17 @@ class DigestScheduler:
             )
             result = self._deliver_pending(sub, today=today, now_local=now_pending)
             if result is True:
-                pending_sent = 1
-                self._subscriptions.mark_pending_digest_sent(sub.chat_id, today)
+                try:
+                    self._subscriptions.mark_pending_digest_sent(sub.chat_id, today)
+                except SubscriptionStorePersistenceError:
+                    pending_failed = 1
+                    log.exception(
+                        "Pending digest sent but marker persist failed: chat_id=%s username=%s",
+                        sub.chat_id,
+                        sub.username,
+                    )
+                else:
+                    pending_sent = 1
             elif result is False:
                 pending_failed = 1
             # None — silent skip (нет pending), не считаем failure

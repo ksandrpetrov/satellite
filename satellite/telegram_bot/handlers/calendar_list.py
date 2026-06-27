@@ -11,9 +11,11 @@ from ...messages_ru import (
     ERR_CALDAV_UNAVAILABLE_TEXT,
     UPCOMING_EMPTY_HTML,
     UPCOMING_FETCH_STATUS,
-    upcoming_events_plain_fallback_html,
 )
-from ...messages_ru.rich_lists import upcoming_events_rich_html
+from ..presenters.calendar_lists import (
+    upcoming_events_plain_fallback_html,
+    upcoming_events_rich_html,
+)
 from ..visual import is_private_chat, pick_upcoming_message_effect
 from .access import ensure_calendar_connected
 from .action_guard import ActionGuard

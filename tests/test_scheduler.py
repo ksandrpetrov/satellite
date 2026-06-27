@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -31,6 +32,7 @@ from satellite.subscriptions import (
     DIGEST_DAYS_WEEKDAYS,
     DigestSettings,
     SubscriptionStore,
+    SubscriptionStorePersistenceError,
 )
 from satellite.telegram_bot.api import TelegramError
 from satellite.users import USER_STATUS_APPROVED, UserStore
@@ -355,6 +357,25 @@ def test_tick_marks_last_sent_after_delivery(tmp_path: Path):
 
     scheduler.tick()
     assert store.get(1).last_digest_sent_date == "2026-05-11"
+
+
+def test_tick_counts_failure_when_last_sent_marker_persist_fails(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    now = _at(2026, 5, 11, 9, 0)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(1, "alice")
+    monkeypatch.setattr(
+        store,
+        "_save_locked",
+        MagicMock(side_effect=SubscriptionStorePersistenceError("disk full")),
+    )
+
+    with caplog.at_level(logging.ERROR, logger="satellite.scheduler"):
+        assert scheduler.tick() == 0
+
+    assert telegram.send_rich_message.call_count == 1
+    assert any("marker persist failed" in record.getMessage() for record in caplog.records)
 
 
 def test_tick_does_not_mark_last_sent_when_send_fails(tmp_path: Path):

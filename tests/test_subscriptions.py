@@ -1,7 +1,14 @@
 import json
+import os
 from pathlib import Path
 
-from satellite.subscriptions import Subscription, SubscriptionStore
+import pytest
+
+from satellite.subscriptions import (
+    Subscription,
+    SubscriptionStore,
+    SubscriptionStorePersistenceError,
+)
 
 
 def test_subscribe_creates_entry(tmp_path: Path):
@@ -97,3 +104,20 @@ def test_username_normalization(tmp_path: Path):
     store = SubscriptionStore(tmp_path / "subs.json")
     store.subscribe(1, "AlexUser")
     assert store.get(1).username == "alexuser"
+
+
+def test_save_raises_persistence_error_on_disk_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = SubscriptionStore(tmp_path / "subs.json")
+    real_replace = os.replace
+
+    def failing_replace(src: str, dst: str) -> None:
+        if str(dst).endswith("subs.json"):
+            raise OSError("disk full")
+        real_replace(src, dst)
+
+    monkeypatch.setattr("os.replace", failing_replace)
+
+    with pytest.raises(SubscriptionStorePersistenceError, match="disk full"):
+        store.subscribe(1, "alice")

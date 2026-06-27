@@ -186,6 +186,10 @@ class DigestSettings:
 Subscription = DigestSettings
 
 
+class SubscriptionStorePersistenceError(RuntimeError):
+    """Не удалось записать ``subscriptions.json`` на диск."""
+
+
 class SubscriptionStore:
     """JSON-файл `{str(chat_id): { ...fields... }}`.
 
@@ -489,3 +493,6 @@ class SubscriptionStore:
                 raise
         except OSError as exc:
             log.error("Failed to persist subscriptions to %s: %s", self._path, exc)
+            raise SubscriptionStorePersistenceError(
+                f"Failed to persist subscriptions to {self._path}: {exc}"
+            ) from exc
