@@ -164,6 +164,16 @@ def test_manage_detail_keyboard_back_to_list():
     assert CB_MANAGE_BACK in callbacks
 
 
+def test_manage_refresh_acks_before_caldav():
+    ctx = _ctx(events=[_ev()])
+    manager = MagicMock()
+    manager.attach_mock(ctx.telegram.answer_callback_query, "ack")
+    manager.attach_mock(ctx.calendar_service.list_events_for_invitations, "list")
+    handle_callback_query(ctx, _cb(900, CB_MANAGE_REFRESH))
+    call_names = [call[0] for call in manager.mock_calls]
+    assert call_names.index("ack") < call_names.index("list")
+
+
 # --- end-to-end через handle_message / handle_callback_query --------------
 
 

@@ -280,5 +280,11 @@ def test_invitations_refresh_callback(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("satellite.invitations_view.datetime", _FixedDatetime)
 
     ctx = _ctx(events=[_ev()])
+    ctx.digest_state.claim_callback = MagicMock(return_value=True)
+    manager = MagicMock()
+    manager.attach_mock(ctx.telegram.answer_callback_query, "ack")
+    manager.attach_mock(ctx.calendar_service.list_events_for_invitations, "list")
     handle_callback_query(ctx, make_callback(data=CB_INV_REFRESH, chat_id=CHAT_ID, user_id=USER_ID))
     assert ctx.telegram.edit_message_rich.called or ctx.telegram.edit_message_text.called
+    call_names = [call[0] for call in manager.mock_calls]
+    assert call_names.index("ack") < call_names.index("list")

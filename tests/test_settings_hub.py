@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
+from satellite.calendar.providers.base import CalendarListEntry
 from satellite.messages_ru import (
     BUTTON_ANALYTICS,
     BUTTON_CALENDAR_MENU,
@@ -26,7 +27,9 @@ from satellite.messages_ru import (
     BUTTON_DISCONNECT_CALENDAR_CONFIRM,
     BUTTON_RECONNECT_CALENDAR,
     BUTTON_SETTINGS,
+    CB_SETTINGS_BACK,
     CB_SETTINGS_CALENDAR_MENU,
+    CB_SETTINGS_CALENDARS,
     CB_SETTINGS_DISCONNECT,
     CB_SETTINGS_DISCONNECT_CONFIRM,
     CB_SETTINGS_WEATHER_TOGGLE,
@@ -49,7 +52,7 @@ from satellite.testing.delivery_helpers import (
     callback_edit_markup,
     final_message_html,
 )
-from satellite.users import USER_STATUS_APPROVED
+from satellite.users import CALENDAR_CONNECTED, USER_STATUS_APPROVED
 
 _WEBAPP = "https://example.com/connect"
 
@@ -278,3 +281,47 @@ def test_disconnect_confirm_keyboard_only_has_two_buttons():
     assert len(rows) == 2
     assert rows[0][0]["text"] == BUTTON_DISCONNECT_CALENDAR_CONFIRM
     assert rows[1][0]["text"] == BUTTON_DISCONNECT_CALENDAR_CANCEL
+
+
+def test_hub_back_acks_callback(tmp_path: Path):
+    ctx = _ctx(tmp_path)
+    handle_callback_query(ctx, _cb(900, CB_SETTINGS_BACK))
+    ctx.telegram.answer_callback_query.assert_called_once()
+
+
+def test_calendars_callback_acks_before_caldav(tmp_path: Path):
+    from satellite.users import UserStore
+
+    users = UserStore(tmp_path / "users.json")
+    users.upsert_from_telegram(
+        telegram_user_id=1,
+        chat_id=900,
+        username="alice",
+        display_name=None,
+        default_status=USER_STATUS_APPROVED,
+    )
+    users.set_calendar_connection(
+        1,
+        provider="mailru",
+        encrypted_credentials="enc",
+        primary_calendar_url="https://cal/work",
+    )
+    users.mark_calendar_status(1, status=CALENDAR_CONNECTED)
+    users.set_enabled_calendar_urls(1, calendar_urls=["https://cal/work", "https://cal/home"])
+    ctx = _ctx(tmp_path)
+    ctx.users = users
+    ctx.calendar_service.list_calendars.return_value = [
+        CalendarListEntry(name="Работа", url="https://cal/work"),
+        CalendarListEntry(name="Личное", url="https://cal/home"),
+    ]
+    manager = MagicMock()
+    manager.attach_mock(ctx.telegram.answer_callback_query, "ack")
+    manager.attach_mock(ctx.calendar_service.list_calendars, "list")
+
+    handle_callback_query(ctx, _cb(900, CB_SETTINGS_CALENDARS))
+
+    call_names = [call[0] for call in manager.mock_calls]
+    assert "ack" in call_names
+    assert "list" in call_names
+    assert call_names.index("ack") < call_names.index("list")
+    assert ctx.calendar_service.list_calendars.call_count == 1

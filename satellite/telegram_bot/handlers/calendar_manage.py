@@ -63,6 +63,7 @@ from .access import ensure_calendar_connected
 from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
+    ack_callback_with_loading,
     edit_callback_message,
     edit_callback_rich_or_html,
     open_streaming_reply,
@@ -198,10 +199,21 @@ def handle_open_manage_events(ctx: HandlerContext, msg: IncomingMessage) -> None
         _manage_open_guard.release(msg.chat_id, _MANAGE_OPEN_ACTION, sent=sent)
 
 
-def _refresh_list(ctx: HandlerContext, cb: IncomingCallback, toast: str | None = None) -> None:
+def _refresh_list(
+    ctx: HandlerContext,
+    cb: IncomingCallback,
+    toast: str | None = None,
+    *,
+    show_loading: bool = False,
+    ack: bool = True,
+) -> None:
     if cb.user_id is None:
-        safe_answer_callback(ctx, cb, text=toast)
+        if ack:
+            safe_answer_callback(ctx, cb, text=toast)
         return
+    if show_loading:
+        ack_callback_with_loading(ctx, cb, status_html=MANAGE_FETCH_STATUS)
+        ack = False
     try:
         rich_text, fallback_text, keyboard = _load_list_screen(ctx, cb.user_id)
     except (CalendarNotConnectedError, CalendarProviderError):
@@ -214,22 +226,23 @@ def _refresh_list(ctx: HandlerContext, cb: IncomingCallback, toast: str | None =
         fallback_html=fallback_text,
         reply_markup=keyboard,
     )
-    safe_answer_callback(ctx, cb, text=toast)
+    if ack:
+        safe_answer_callback(ctx, cb, text=toast)
 
 
 def _open_detail(ctx: HandlerContext, cb: IncomingCallback, token: str) -> None:
     if cb.user_id is None:
         safe_answer_callback(ctx, cb)
         return
+    ack_callback_with_loading(ctx, cb, status_html=MANAGE_FETCH_STATUS)
     try:
         events, login, _ = _fetch_manageable(ctx, cb.user_id)
     except (CalendarNotConnectedError, CalendarProviderError):
         edit_callback_message(ctx, cb, ERR_CALDAV_UNAVAILABLE_TEXT, reply_markup=None)
-        safe_answer_callback(ctx, cb)
         return
     event = find_event_by_token(events, token)
     if event is None:
-        _refresh_list(ctx, cb, toast=MANAGE_NOT_FOUND_TEXT)
+        _refresh_list(ctx, cb, toast=MANAGE_NOT_FOUND_TEXT, ack=False)
         return
     rich_text, fallback_text, keyboard = _detail_screen_for(ctx, event, login)
     edit_callback_rich_or_html(
@@ -239,7 +252,6 @@ def _open_detail(ctx: HandlerContext, cb: IncomingCallback, token: str) -> None:
         fallback_html=fallback_text,
         reply_markup=keyboard,
     )
-    safe_answer_callback(ctx, cb)
 
 
 def _optimistic_refresh_list(
@@ -309,7 +321,7 @@ def _optimistic_refresh_list(
             reply_markup=keyboard,
         )
         return
-    _refresh_list(ctx, cb)
+    _refresh_list(ctx, cb, ack=False)
 
 
 def _on_fail(ctx: HandlerContext, cb: IncomingCallback) -> None:
@@ -323,7 +335,7 @@ def _on_fail(ctx: HandlerContext, cb: IncomingCallback) -> None:
 
 
 def _on_not_found(ctx: HandlerContext, cb: IncomingCallback) -> None:
-    _refresh_list(ctx, cb, toast=MANAGE_NOT_FOUND_TEXT)
+    _refresh_list(ctx, cb, toast=MANAGE_NOT_FOUND_TEXT, ack=False)
 
 
 _FLOW = PartstatFlow(
@@ -335,6 +347,7 @@ _FLOW = PartstatFlow(
         "t": MANAGE_RESPOND_TENTATIVE,
     },
     log_name="Manage",
+    loading_status_html=MANAGE_FETCH_STATUS,
     fetch_events=_fetch_manageable_events_only,
     optimistic_refresh_view=_optimistic_refresh_list,
     on_not_found=_on_not_found,
@@ -351,7 +364,7 @@ def route_manage_events_callback(ctx: HandlerContext, cb: IncomingCallback) -> b
         safe_answer_callback(ctx, cb)
         return True
     if data in (CB_MANAGE_BACK, CB_MANAGE_REFRESH):
-        _refresh_list(ctx, cb)
+        _refresh_list(ctx, cb, show_loading=True)
         return True
     if data.startswith(CB_MANAGE_PICK_PREFIX):
         token = data[len(CB_MANAGE_PICK_PREFIX) :]

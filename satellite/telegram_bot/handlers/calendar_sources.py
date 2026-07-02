@@ -7,14 +7,13 @@ import logging
 from ...calendar.selection import calendar_callback_token, find_calendar_entry_by_token
 from ...messages_ru import (
     CALENDAR_NOT_CONNECTED_HTML,
+    CALENDAR_SOURCES_FETCH_STATUS,
     CALENDAR_SOURCES_LAST_ENABLED_TEXT,
     CALENDAR_SOURCES_LOAD_FAIL_HTML,
     CALENDAR_SOURCES_SINGLE_HTML,
-    CALENDAR_SOURCES_UPDATE_FAIL_TEXT,
     CB_CAL_CLOSE,
     CB_CAL_TOGGLE_PREFIX,
     build_calendar_sources_keyboard,
-    calendar_sources_toggle_notice,
 )
 from ..presenters.calendar_screens import calendar_sources_bundle
 from .calendar_view import (
@@ -26,6 +25,7 @@ from .calendar_view import (
 )
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
+    ack_callback_with_loading,
     edit_callback_bundle,
     edit_callback_rich_or_html,
     safe_answer_callback,
@@ -71,14 +71,11 @@ def handle_open_calendar_sources(ctx: HandlerContext, msg: IncomingMessage) -> N
         return
     if screen.text is None or screen.keyboard is None:
         return
-    result = fetch_calendars(ctx, msg.user_id)
-    if not result.ok:
-        return
     record = ctx.users.get(msg.user_id)
     if record is None:
         return
     bundle, _keyboard = _sources_bundle(
-        list(result.calendars),
+        list(screen.calendars),
         enabled_url_set(record),
     )
     send_rich_or_html(
@@ -131,23 +128,35 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
     if not token:
         safe_answer_callback(ctx, cb)
         return
+    ack_callback_with_loading(ctx, cb, status_html=CALENDAR_SOURCES_FETCH_STATUS)
     result = fetch_calendars(ctx, cb.user_id)
     if not result.ok:
-        safe_answer_callback(ctx, cb, text=CALENDAR_SOURCES_UPDATE_FAIL_TEXT)
+        edit_callback_rich_or_html(
+            ctx,
+            cb,
+            rich_html=CALENDAR_SOURCES_LOAD_FAIL_HTML,
+            fallback_html=CALENDAR_SOURCES_LOAD_FAIL_HTML,
+            reply_markup=None,
+        )
         return
     calendars = list(result.calendars)
     target = find_calendar_entry_by_token(calendars, token)
     if target is None:
-        safe_answer_callback(ctx, cb)
         return
     if len(calendars) <= 1:
-        safe_answer_callback(ctx, cb, text=CALENDAR_SOURCES_SINGLE_HTML)
+        edit_callback_rich_or_html(
+            ctx,
+            cb,
+            rich_html=CALENDAR_SOURCES_SINGLE_HTML,
+            fallback_html=CALENDAR_SOURCES_SINGLE_HTML,
+            reply_markup=None,
+        )
         return
     target_url = normalize_calendar_url(target.url)
     current = set(enabled_url_set(record))
     if target_url in current:
         if len(current) <= 1:
-            safe_answer_callback(ctx, cb, text=CALENDAR_SOURCES_LAST_ENABLED_TEXT)
+            send(ctx, cb.chat_id, CALENDAR_SOURCES_LAST_ENABLED_TEXT)
             return
         current.remove(target_url)
         enabled_now = False
@@ -159,8 +168,6 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
     enabled_urls = enabled_url_set(updated)
     bundle, _keyboard = _sources_bundle(calendars, enabled_urls)
     edit_callback_bundle(ctx, cb, bundle)
-    notice = calendar_sources_toggle_notice(enabled=enabled_now, name=target.name)
-    safe_answer_callback(ctx, cb, text=notice)
     log.info(
         "Toggled calendar source: user_id=%s url=%s enabled=%s",
         cb.user_id,

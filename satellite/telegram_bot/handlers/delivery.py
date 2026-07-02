@@ -157,6 +157,24 @@ def edit_callback_message(
         log.info("Edit callback message ignored: %s", exc)
 
 
+def ack_callback_with_loading(
+    ctx: HandlerContext,
+    cb: IncomingCallback,
+    *,
+    status_html: str | None = None,
+    toast: str | None = None,
+    reply_markup: dict | None = None,
+) -> None:
+    """Быстрый ответ на долгий callback: опционально loading в сообщении, затем ack.
+
+    Снимает спиннер кнопки до тяжёлой работы (CalDAV и т.п.), не нарушая
+    инвариант «callback edit без fallback на send».
+    """
+    if status_html is not None:
+        edit_callback_message(ctx, cb, status_html, reply_markup=reply_markup)
+    safe_answer_callback(ctx, cb, text=toast)
+
+
 def safe_answer_callback(
     ctx: HandlerContext,
     cb: IncomingCallback,

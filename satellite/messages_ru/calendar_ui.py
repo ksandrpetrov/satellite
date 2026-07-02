@@ -131,6 +131,7 @@ CALENDAR_SOURCES_LOAD_FAIL_HTML = (
 )
 CALENDAR_SOURCES_UNAVAILABLE_TEXT = "Календари не отвечают"
 CALENDAR_SOURCES_UPDATE_FAIL_TEXT = "Не удалось обновить список"
+CALENDAR_SOURCES_FETCH_STATUS = "📚 Чайка собирает календари…"
 CALENDAR_SOURCES_CLOSED_TEXT = "📚 Закрыли список календарей. Возвращайся, когда понадобится."
 
 

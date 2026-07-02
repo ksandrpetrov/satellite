@@ -90,6 +90,7 @@ class CalendarSourcesScreen:
     status: CalendarSourcesScreenStatus
     text: str | None = None
     keyboard: dict | None = None
+    calendars: tuple[CalendarListEntry, ...] = field(default_factory=tuple)
 
 
 def build_calendar_sources_screen(ctx: HandlerContext, user_id: int) -> CalendarSourcesScreen:
@@ -123,4 +124,5 @@ def build_calendar_sources_screen(ctx: HandlerContext, user_id: int) -> Calendar
         status=CalendarSourcesScreenStatus.SCREEN,
         text=text,
         keyboard=keyboard,
+        calendars=tuple(calendars),
     )

@@ -39,6 +39,7 @@ from .access import ensure_calendar_connected
 from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
+    ack_callback_with_loading,
     edit_callback_message,
     edit_callback_rich_or_html,
     open_streaming_reply,
@@ -119,10 +120,17 @@ def _edit_invitations_screen(
     ctx: HandlerContext,
     cb: IncomingCallback,
     toast: str | None = None,
+    *,
+    show_loading: bool = False,
+    ack: bool = True,
 ) -> None:
     if cb.user_id is None or cb.chat_id is None:
-        safe_answer_callback(ctx, cb, text=toast)
+        if ack:
+            safe_answer_callback(ctx, cb, text=toast)
         return
+    if show_loading:
+        ack_callback_with_loading(ctx, cb, status_html=INVITATIONS_FETCH_STATUS)
+        ack = False
     try:
         rich_text, fallback_text, keyboard = _load_screen(ctx, cb.user_id)
     except (CalendarNotConnectedError, CalendarProviderError):
@@ -135,7 +143,8 @@ def _edit_invitations_screen(
         fallback_html=fallback_text,
         reply_markup=keyboard,
     )
-    safe_answer_callback(ctx, cb, text=toast)
+    if ack:
+        safe_answer_callback(ctx, cb, text=toast)
 
 
 def _optimistic_refresh_invitations(
@@ -164,7 +173,7 @@ def _optimistic_refresh_invitations(
         )
         return
     if fallback_events is None:
-        _edit_invitations_screen(ctx, cb)
+        _edit_invitations_screen(ctx, cb, ack=False)
         return
     connected = ctx.calendar_service.require_connection(cb.user_id)
     login = connected.context.login
@@ -192,11 +201,11 @@ def _optimistic_refresh_invitations(
 
 
 def open_invitations_from_settings(ctx: HandlerContext, cb: IncomingCallback) -> None:
-    _edit_invitations_screen(ctx, cb)
+    _edit_invitations_screen(ctx, cb, show_loading=True)
 
 
 def _on_not_found(ctx: HandlerContext, cb: IncomingCallback) -> None:
-    _edit_invitations_screen(ctx, cb, toast=INVITATIONS_RESPOND_FAIL_TEXT)
+    _edit_invitations_screen(ctx, cb, toast=INVITATIONS_RESPOND_FAIL_TEXT, ack=False)
 
 
 def _on_fail(ctx: HandlerContext, cb: IncomingCallback) -> None:
@@ -218,6 +227,7 @@ _FLOW = PartstatFlow(
         "t": INVITATIONS_RESPOND_TENTATIVE,
     },
     log_name="Invitation",
+    loading_status_html=INVITATIONS_FETCH_STATUS,
     fetch_events=_fetch_all_for_token_lookup,
     optimistic_refresh_view=_optimistic_refresh_invitations,
     on_not_found=_on_not_found,
@@ -241,7 +251,7 @@ def route_invitations_callback(ctx: HandlerContext, cb: IncomingCallback) -> boo
         show_settings_calendar_menu(ctx, cb)
         return True
     if data == CB_INV_REFRESH:
-        _edit_invitations_screen(ctx, cb)
+        _edit_invitations_screen(ctx, cb, show_loading=True)
         return True
     if data.startswith(CB_INV_RESPOND_PREFIX):
         respond_partstat(ctx, cb, data, _FLOW)

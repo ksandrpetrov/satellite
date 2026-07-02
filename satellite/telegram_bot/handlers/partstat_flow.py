@@ -24,7 +24,7 @@ from ...calendar.providers.base import (
 )
 from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback
-from .delivery import safe_answer_callback
+from .delivery import ack_callback_with_loading, safe_answer_callback
 
 log = logging.getLogger(__name__)
 
@@ -127,6 +127,7 @@ class PartstatFlow:
     ]
     on_not_found: Callable[[HandlerContext, IncomingCallback], None]
     on_fail: Callable[[HandlerContext, IncomingCallback], None]
+    loading_status_html: str | None = None
 
 
 def respond_partstat(
@@ -149,6 +150,19 @@ def respond_partstat(
         return
     sent = False
     try:
+        fallback_toast = next(iter(flow.toast_by_code.values()))
+        toast = flow.toast_by_code.get(code, fallback_toast)
+        cache = get_event_token_cache()
+        cached = cache.lookup(cb.user_id, token)
+        if cached is None and flow.loading_status_html is not None:
+            ack_callback_with_loading(
+                ctx,
+                cb,
+                status_html=flow.loading_status_html,
+                toast=toast,
+            )
+        else:
+            safe_answer_callback(ctx, cb, text=toast)
         event_ref, fallback_events = _resolve_event_ref(
             ctx,
             cb.user_id,
@@ -164,9 +178,6 @@ def respond_partstat(
             )
             flow.on_not_found(ctx, cb)
             return
-        fallback_toast = next(iter(flow.toast_by_code.values()))
-        toast = flow.toast_by_code.get(code, fallback_toast)
-        safe_answer_callback(ctx, cb, text=toast)
         try:
             ctx.calendar_service.set_attendee_partstat(
                 cb.user_id,

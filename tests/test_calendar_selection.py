@@ -235,7 +235,14 @@ def test_cannot_disable_last_calendar(tmp_path: Path):
     assert record is not None
     assert record.enabled_calendar_urls == ("https://cal/work",)
     ctx.telegram.answer_callback_query.assert_called()
-    notice = ctx.telegram.answer_callback_query.call_args.kwargs.get("text", "")
+    assert ctx.telegram.send_rich_message.called or ctx.telegram.send_message.called
+    if ctx.telegram.send_message.called:
+        notice = ctx.telegram.send_message.call_args.args[1]
+    else:
+        rich_payload = ctx.telegram.send_rich_message.call_args.args[1]
+        notice = (
+            rich_payload.get("html", "") if isinstance(rich_payload, dict) else str(rich_payload)
+        )
     assert "хотя бы один" in notice.lower() or "Нужен" in notice
 
 

@@ -313,6 +313,7 @@ def handle_callback_toggle(
 ) -> None:
     bindings = _bindings(kind)
     if cb.chat_id is None or cb.user_id is None:
+        safe_answer_callback(ctx, cb)
         return
     username = effective_username_from_callback(cb)
     settings = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
@@ -344,6 +345,7 @@ def show_digest_settings_screen(
     kind: DigestKind = DIGEST_KIND_DAILY,
 ) -> None:
     if cb.chat_id is None or cb.user_id is None:
+        safe_answer_callback(ctx, cb)
         return
     username = effective_username_from_callback(cb)
     ctx.digest_state.clear(cb.chat_id)
@@ -361,6 +363,7 @@ def show_digest_days_screen(
 ) -> None:
     bindings = _bindings(kind)
     if cb.chat_id is None or cb.user_id is None:
+        safe_answer_callback(ctx, cb)
         return
     username = effective_username_from_callback(cb)
     settings = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
@@ -384,6 +387,7 @@ def handle_callback_set_days(
 ) -> None:
     bindings = _bindings(kind)
     if cb.chat_id is None or cb.user_id is None:
+        safe_answer_callback(ctx, cb)
         return
     username = effective_username_from_callback(cb)
     before = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
@@ -422,6 +426,7 @@ def handle_pending_digest_day_toggle(
 ) -> None:
     bindings = _bindings(DIGEST_KIND_PENDING)
     if cb.chat_id is None or cb.user_id is None:
+        safe_answer_callback(ctx, cb)
         return
     username = effective_username_from_callback(cb)
     settings = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
@@ -465,6 +470,7 @@ def handle_callback_time(
 ) -> None:
     bindings = _bindings(kind)
     if cb.chat_id is None or cb.user_id is None:
+        safe_answer_callback(ctx, cb)
         return
     username = effective_username_from_callback(cb)
     settings = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
@@ -480,6 +486,7 @@ def handle_callback_close(
 ) -> None:
     bindings = _bindings(kind)
     if cb.chat_id is None:
+        safe_answer_callback(ctx, cb)
         return
     ctx.digest_state.clear(cb.chat_id)
     edit_callback_rich_or_html(

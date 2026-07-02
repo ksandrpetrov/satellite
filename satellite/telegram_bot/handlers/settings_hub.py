@@ -24,12 +24,13 @@ import logging
 from ...calendar.constants import ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_19
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...messages_ru import (
+    CALENDAR_CHECK_LOADING_TOAST,
     CALENDAR_DISCONNECT_TOAST,
     CALENDAR_DISCONNECTED_HTML,
     CALENDAR_NOT_CONNECTED_HTML,
+    CALENDAR_SOURCES_FETCH_STATUS,
     CALENDAR_SOURCES_LOAD_FAIL_HTML,
     CALENDAR_SOURCES_SINGLE_HTML,
-    CALENDAR_SOURCES_UNAVAILABLE_TEXT,
     CB_ANALYTICS_RUN,
     CB_ANALYTICS_WORKDAY_9,
     CB_ANALYTICS_WORKDAY_10,
@@ -73,10 +74,10 @@ from .calendar_view import (
     CalendarSourcesScreenStatus,
     build_calendar_sources_screen,
     enabled_url_set,
-    fetch_calendars,
 )
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
+    ack_callback_with_loading,
     edit_callback_bundle,
     edit_callback_rich_or_html,
     open_streaming_reply,
@@ -227,14 +228,20 @@ def handle_open_settings_hub(ctx: HandlerContext, msg: IncomingMessage) -> None:
     log.info("Opened settings hub: chat_id=%s user_id=%s", msg.chat_id, msg.user_id)
 
 
-def show_settings_hub_screen(ctx: HandlerContext, cb: IncomingCallback) -> None:
+def show_settings_hub_screen(
+    ctx: HandlerContext, cb: IncomingCallback, *, ack: bool = True
+) -> None:
     if cb.chat_id is None or cb.user_id is None:
+        if ack:
+            safe_answer_callback(ctx, cb)
         return
     ctx.digest_state.clear(cb.chat_id)
     bundle = _hub_bundle(ctx, cb.user_id, cb.chat_id)
     edit_callback_bundle(ctx, cb, bundle)
     if cb.message_id is not None:
         _track_hub_message(cb.chat_id, cb.message_id)
+    if ack:
+        safe_answer_callback(ctx, cb)
 
 
 # --- подэкран «Календарь» -------------------------------------------------
@@ -246,7 +253,7 @@ def show_settings_calendar_menu(ctx: HandlerContext, cb: IncomingCallback) -> No
         return
     if not _has_calendar(ctx, cb.user_id):
         # подэкран не имеет смысла без подключения — возвращаем в хаб
-        show_settings_hub_screen(ctx, cb)
+        show_settings_hub_screen(ctx, cb, ack=False)
         safe_answer_callback(ctx, cb)
         return
     keyboard = build_settings_calendar_menu_keyboard(webapp_url=webapp_connect_url(ctx, cb.user_id))
@@ -356,7 +363,7 @@ def _toggle_weather_in_plan(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if new_enabled is None:
         safe_answer_callback(ctx, cb)
         return
-    show_settings_hub_screen(ctx, cb)
+    show_settings_hub_screen(ctx, cb, ack=False)
     safe_answer_callback(
         ctx,
         cb,
@@ -371,36 +378,30 @@ def _open_calendar_sources_from_callback(ctx: HandlerContext, cb: IncomingCallba
     if not _has_calendar(ctx, cb.user_id):
         safe_answer_callback(ctx, cb)
         return
+    ack_callback_with_loading(ctx, cb, status_html=CALENDAR_SOURCES_FETCH_STATUS)
     screen = build_calendar_sources_screen(ctx, cb.user_id)
     if screen.status is CalendarSourcesScreenStatus.NOT_CONNECTED:
-        safe_answer_callback(ctx, cb)
         send(ctx, cb.chat_id, CALENDAR_NOT_CONNECTED_HTML)
         return
     if screen.status is CalendarSourcesScreenStatus.UNAVAILABLE:
-        safe_answer_callback(ctx, cb, text=CALENDAR_SOURCES_UNAVAILABLE_TEXT)
         send(ctx, cb.chat_id, CALENDAR_SOURCES_LOAD_FAIL_HTML)
         return
     if screen.status is CalendarSourcesScreenStatus.SINGLE:
-        safe_answer_callback(ctx, cb, text=CALENDAR_SOURCES_SINGLE_HTML)
+        send(ctx, cb.chat_id, CALENDAR_SOURCES_SINGLE_HTML)
         return
     if screen.status is not CalendarSourcesScreenStatus.SCREEN:
-        safe_answer_callback(ctx, cb)
         return
     if screen.text is None or screen.keyboard is None:
-        safe_answer_callback(ctx, cb)
         return
-    result = fetch_calendars(ctx, cb.user_id)
     record = ctx.users.get(cb.user_id)
-    if record is None or not result.ok:
-        safe_answer_callback(ctx, cb)
+    if record is None:
         return
     bundle = calendar_sources_bundle(
-        calendars=list(result.calendars),
+        calendars=list(screen.calendars),
         enabled_urls=enabled_url_set(record),
         reply_markup=screen.keyboard,
     )
     edit_callback_bundle(ctx, cb, bundle)
-    safe_answer_callback(ctx, cb)
     log.info("Opened calendar sources from hub: user_id=%s", cb.user_id)
 
 
@@ -408,9 +409,9 @@ def _check_calendar_from_callback(ctx: HandlerContext, cb: IncomingCallback) -> 
     if cb.user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
+    safe_answer_callback(ctx, cb, text=CALENDAR_CHECK_LOADING_TOAST)
     text, _markup = calendar_check_result(ctx, cb.user_id)
     send(ctx, cb.chat_id, text)
-    safe_answer_callback(ctx, cb)
 
 
 def _disconnect_calendar_from_callback(ctx: HandlerContext, cb: IncomingCallback) -> None:
@@ -426,7 +427,7 @@ def _disconnect_calendar_from_callback(ctx: HandlerContext, cb: IncomingCallback
     result_text = disconnect_calendar_action(ctx, user_id=cb.user_id, chat_id=cb.chat_id)
     send(ctx, cb.chat_id, result_text)
     if result_text == CALENDAR_DISCONNECTED_HTML:
-        show_settings_hub_screen(ctx, cb)
+        show_settings_hub_screen(ctx, cb, ack=False)
         safe_answer_callback(ctx, cb, text=CALENDAR_DISCONNECT_TOAST)
         return
     safe_answer_callback(ctx, cb)

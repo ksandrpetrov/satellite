@@ -67,6 +67,7 @@ def test_digest_back_returns_to_hub(ctx: MagicMock) -> None:
     )
     text = callback_edit_html(ctx.telegram)
     assert SETTINGS_HUB_TEXT.split()[0] in text or "Настройки" in text
+    ctx.telegram.answer_callback_query.assert_called()
 
 
 def test_analytics_back_returns_to_hub(ctx: MagicMock) -> None:

@@ -39,7 +39,7 @@ from ...messages_ru import (
 from .access import ensure_calendar_connected
 from .calendar_view import CalendarListStatus, fetch_calendars, normalize_calendar_url
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from .delivery import edit_callback_message, safe_answer_callback, send
+from .delivery import ack_callback_with_loading, edit_callback_message, safe_answer_callback, send
 
 log = logging.getLogger(__name__)
 
@@ -131,39 +131,49 @@ def _handle_back(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.user_id is None:
         safe_answer_callback(ctx, cb)
         return
+    ack_callback_with_loading(
+        ctx,
+        cb,
+        status_html=FOREIGN_CALENDARS_FETCH_STATUS,
+        toast=FOREIGN_CALENDARS_LOADING_TOAST,
+    )
     result = _foreign_calendars(ctx, cb.user_id)
     if not result.ok:
-        safe_answer_callback(ctx, cb, text=FOREIGN_CALENDARS_REFRESH_FAIL_TEXT)
+        edit_callback_message(ctx, cb, FOREIGN_CALENDARS_LOAD_FAIL_HTML, reply_markup=None)
         return
+
     foreign = list(result.entries)
     if not foreign:
         edit_callback_message(ctx, cb, FOREIGN_CALENDARS_EMPTY_HTML, reply_markup=None)
-        safe_answer_callback(ctx, cb)
         return
     pairs, tokens = _foreign_pairs(foreign)
     keyboard = build_foreign_calendars_keyboard(calendars=pairs, url_tokens=tokens)
     edit_callback_message(ctx, cb, FOREIGN_CALENDARS_INTRO_HTML, reply_markup=keyboard)
-    safe_answer_callback(ctx, cb)
 
 
 def _handle_pick(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
     if cb.user_id is None:
         safe_answer_callback(ctx, cb)
         return
+    ack_callback_with_loading(
+        ctx,
+        cb,
+        status_html=FOREIGN_CALENDARS_FETCH_STATUS,
+        toast=FOREIGN_CALENDARS_LOADING_TOAST,
+    )
     result = _foreign_calendars(ctx, cb.user_id)
     if not result.ok:
-        safe_answer_callback(ctx, cb, text=FOREIGN_CALENDARS_REFRESH_FAIL_TEXT)
+        edit_callback_message(ctx, cb, FOREIGN_CALENDARS_LOAD_FAIL_HTML, reply_markup=None)
         return
+
     foreign = list(result.entries)
     token = data[len(CB_FOREIGN_PICK_PREFIX) :].strip()
     entry = find_calendar_entry_by_token(foreign, token)
     if entry is None:
-        safe_answer_callback(ctx, cb)
         return
     text = foreign_calendars_pick_day_text(calendar_name=entry.name)
     keyboard = build_foreign_day_keyboard(calendar_token=calendar_callback_token(entry.url))
     edit_callback_message(ctx, cb, text, reply_markup=keyboard)
-    safe_answer_callback(ctx, cb)
 
 
 def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
