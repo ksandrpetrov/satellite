@@ -151,12 +151,12 @@ def test_search_events_enriches_missing_partstat_via_get(monkeypatch):
         status_code = 200
         content = _ICS_WITH_ATTENDEE.encode("utf-8")
 
-    def fake_get(url, **kwargs):
+    def fake_get(self, url, **kwargs):
         captured["url"] = url
         captured["auth"] = kwargs.get("auth")
         return _Response()
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
+    monkeypatch.setattr(CalDAVService, "_http_get", fake_get)
 
     events = service._search_events(handles, date(2026, 5, 12), ZoneInfo("Europe/Moscow"), None)
 
@@ -332,15 +332,15 @@ def test_partstat_refresh_does_not_cache_failed_get(monkeypatch):
         auth_username="me",
     )
 
+    import requests
+
     calls = {"n": 0}
 
     def fail_get(*_args, **_kwargs):
         calls["n"] += 1
         raise requests.RequestException("timeout")
 
-    import requests
-
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fail_get)
+    monkeypatch.setattr(CalDAVService, "_http_get", fail_get)
 
     url = "https://fake/calendars/cal/abc.ics"
     assert service._refresh_attendees_via_get(url) is None
@@ -364,7 +364,7 @@ def test_search_events_skips_get_when_partstat_already_present(monkeypatch):
     def fail_get(*_args, **_kwargs):
         raise AssertionError("GET should not be issued when PARTSTAT is already present")
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fail_get)
+    monkeypatch.setattr(CalDAVService, "_http_get", fail_get)
 
     events = service._search_events(handles, date(2026, 5, 12), ZoneInfo("Europe/Moscow"), None)
     assert len(events) == 1
@@ -391,7 +391,7 @@ def test_enrich_invitations_prioritizes_upcoming_for_partstat_refresh(monkeypatc
     events = [stale_accepted, may26]
     refreshed_urls: list[str] = []
 
-    def fake_get(url, **_kwargs):
+    def fake_get(self, url, **_kwargs):
         refreshed_urls.append(str(url))
         from icalendar import Calendar as IcsCalendar
         from icalendar import Event as IcsEvent
@@ -417,7 +417,7 @@ def test_enrich_invitations_prioritizes_upcoming_for_partstat_refresh(monkeypatc
 
         return _Resp(cal.to_ical())
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
+    monkeypatch.setattr(CalDAVService, "_http_get", fake_get)
 
     service = CalDAVService(
         caldav_url="https://fake/",
@@ -464,7 +464,7 @@ def test_enrich_invitations_skips_get_for_far_future_false_accepted(monkeypatch)
     def fail_get(*_args, **_kwargs):
         raise AssertionError("GET should not run for far-future ACCEPTED in REPORT")
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fail_get)
+    monkeypatch.setattr(CalDAVService, "_http_get", fail_get)
 
     service = CalDAVService(
         caldav_url="https://fake/",
@@ -496,7 +496,7 @@ def test_enrich_invitations_skips_get_when_user_not_among_attendees(monkeypatch)
     def fail_get(*_args, **_kwargs):
         raise AssertionError("GET should not run without user mailto or open PARTSTAT")
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fail_get)
+    monkeypatch.setattr(CalDAVService, "_http_get", fail_get)
 
     service = CalDAVService(
         caldav_url="https://fake/",
@@ -540,7 +540,7 @@ def test_enrich_invitations_refreshes_empty_attendees_before_accepted_verify(mon
     events = fillers + [may26]
     refreshed_urls: list[str] = []
 
-    def fake_get(url, **_kwargs):
+    def fake_get(self, url, **_kwargs):
         refreshed_urls.append(str(url))
         from icalendar import Calendar as IcsCalendar
         from icalendar import Event as IcsEvent
@@ -566,7 +566,7 @@ def test_enrich_invitations_refreshes_empty_attendees_before_accepted_verify(mon
 
         return _Resp(cal.to_ical())
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
+    monkeypatch.setattr(CalDAVService, "_http_get", fake_get)
 
     import time as _time
 
@@ -622,7 +622,7 @@ def test_enrich_invitations_refreshes_upcoming_before_older_false_accepted(monke
     events = fillers + [may26]
     refreshed_urls: list[str] = []
 
-    def fake_get(url, **_kwargs):
+    def fake_get(self, url, **_kwargs):
         refreshed_urls.append(str(url))
         from icalendar import Calendar as IcsCalendar
         from icalendar import Event as IcsEvent
@@ -648,7 +648,7 @@ def test_enrich_invitations_refreshes_upcoming_before_older_false_accepted(monke
 
         return _Resp(cal.to_ical())
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
+    monkeypatch.setattr(CalDAVService, "_http_get", fake_get)
 
     import time as _time
 
@@ -693,7 +693,7 @@ def test_enrich_invitations_skips_get_when_report_already_needs_action(monkeypat
     def fail_get(*_args, **_kwargs):
         raise AssertionError("GET should not run when REPORT already has NEEDS-ACTION")
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fail_get)
+    monkeypatch.setattr(CalDAVService, "_http_get", fail_get)
 
     service = CalDAVService(
         caldav_url="https://fake/",

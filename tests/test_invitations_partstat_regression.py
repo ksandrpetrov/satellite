@@ -137,7 +137,7 @@ def test_kto_est_kto_in_pending_after_enrich_phase1(monkeypatch: pytest.MonkeyPa
     events = _accepted_fillers(LOGIN, count=15) + [may26]
     refreshed_urls: list[str] = []
 
-    def fake_get(url: str, **_kwargs: object) -> object:
+    def fake_get(self: CalDAVService, url: str, **_kwargs: object) -> object:
         refreshed_urls.append(url)
         payload = _ics_with_needs_action(LOGIN)
 
@@ -150,7 +150,7 @@ def test_kto_est_kto_in_pending_after_enrich_phase1(monkeypatch: pytest.MonkeyPa
 
         return _Resp(payload)
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
+    monkeypatch.setattr(CalDAVService, "_http_get", fake_get)
 
     import time as _time
 
@@ -258,7 +258,7 @@ def test_many_accepted_fillers_do_not_block_kto_est_kto_with_short_phase2_budget
     events = _accepted_fillers(LOGIN, count=15) + [may26]
     get_order: list[str] = []
 
-    def fake_get(url: str, **_kwargs: object) -> object:
+    def fake_get(self: CalDAVService, url: str, **_kwargs: object) -> object:
         get_order.append(str(url))
         if "may26-kto" not in str(url):
             payload = _ics_with_needs_action("other@vk.team")
@@ -274,7 +274,7 @@ def test_many_accepted_fillers_do_not_block_kto_est_kto_with_short_phase2_budget
 
         return _Resp(payload)
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
+    monkeypatch.setattr(CalDAVService, "_http_get", fake_get)
 
     import time as _time
 

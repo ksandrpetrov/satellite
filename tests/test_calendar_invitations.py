@@ -183,15 +183,15 @@ def test_set_attendee_partstat_updates_ics(monkeypatch):
     class _PutResp:
         status_code = 204
 
-    def fake_get(url, **kwargs):
+    def fake_get(self, url, **kwargs):
         return _GetResp()
 
-    def fake_put(url, data=None, **kwargs):
+    def fake_put(self, url, data=None, **kwargs):
         saved["body"] = data
         return _PutResp()
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.get", fake_get)
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.put", fake_put)
+    monkeypatch.setattr(CalDAVService, "_http_get", fake_get)
+    monkeypatch.setattr(CalDAVService, "_http_put", fake_put)
 
     service = CalDAVService(
         caldav_url="https://fake/",
@@ -237,15 +237,16 @@ def test_set_attendee_partstat_adds_attendee_when_missing(monkeypatch):
         status_code = 204
 
     monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.get",
-        lambda *a, **k: _GetResp(),
+        CalDAVService,
+        "_http_get",
+        lambda self, *a, **k: _GetResp(),
     )
 
-    def fake_put(*args, **kwargs):
+    def fake_put(self, *args, **kwargs):
         saved["body"] = kwargs.get("data") or (args[1] if len(args) > 1 else None)
         return _PutResp()
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.put", fake_put)
+    monkeypatch.setattr(CalDAVService, "_http_put", fake_put)
 
     service = CalDAVService(
         caldav_url="https://fake/",
@@ -323,15 +324,16 @@ def test_set_attendee_partstat_updates_pending_attendee_without_login_match(monk
         status_code = 204
 
     monkeypatch.setattr(
-        "satellite.calendar.caldav_client.requests.get",
-        lambda *a, **k: _GetResp(),
+        CalDAVService,
+        "_http_get",
+        lambda self, *a, **k: _GetResp(),
     )
 
-    def fake_put(*args, **kwargs):
+    def fake_put(self, *args, **kwargs):
         saved["body"] = kwargs.get("data") or (args[1] if len(args) > 1 else None)
         return _PutResp()
 
-    monkeypatch.setattr("satellite.calendar.caldav_client.requests.put", fake_put)
+    monkeypatch.setattr(CalDAVService, "_http_put", fake_put)
 
     service = CalDAVService(
         caldav_url="https://fake/",

@@ -7,17 +7,21 @@ import threading
 import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any, cast
+from urllib.parse import unquote
 from uuid import uuid4
 
 import requests
 from caldav.calendarobjectresource import Event as CaldavEvent
 from caldav.davclient import DAVClient
 from caldav.lib.error import DAVError
+from caldav.lib.url import URL as CaldavURL
 from icalendar import Calendar as IcsCalendar
 from icalendar import Event as IcsEvent
+from requests.adapters import HTTPAdapter
 
 from . import caldav_discovery as discovery_helpers
 from . import caldav_partstat as partstat_helpers
@@ -42,12 +46,27 @@ _INVITATION_VERIFY_FORWARD_DAYS = 42
 _INVITATION_MISSING_ATTENDEES_REFRESH_LIMIT = 48
 _INVITATION_MISSING_ATTENDEES_BUDGET_SEC = 14.0
 _RANGE_SEARCH_MAX_WORKERS = 6
+# PARTSTAT-обогащение: GET'ы к Mail.ru идут параллельно (бюджеты выше — wall-clock дедлайны).
+_PARTSTAT_GET_MAX_WORKERS = 6
+# Батчевый calendar-multiget перед per-event GET: кап на URL'ы и размер одного REPORT.
+_INVITATION_MULTIGET_LIMIT = 80
+_MULTIGET_CHUNK_SIZE = 40
 # Ответ на приглашение (GET+PUT): Mail.ru часто отвечает >0.8s; не reuse refresh timeout.
 _PARTSTAT_UPDATE_TIMEOUT_SEC = 20.0
+_HTTP_POOL_MAXSIZE = 16
 
 log = logging.getLogger(__name__)
 
 Event = dict[str, Any]
+
+
+def _new_http_session() -> requests.Session:
+    """Сессия с keep-alive пулом: без неё каждый PARTSTAT GET — новый TCP+TLS."""
+    session = requests.Session()
+    adapter = HTTPAdapter(pool_connections=4, pool_maxsize=_HTTP_POOL_MAXSIZE)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
 
 
 def _normalize_url(url: str) -> str:
@@ -129,6 +148,15 @@ class _DiscoveryResult:
     auth_username: str
 
 
+@dataclass(frozen=True)
+class EnrichStats:
+    """Счётчики PARTSTAT-обогащения для тайминг-лога /invitations."""
+
+    multiget_satisfied: int = 0
+    phase1_gets: int = 0
+    phase2_gets: int = 0
+
+
 class CalDAVError(RuntimeError):
     """Поднимается, если ни один candidate URL не ответил успешно."""
 
@@ -165,6 +193,19 @@ class CalDAVService:
         # _cache читается без блокировки — присваивание атомарно под GIL.
         self._cache: _DiscoveryResult | None = None
         self._partstat_cache: dict[str, tuple[list[str], str | None] | None] = {}
+        # Keep-alive пул: PARTSTAT GET/PUT идут пачками, новый TLS на каждый — дорого.
+        self._http = _new_http_session()
+
+    # --- HTTP choke points (единственные точки для requests + monkeypatch в тестах) ---
+
+    def _http_get(self, url: str, **kwargs: Any) -> requests.Response:
+        return self._http.get(url, **kwargs)
+
+    def _http_put(self, url: str, **kwargs: Any) -> requests.Response:
+        return self._http.put(url, **kwargs)
+
+    def _http_head(self, url: str, **kwargs: Any) -> requests.Response:
+        return self._http.head(url, **kwargs)
 
     # --- public API -------------------------------------------------------
 
@@ -277,15 +318,29 @@ class CalDAVService:
             raise CalDAVError("Selected calendar(s) not found for user")
         range_start, _ = day_bounds(start_date, tz)
         _, range_end = day_bounds(end_date, tz)
+        report_started = time.monotonic()
         out = self._collect_events_in_range(handles, range_start, range_end)
+        report_ms = int((time.monotonic() - report_started) * 1000)
         if enrich_partstat:
             verify_moment = datetime.now(tz) if invitation_partstat_verify else None
-            self._enrich_events_partstat(
+            enrich_started = time.monotonic()
+            stats = self._enrich_events_partstat(
                 out,
                 tz=tz,
                 prioritize_from=start_date,
                 invitation_verify=invitation_partstat_verify,
                 moment=verify_moment,
+            )
+            log.info(
+                "CalDAV range fetch enriched: events=%d report_ms=%d enrich_ms=%d "
+                "multiget_hits=%d phase1_gets=%d phase2_gets=%d verify=%s",
+                len(out),
+                report_ms,
+                int((time.monotonic() - enrich_started) * 1000),
+                stats.multiget_satisfied,
+                stats.phase1_gets,
+                stats.phase2_gets,
+                invitation_partstat_verify,
             )
         out.sort(key=lambda event: event.get("dtstart") or "")
         return out
@@ -501,17 +556,180 @@ class CalDAVService:
                 ev, tz=tz, moment=moment, lookback_days=lookback_days
             )
         )
+        return self._refresh_events_partstat_parallel(
+            missing,
+            limit=_INVITATION_MISSING_ATTENDEES_REFRESH_LIMIT,
+            deadline=refresh_started + _INVITATION_MISSING_ATTENDEES_BUDGET_SEC,
+        )
+
+    def _refresh_events_partstat_parallel(
+        self,
+        candidates: Sequence[Event],
+        *,
+        limit: int,
+        deadline: float,
+    ) -> int:
+        """Параллельные PARTSTAT GET: один запрос на уникальный URL.
+
+        У recurring-встреч несколько occurrence делят один ресурс — результат
+        применяется ко всем событиям с этим URL (раньше дубли зря съедали
+        limit). ``limit`` считается по уникальным URL, ``deadline`` — wall-clock
+        (``time.monotonic()``) на весь батч. Возвращает число выполненных GET.
+        """
+        if limit <= 0:
+            return 0
+        url_events: dict[str, list[Event]] = {}
+        ordered_urls: list[str] = []
+        for ev in candidates:
+            event_url = str(ev.get("url") or "").strip()
+            if not event_url:
+                continue
+            bucket = url_events.get(event_url)
+            if bucket is None:
+                url_events[event_url] = [ev]
+                ordered_urls.append(event_url)
+            else:
+                bucket.append(ev)
+        target_urls = ordered_urls[:limit]
+        if not target_urls:
+            return 0
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return 0
         refreshed_count = 0
-        for ev in missing:
-            if refreshed_count >= _INVITATION_MISSING_ATTENDEES_REFRESH_LIMIT:
-                break
-            if (time.monotonic() - refresh_started) >= _INVITATION_MISSING_ATTENDEES_BUDGET_SEC:
-                break
-            event_url = str(ev.get("url") or "")
-            refreshed = self._refresh_attendees_via_get(event_url)
-            refreshed_count += 1
-            self._apply_partstat_refresh_to_event(ev, refreshed)
+        workers = min(len(target_urls), _PARTSTAT_GET_MAX_WORKERS)
+        executor = ThreadPoolExecutor(max_workers=workers)
+        futures = {
+            executor.submit(self._refresh_attendees_via_get, url): url for url in target_urls
+        }
+        try:
+            for fut in as_completed(futures, timeout=remaining):
+                refreshed = fut.result()
+                refreshed_count += 1
+                for ev in url_events[futures[fut]]:
+                    self._apply_partstat_refresh_to_event(ev, refreshed)
+        except FuturesTimeoutError:
+            log.info(
+                "PARTSTAT refresh deadline reached: done=%d of %d",
+                refreshed_count,
+                len(target_urls),
+            )
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
         return refreshed_count
+
+    def _invitation_refresh_candidates(
+        self,
+        events: list[Event],
+        *,
+        tz: tzinfo,
+        moment: datetime,
+        lookback_days: int,
+    ) -> list[Event]:
+        """Кандидаты PARTSTAT-refresh для /invitations в tier-порядке."""
+        candidates = [
+            ev
+            for ev in events
+            if str(ev.get("url") or "").strip()
+            and self._event_needs_partstat_refresh(
+                ev,
+                invitation_verify=True,
+                tz=tz,
+                moment=moment,
+                lookback_days=lookback_days,
+            )
+        ]
+        candidates.sort(
+            key=lambda ev: self._invitation_partstat_refresh_order(
+                ev, tz=tz, moment=moment, lookback_days=lookback_days
+            )
+        )
+        return candidates
+
+    def _multiget_partstat_batch(self, candidates: Sequence[Event]) -> set[str]:
+        """Фаза 0 /invitations: батчевый calendar-multiget вместо N per-event GET.
+
+        Возвращает URL'ы, для которых сервер отдал непустые ATTENDEE — им
+        per-event GET уже не нужен (multiget возвращает тот же полный ресурс,
+        что и GET). URL'ы с ошибкой или пустыми ATTENDEE остаются кандидатами
+        GET-фаз: если Mail.ru режет ATTENDEE и в multiget, поведение не
+        деградирует. Работает только по уже готовому discovery-кэшу — сам
+        discovery не инициирует.
+        """
+        cached = self._cache
+        if cached is None or not cached.calendars:
+            return set()
+        url_events: dict[str, list[Event]] = {}
+        ordered_urls: list[str] = []
+        for ev in candidates:
+            event_url = str(ev.get("url") or "").strip()
+            if not event_url:
+                continue
+            bucket = url_events.get(event_url)
+            if bucket is None:
+                if len(ordered_urls) >= _INVITATION_MULTIGET_LIMIT:
+                    continue
+                url_events[event_url] = [ev]
+                ordered_urls.append(event_url)
+            else:
+                bucket.append(ev)
+        if not ordered_urls:
+            return set()
+        by_handle: dict[str, tuple[CalendarHandle, list[str]]] = {}
+        for event_url in ordered_urls:
+            handle = _handle_for_event_url(cached.calendars, event_url)
+            if handle is None:
+                continue
+            entry = by_handle.setdefault(handle.url, (handle, []))
+            entry[1].append(event_url)
+        satisfied: set[str] = set()
+        for handle, urls in by_handle.values():
+            for start in range(0, len(urls), _MULTIGET_CHUNK_SIZE):
+                chunk = urls[start : start + _MULTIGET_CHUNK_SIZE]
+                try:
+                    responses = list(handle.obj.multiget([CaldavURL.objectify(u) for u in chunk]))
+                except Exception as exc:  # noqa: BLE001 - сервер может не уметь multiget
+                    log.warning(
+                        "CalDAV multiget failed url=%s size=%d: %s",
+                        _redact_url(handle.url),
+                        len(chunk),
+                        exc.__class__.__name__,
+                    )
+                    break  # у этого календаря multiget не работает — следующий handle
+                requested = {_multiget_match_key(u): u for u in chunk}
+                for obj in responses:
+                    extracted = self._extract_multiget_response(obj, requested)
+                    if extracted is None:
+                        continue
+                    original, result = extracted
+                    with self._partstat_cache_lock:
+                        self._partstat_cache[original] = result
+                    for ev in url_events[original]:
+                        self._apply_partstat_refresh_to_event(ev, result)
+                    satisfied.add(original)
+        return satisfied
+
+    @staticmethod
+    def _extract_multiget_response(
+        obj: Any, requested: dict[str, str]
+    ) -> tuple[str, tuple[list[str], str | None]] | None:
+        """(исходный URL, (attendees, status)) из одного multiget-ответа или None."""
+        try:
+            original = requested.get(_multiget_match_key(str(getattr(obj, "url", "") or "")))
+            if original is None:
+                return None
+            data = getattr(obj, "data", None)
+            if not data:
+                return None
+            result = _extract_attendees_status(data)
+        except Exception as exc:  # noqa: BLE001 - битый ответ не должен валить батч
+            log.debug("CalDAV multiget response skipped: %s", exc.__class__.__name__)
+            return None
+        if result is None or not result[0]:
+            # ATTENDEE нет и здесь — не доверяем (возможен тот же стрип, что в
+            # calendar-query REPORT); событие остаётся кандидатом per-event GET.
+            return None
+        return original, result
 
     def _enrich_events_partstat(
         self,
@@ -522,14 +740,25 @@ class CalDAVService:
         invitation_verify: bool = False,
         moment: datetime | None = None,
         lookback_days: int = 14,
-    ) -> None:
-        """Дополняет ATTENDEE/PARTSTAT через GET там, где REPORT их не отдал."""
+    ) -> EnrichStats:
+        """Дополняет ATTENDEE/PARTSTAT там, где REPORT их не отдал.
+
+        Для /invitations: батчевый multiget (фаза 0) → GET событий без ATTENDEE
+        (фаза 1) → verify ложных ACCEPTED (фаза 2). GET-фазы параллельные с
+        дедупом по URL; лимиты и бюджеты прежние (wall-clock дедлайны).
+        """
         if not self._login:
-            return
+            return EnrichStats()
         refresh_started = time.monotonic()
-        refresh_count = 0
+        multiget_satisfied: set[str] = set()
+        phase1_gets = 0
         if invitation_verify and moment is not None:
-            self._enrich_invitation_missing_attendees(
+            multiget_satisfied = self._multiget_partstat_batch(
+                self._invitation_refresh_candidates(
+                    events, tz=tz, moment=moment, lookback_days=lookback_days
+                )
+            )
+            phase1_gets = self._enrich_invitation_missing_attendees(
                 events,
                 tz=tz,
                 moment=moment,
@@ -537,27 +766,34 @@ class CalDAVService:
                 refresh_started=refresh_started,
             )
             if self._partstat_refresh_limit <= 0:
-                return
-            ordered = [
+                return EnrichStats(
+                    multiget_satisfied=len(multiget_satisfied),
+                    phase1_gets=phase1_gets,
+                )
+            # Кандидаты считаем после фаз 0-1: обогащённые события выпадают сами,
+            # закрытые multiget'ом URL исключаем — их «verify» уже сделан.
+            candidates = [
+                ev
+                for ev in self._invitation_refresh_candidates(
+                    events, tz=tz, moment=moment, lookback_days=lookback_days
+                )
+                if str(ev.get("url") or "") not in multiget_satisfied
+            ]
+        else:
+            if self._partstat_refresh_limit <= 0:
+                return EnrichStats()
+            candidates = [
                 ev
                 for ev in events
-                if self._event_needs_partstat_refresh(
+                if str(ev.get("url") or "").strip()
+                and self._event_needs_partstat_refresh(
                     ev,
-                    invitation_verify=True,
+                    invitation_verify=invitation_verify,
                     tz=tz,
                     moment=moment,
                     lookback_days=lookback_days,
                 )
             ]
-            ordered.sort(
-                key=lambda ev: self._invitation_partstat_refresh_order(
-                    ev, tz=tz, moment=moment, lookback_days=lookback_days
-                )
-            )
-        else:
-            if self._partstat_refresh_limit <= 0:
-                return
-            ordered = list(events)
             if prioritize_from is not None:
 
                 def _group(ev: Event) -> int:
@@ -566,25 +802,23 @@ class CalDAVService:
                         return 1
                     return 0 if day >= prioritize_from else 1
 
-                ordered.sort(key=lambda ev: (_group(ev), sort_key(ev, tz)))
+                candidates.sort(key=lambda ev: (_group(ev), sort_key(ev, tz)))
 
-        for ev in ordered:
-            if refresh_count >= self._partstat_refresh_limit:
-                break
-            if not self._partstat_refresh_budget_left(refresh_started):
-                break
-            event_url = str(ev.get("url") or "")
-            if not event_url or not self._event_needs_partstat_refresh(
-                ev,
-                invitation_verify=invitation_verify,
-                tz=tz,
-                moment=moment,
-                lookback_days=lookback_days,
-            ):
-                continue
-            refreshed = self._refresh_attendees_via_get(event_url)
-            refresh_count += 1
-            self._apply_partstat_refresh_to_event(ev, refreshed)
+        deadline = (
+            refresh_started + self._partstat_refresh_budget_sec
+            if self._partstat_refresh_budget_sec > 0
+            else float("inf")
+        )
+        phase2_gets = self._refresh_events_partstat_parallel(
+            candidates,
+            limit=self._partstat_refresh_limit,
+            deadline=deadline,
+        )
+        return EnrichStats(
+            multiget_satisfied=len(multiget_satisfied),
+            phase1_gets=phase1_gets,
+            phase2_gets=phase2_gets,
+        )
 
     def _set_attendee_partstat_once(
         self,
@@ -980,7 +1214,7 @@ class CalDAVService:
 
     def _get_event_ics_via_http(self, event_url: str) -> tuple[bytes, str | None]:
         """GET ресурса события; ETag с ответа уходит в PUT (без лишнего HEAD)."""
-        response = requests.get(
+        response = self._http_get(
             event_url,
             auth=(self._auth_username(), self._app_password),
             timeout=self._partstat_update_timeout_sec,
@@ -1001,7 +1235,7 @@ class CalDAVService:
             headers["If-Match"] = etag
         else:
             try:
-                head = requests.head(
+                head = self._http_head(
                     event_url,
                     auth=auth,
                     timeout=self._partstat_update_timeout_sec,
@@ -1015,7 +1249,7 @@ class CalDAVService:
                     _redact_url(event_url),
                     exc.__class__.__name__,
                 )
-        response = requests.put(
+        response = self._http_put(
             event_url,
             data=ics,
             auth=auth,
@@ -1038,7 +1272,7 @@ class CalDAVService:
             if cached is not None:
                 return cached
         try:
-            response = requests.get(
+            response = self._http_get(
                 event_url,
                 auth=(self._auth_username(), self._app_password),
                 timeout=self._partstat_refresh_timeout_sec,
@@ -1058,19 +1292,9 @@ class CalDAVService:
                 _redact_url(event_url),
             )
             return None
-        parsed = parse_calendar_events(response.content, calendar_name="")
-        if not parsed:
+        result = _extract_attendees_status(response.content)
+        if result is None:
             return None
-        attendees: list[str] = []
-        status: str | None = None
-        for ev in parsed:
-            for attendee in ev.get("attendees", []) or []:
-                if attendee not in attendees:
-                    attendees.append(str(attendee))
-            ev_status = ev.get("status")
-            if ev_status and status is None:
-                status = str(ev_status)
-        result = (attendees, status)
         with self._partstat_cache_lock:
             self._partstat_cache[event_url] = result
         return result
@@ -1078,6 +1302,43 @@ class CalDAVService:
 
 def _normalize_calendar_url(url: str) -> str:
     return (url or "").strip().rstrip("/")
+
+
+def _extract_attendees_status(payload: bytes | str) -> tuple[list[str], str | None] | None:
+    """(attendees, status) из ICS полного ресурса (GET или calendar-multiget)."""
+    parsed = parse_calendar_events(payload, calendar_name="")
+    if not parsed:
+        return None
+    attendees: list[str] = []
+    status: str | None = None
+    for ev in parsed:
+        for attendee in ev.get("attendees", []) or []:
+            if attendee not in attendees:
+                attendees.append(str(attendee))
+        ev_status = ev.get("status")
+        if ev_status and status is None:
+            status = str(ev_status)
+    return attendees, status
+
+
+def _multiget_match_key(url: str) -> str:
+    """Ключ сопоставления href'ов multiget-ответа с исходными URL (path без квотинга)."""
+    path = CaldavURL.objectify(url).path or ""
+    return unquote(path).rstrip("/")
+
+
+def _handle_for_event_url(
+    handles: Sequence[CalendarHandle], event_url: str
+) -> CalendarHandle | None:
+    """Handle календаря, которому принадлежит ресурс (самый длинный префикс URL)."""
+    best: CalendarHandle | None = None
+    best_len = -1
+    for handle in handles:
+        base = (handle.url or "").rstrip("/") + "/"
+        if event_url.startswith(base) and len(base) > best_len:
+            best = handle
+            best_len = len(base)
+    return best
 
 
 def _to_utc(value: datetime) -> datetime:
