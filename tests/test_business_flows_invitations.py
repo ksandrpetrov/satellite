@@ -179,6 +179,12 @@ def test_invitations_respond_accept_updates_partstat(monkeypatch: pytest.MonkeyP
     token = event_callback_token(url)
     handle_callback_query(
         ctx,
+        make_callback(data=CB_INV_REFRESH, chat_id=CHAT_ID, user_id=USER_ID, message_id=50),
+    )
+    ctx.calendar_service.list_events_for_invitations.reset_mock()
+
+    handle_callback_query(
+        ctx,
         make_callback(
             data=f"{CB_INV_RESPOND_PREFIX}{token}:a",
             chat_id=CHAT_ID,
@@ -187,6 +193,35 @@ def test_invitations_respond_accept_updates_partstat(monkeypatch: pytest.MonkeyP
     )
     ctx.calendar_service.set_attendee_partstat.assert_called_once()
     assert ctx.calendar_service.set_attendee_partstat.call_args.args[2] == "ACCEPTED"
+    ctx.calendar_service.list_events_for_invitations.assert_not_called()
+
+
+def test_invitations_respond_cache_miss_uses_single_fetch_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Без прогретого кэша respond делает один fallback-fetch, без post-refresh."""
+    now = datetime(2026, 5, 22, 10, 0, tzinfo=TZ)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return now.astimezone(tz) if tz else now
+
+    monkeypatch.setattr("satellite.invitations_view.datetime", _FixedDatetime)
+
+    url = "https://cal/e/accept.ics"
+    ctx = _ctx(events=[_ev(url=url)])
+    token = event_callback_token(url)
+    handle_callback_query(
+        ctx,
+        make_callback(
+            data=f"{CB_INV_RESPOND_PREFIX}{token}:a",
+            chat_id=CHAT_ID,
+            user_id=USER_ID,
+        ),
+    )
+    assert ctx.calendar_service.list_events_for_invitations.call_count == 1
+    ctx.calendar_service.set_attendee_partstat.assert_called_once()
 
 
 def test_invitations_cooldown_blocks_second_call_after_success(

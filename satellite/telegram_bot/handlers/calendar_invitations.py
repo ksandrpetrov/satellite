@@ -7,14 +7,19 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
+from ...calendar.callback_tokens import event_callback_token
+from ...calendar.event_token_cache import get_event_token_cache
 from ...calendar.providers.base import (
     CalendarNotConnectedError,
     CalendarProviderError,
 )
 from ...invitations_view import (
+    collect_pending_from_events,
     fetch_invitation_events,
     load_pending_invitations_screen,
+    screen_from_pending,
 )
 from ...messages_ru import (
     CB_INV_BACK,
@@ -29,12 +34,7 @@ from ...messages_ru import (
     INVITATIONS_RESPOND_FAIL_TEXT,
     INVITATIONS_RESPOND_TENTATIVE,
 )
-from ..visual import (
-    EFFECT_SPARKLES,
-    pick_invitations_effect,
-    private_message_effect,
-    send_with_effect,
-)
+from ..visual import pick_invitations_effect
 from .access import ensure_calendar_connected
 from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback, IncomingMessage
@@ -138,24 +138,75 @@ def _edit_invitations_screen(
     safe_answer_callback(ctx, cb, text=toast)
 
 
+def _optimistic_refresh_invitations(
+    ctx: HandlerContext,
+    cb: IncomingCallback,
+    token: str,
+    _partstat: str,
+    fallback_events: list | None,
+) -> None:
+    if cb.user_id is None or cb.chat_id is None:
+        return
+    snapshot = get_event_token_cache().remove_invitations_pending(cb.user_id, token)
+    if snapshot is not None:
+        rich_text, fallback_text, keyboard = screen_from_pending(
+            snapshot.pending,
+            ctx.tz,
+            reference_date=snapshot.moment.date(),
+            truncated=snapshot.truncated,
+        )
+        edit_callback_rich_or_html(
+            ctx,
+            cb,
+            rich_html=rich_text,
+            fallback_html=fallback_text,
+            reply_markup=keyboard,
+        )
+        return
+    if fallback_events is None:
+        _edit_invitations_screen(ctx, cb)
+        return
+    connected = ctx.calendar_service.require_connection(cb.user_id)
+    login = connected.context.login
+    moment = datetime.now(tz=ctx.tz)
+    pending, truncated = collect_pending_from_events(
+        fallback_events,
+        login,
+        ctx.tz,
+        now=moment,
+    )
+    pending = [ev for ev in pending if event_callback_token(str(ev.get("url") or "")) != token]
+    rich_text, fallback_text, keyboard = screen_from_pending(
+        pending,
+        ctx.tz,
+        reference_date=moment.date(),
+        truncated=truncated,
+    )
+    edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=rich_text,
+        fallback_html=fallback_text,
+        reply_markup=keyboard,
+    )
+
+
 def open_invitations_from_settings(ctx: HandlerContext, cb: IncomingCallback) -> None:
     _edit_invitations_screen(ctx, cb)
 
 
-def _on_success(ctx: HandlerContext, cb: IncomingCallback, code: str, _toast: str) -> None:
-    """Приглашения: эффект и фиксированный текст шлём только для ACCEPTED."""
-    if code != "a" or cb.chat_id is None:
-        return
-    send_with_effect(
-        ctx.telegram,
-        cb.chat_id,
-        INVITATIONS_RESPOND_ACCEPTED,
-        message_effect_id=private_message_effect(EFFECT_SPARKLES, cb.chat_id),
-    )
-
-
 def _on_not_found(ctx: HandlerContext, cb: IncomingCallback) -> None:
     _edit_invitations_screen(ctx, cb, toast=INVITATIONS_RESPOND_FAIL_TEXT)
+
+
+def _on_fail(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=INVITATIONS_RESPOND_FAIL_TEXT,
+        fallback_html=INVITATIONS_RESPOND_FAIL_TEXT,
+        reply_markup=None,
+    )
 
 
 _FLOW = PartstatFlow(
@@ -168,9 +219,9 @@ _FLOW = PartstatFlow(
     },
     log_name="Invitation",
     fetch_events=_fetch_all_for_token_lookup,
-    refresh_view=_edit_invitations_screen,
+    optimistic_refresh_view=_optimistic_refresh_invitations,
     on_not_found=_on_not_found,
-    on_success=_on_success,
+    on_fail=_on_fail,
 )
 
 

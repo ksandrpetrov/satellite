@@ -16,6 +16,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from ...calendar.callback_tokens import event_callback_token
+from ...calendar.event_token_cache import CachedEventRef, get_event_token_cache
 from ...calendar.providers.base import (
     CalendarEventRef,
     CalendarNotConnectedError,
@@ -72,6 +73,31 @@ def parse_respond_data(data: str, prefix: str) -> tuple[str, str, str] | None:
     return token, code, partstat
 
 
+def _resolve_event_ref(
+    ctx: HandlerContext,
+    user_id: int,
+    token: str,
+    *,
+    fetch_events: Callable[[HandlerContext, int], list],
+) -> tuple[CachedEventRef | None, list | None]:
+    """URL события из token-cache или fallback на полный CalDAV-лист."""
+    cache = get_event_token_cache()
+    cached = cache.lookup(user_id, token)
+    if cached is not None:
+        return cached, None
+    events = fetch_events(ctx, user_id)
+    event = find_event_by_token(events, token)
+    if event is None:
+        return None, events
+    return (
+        CachedEventRef(
+            url=str(event.get("url") or ""),
+            uid=str(event.get("uid") or ""),
+        ),
+        events,
+    )
+
+
 @dataclass(frozen=True)
 class PartstatFlow:
     """Конфигурация одного флоу ответа на встречу.
@@ -82,14 +108,12 @@ class PartstatFlow:
     - ``toast_by_code``: ``{'a': '...', 'd': '...', 't': '...'}`` — toast после
       успешного ответа.
     - ``log_name``: префикс для логов (``Invitation`` / ``Manage``).
-    - ``fetch_events``: ``(ctx, user_id) -> list`` — полный список событий,
-      в котором ищем по token (включая не-pending).
-    - ``refresh_view``: ``(ctx, cb, toast | None)`` — перерисовать экран
-      после ответа (показать обновлённый список / закрытие).
-    - ``on_not_found``: ``(ctx, cb)`` — что делать, если event пропал
-      (Mail.ru мог отдать иной ATTENDEE при следующем REPORT).
-    - ``on_success``: ``(ctx, cb, code, toast)`` — побочные эффекты успеха
-      (push с EFFECT_SPARKLES и т.п.).
+    - ``fetch_events``: ``(ctx, user_id) -> list`` — полный список событий
+      при cache miss (включая не-pending).
+    - ``optimistic_refresh_view``: перерисовать экран из кэша без CalDAV;
+      ``fallback_events`` — результат единственного fallback-fetch при cache miss.
+    - ``on_not_found``: ``(ctx, cb)`` — событие не найдено даже после fallback.
+    - ``on_fail``: ``(ctx, cb)`` — CalDAV PUT не удался (callback уже ack).
     """
 
     prefix: str
@@ -97,9 +121,12 @@ class PartstatFlow:
     toast_by_code: Mapping[str, str]
     log_name: str
     fetch_events: Callable[[HandlerContext, int], list]
-    refresh_view: Callable[[HandlerContext, IncomingCallback, str | None], None]
+    optimistic_refresh_view: Callable[
+        [HandlerContext, IncomingCallback, str, str, list | None],
+        None,
+    ]
     on_not_found: Callable[[HandlerContext, IncomingCallback], None]
-    on_success: Callable[[HandlerContext, IncomingCallback, str, str], None]
+    on_fail: Callable[[HandlerContext, IncomingCallback], None]
 
 
 def respond_partstat(
@@ -122,23 +149,28 @@ def respond_partstat(
         return
     sent = False
     try:
+        event_ref, fallback_events = _resolve_event_ref(
+            ctx,
+            cb.user_id,
+            token,
+            fetch_events=flow.fetch_events,
+        )
+        if event_ref is None or not event_ref.url:
+            log.warning(
+                "%s respond: event not found by token user_id=%s token=%s",
+                flow.log_name,
+                cb.user_id,
+                token,
+            )
+            flow.on_not_found(ctx, cb)
+            return
+        fallback_toast = next(iter(flow.toast_by_code.values()))
+        toast = flow.toast_by_code.get(code, fallback_toast)
+        safe_answer_callback(ctx, cb, text=toast)
         try:
-            events = flow.fetch_events(ctx, cb.user_id)
-            event = find_event_by_token(events, token)
-            if event is None:
-                log.warning(
-                    "%s respond: event not found by token user_id=%s token=%s",
-                    flow.log_name,
-                    cb.user_id,
-                    token,
-                )
-                flow.on_not_found(ctx, cb)
-                return
-            event_url = str(event.get("url") or "")
-            uid = str(event.get("uid") or "")
             ctx.calendar_service.set_attendee_partstat(
                 cb.user_id,
-                CalendarEventRef(uid=uid, url=event_url),
+                CalendarEventRef(uid=event_ref.uid, url=event_ref.url),
                 partstat,
             )
         except (CalendarNotConnectedError, CalendarProviderError) as exc:
@@ -148,12 +180,9 @@ def respond_partstat(
                 cb.user_id,
                 getattr(exc, "error_code", exc.__class__.__name__),
             )
-            safe_answer_callback(ctx, cb, text=flow.fail_text)
+            flow.on_fail(ctx, cb)
             return
-        fallback_toast = next(iter(flow.toast_by_code.values()))
-        toast = flow.toast_by_code.get(code, fallback_toast)
-        flow.on_success(ctx, cb, code, toast)
-        flow.refresh_view(ctx, cb, toast)
+        flow.optimistic_refresh_view(ctx, cb, token, partstat, fallback_events)
         sent = True
     finally:
         _partstat_respond_guard.release(cb.chat_id, action_key, sent=sent)

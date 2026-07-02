@@ -342,7 +342,10 @@ def test_manage_respond_calls_set_attendee_partstat_and_refreshes(monkeypatch):
     ctx = _ctx(events=[_ev(summary="Standup", url=url, uid="uid-x")])
     token = event_callback_token(url)
 
-    handle_callback_query(ctx, _cb(900, f"{CB_MANAGE_RESPOND_PREFIX}{token}:d"))
+    handle_callback_query(ctx, _cb(900, CB_MANAGE_REFRESH))
+    ctx.calendar_service.list_events_for_invitations.reset_mock()
+
+    handle_callback_query(ctx, _cb(901, f"{CB_MANAGE_RESPOND_PREFIX}{token}:d"))
 
     ctx.calendar_service.set_attendee_partstat.assert_called_once()
     args = ctx.calendar_service.set_attendee_partstat.call_args
@@ -352,10 +355,33 @@ def test_manage_respond_calls_set_attendee_partstat_and_refreshes(monkeypatch):
     assert ref.url == url
     assert ref.uid == "uid-x"
     assert args.args[2] == "DECLINED"
+    ctx.calendar_service.list_events_for_invitations.assert_not_called()
 
     # answerCallbackQuery с тостом «Отклонено»
     ack = ctx.telegram.answer_callback_query.call_args
     assert ack.kwargs.get("text") == MANAGE_RESPOND_DECLINED
+
+
+def test_manage_respond_cache_miss_uses_single_fetch_fallback(monkeypatch):
+    import satellite.telegram_bot.handlers.calendar_manage as cm
+
+    now = datetime(2026, 5, 21, 10, 0, tzinfo=TZ)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return now.astimezone(tz) if tz else now
+
+    monkeypatch.setattr(cm, "datetime", _FixedDatetime)
+
+    url = "https://e/standup"
+    ctx = _ctx(events=[_ev(summary="Standup", url=url, uid="uid-x")])
+    token = event_callback_token(url)
+
+    handle_callback_query(ctx, _cb(900, f"{CB_MANAGE_RESPOND_PREFIX}{token}:d"))
+
+    assert ctx.calendar_service.list_events_for_invitations.call_count == 1
+    ctx.calendar_service.set_attendee_partstat.assert_called_once()
 
 
 def test_manage_respond_accept_uses_accept_toast(monkeypatch):
@@ -374,7 +400,8 @@ def test_manage_respond_accept_uses_accept_toast(monkeypatch):
     ctx = _ctx(events=[_ev(summary="Demo", url=url, partstat="TENTATIVE")])
     token = event_callback_token(url)
 
-    handle_callback_query(ctx, _cb(900, f"{CB_MANAGE_RESPOND_PREFIX}{token}:a"))
+    handle_callback_query(ctx, _cb(900, CB_MANAGE_REFRESH))
+    handle_callback_query(ctx, _cb(901, f"{CB_MANAGE_RESPOND_PREFIX}{token}:a"))
 
     args = ctx.calendar_service.set_attendee_partstat.call_args
     assert args.args[2] == "ACCEPTED"
@@ -398,7 +425,8 @@ def test_manage_respond_tentative_uses_tentative_toast(monkeypatch):
     ctx = _ctx(events=[_ev(summary="Demo", url=url, partstat="ACCEPTED")])
     token = event_callback_token(url)
 
-    handle_callback_query(ctx, _cb(900, f"{CB_MANAGE_RESPOND_PREFIX}{token}:t"))
+    handle_callback_query(ctx, _cb(900, CB_MANAGE_REFRESH))
+    handle_callback_query(ctx, _cb(901, f"{CB_MANAGE_RESPOND_PREFIX}{token}:t"))
 
     args = ctx.calendar_service.set_attendee_partstat.call_args
     assert args.args[2] == "TENTATIVE"

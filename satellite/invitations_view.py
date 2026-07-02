@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, tzinfo
 from typing import Any, cast
 
 from .calendar.callback_tokens import event_callback_token
+from .calendar.event_token_cache import get_event_token_cache
 from .calendar.events import (
     collect_pending_invitations,
     format_invitation_list_lines,
@@ -129,6 +130,14 @@ def load_pending_invitations_screen(
         pending,
         tz,
         reference_date=today,
+        truncated=truncated,
+    )
+    get_event_token_cache().register_invitations_screen(
+        user_id,
+        pending=pending,
+        all_events=events,
+        login=login,
+        moment=moment,
         truncated=truncated,
     )
     return InvitationsScreen(

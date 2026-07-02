@@ -75,6 +75,7 @@ def _reset_action_guards():
     Импорты внутри фикстуры — чтобы collect-time не падал, если кто-то
     переименует/удалит соответствующие модули.
     """
+    from satellite.calendar.event_token_cache import reset_event_token_cache
     from satellite.telegram_bot.handlers import analytics as _analytics
     from satellite.telegram_bot.handlers import calendar_invitations as _invitations
     from satellite.telegram_bot.handlers import calendar_list as _upcoming
@@ -82,6 +83,8 @@ def _reset_action_guards():
     from satellite.telegram_bot.handlers import partstat_flow as _partstat
     from satellite.telegram_bot.handlers import plan as _plan
     from satellite.telegram_bot.handlers import settings_hub as _settings_hub
+
+    reset_event_token_cache()
 
     for guard in (
         _analytics._analytics_run_guard,

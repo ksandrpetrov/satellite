@@ -21,6 +21,7 @@ import logging
 from datetime import date, datetime, timedelta
 
 from ...calendar.callback_tokens import event_callback_token
+from ...calendar.event_token_cache import apply_user_partstat_to_event, get_event_token_cache
 from ...calendar.events import (
     collect_manageable_events,
     event_index_marker,
@@ -58,7 +59,6 @@ from ..presenters.calendar_lists import (
     manage_list_body_lines,
     manage_list_rich_html,
 )
-from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .access import ensure_calendar_connected
 from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback, IncomingMessage
@@ -102,6 +102,13 @@ def _fetch_manageable(ctx: HandlerContext, user_id: int) -> tuple[list, str, boo
     truncated = len(manageable) > _MAX_EVENTS
     if truncated:
         manageable = manageable[:_MAX_EVENTS]
+    get_event_token_cache().register_manage_screen(
+        user_id,
+        events=manageable,
+        login=login,
+        moment=now,
+        truncated=truncated,
+    )
     return manageable, login, truncated
 
 
@@ -235,14 +242,83 @@ def _open_detail(ctx: HandlerContext, cb: IncomingCallback, token: str) -> None:
     safe_answer_callback(ctx, cb)
 
 
-def _on_success(ctx: HandlerContext, cb: IncomingCallback, _code: str, toast: str) -> None:
-    if cb.chat_id is None:
+def _optimistic_refresh_list(
+    ctx: HandlerContext,
+    cb: IncomingCallback,
+    token: str,
+    partstat: str,
+    fallback_events: list | None,
+) -> None:
+    if cb.user_id is None or cb.chat_id is None:
         return
-    send_with_effect(
-        ctx.telegram,
-        cb.chat_id,
-        toast,
-        message_effect_id=private_message_effect(EFFECT_SPARKLES, cb.chat_id),
+    cache = get_event_token_cache()
+    existing = cache.get_manage_snapshot(cb.user_id)
+    if existing is not None:
+        snapshot = cache.update_manage_partstat(
+            cb.user_id,
+            token,
+            existing.login,
+            partstat,
+        )
+        if snapshot is not None:
+            rich_text, fallback_text, keyboard = _build_list_screen(
+                snapshot.events,
+                tz=ctx.tz,
+                reference_date=snapshot.moment.date(),
+                truncated=snapshot.truncated,
+            )
+            edit_callback_rich_or_html(
+                ctx,
+                cb,
+                rich_html=rich_text,
+                fallback_html=fallback_text,
+                reply_markup=keyboard,
+            )
+            return
+    if fallback_events is not None:
+        connected = ctx.calendar_service.require_connection(cb.user_id)
+        login = connected.context.login
+        moment = datetime.now(tz=ctx.tz)
+        manageable = collect_manageable_events(
+            fallback_events,
+            login,
+            ctx.tz,
+            now=moment,
+            max_events=_MAX_EVENTS + 1,
+        )
+        truncated = len(manageable) > _MAX_EVENTS
+        if truncated:
+            manageable = manageable[:_MAX_EVENTS]
+        events = [
+            apply_user_partstat_to_event(ev, login, partstat)
+            if event_callback_token(str(ev.get("url") or "")) == token
+            else ev
+            for ev in manageable
+        ]
+        rich_text, fallback_text, keyboard = _build_list_screen(
+            events,
+            tz=ctx.tz,
+            reference_date=moment.date(),
+            truncated=truncated,
+        )
+        edit_callback_rich_or_html(
+            ctx,
+            cb,
+            rich_html=rich_text,
+            fallback_html=fallback_text,
+            reply_markup=keyboard,
+        )
+        return
+    _refresh_list(ctx, cb)
+
+
+def _on_fail(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=MANAGE_RESPOND_FAIL_TEXT,
+        fallback_html=MANAGE_RESPOND_FAIL_TEXT,
+        reply_markup=None,
     )
 
 
@@ -260,9 +336,9 @@ _FLOW = PartstatFlow(
     },
     log_name="Manage",
     fetch_events=_fetch_manageable_events_only,
-    refresh_view=_refresh_list,
+    optimistic_refresh_view=_optimistic_refresh_list,
     on_not_found=_on_not_found,
-    on_success=_on_success,
+    on_fail=_on_fail,
 )
 
 

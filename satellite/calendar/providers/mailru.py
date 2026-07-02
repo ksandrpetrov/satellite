@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from dataclasses import dataclass
 from datetime import date, tzinfo
 
 from ...security.token_vault import ProviderCredentials
@@ -34,11 +36,19 @@ PROVIDER_ID = "mailru"
 DEFAULT_CALDAV_URL = "https://calendar.mail.ru/"
 
 
+@dataclass
+class _CachedServicePair:
+    plain: CalDAVService
+    invitations: CalDAVService
+    cached_at: float
+
+
 class MailruCalendarProvider:
     provider_id = PROVIDER_ID
 
     def __init__(self, *, cache_ttl_sec: int = 300) -> None:
         self._cache_ttl_sec = cache_ttl_sec
+        self._service_instances: dict[str, _CachedServicePair] = {}
 
     def validate_credentials(
         self,
@@ -276,13 +286,7 @@ class MailruCalendarProvider:
         *,
         caldav_url: str | None = None,
     ) -> CalDAVService:
-        return CalDAVService(
-            caldav_url=(caldav_url or DEFAULT_CALDAV_URL).strip(),
-            login=credentials.login.strip(),
-            app_password=credentials.secret,
-            cache_ttl_sec=self._cache_ttl_sec,
-            partstat_refresh_limit=0,
-        )
+        return self._cached_services(credentials, caldav_url=caldav_url).plain
 
     def _service_for_invitations(
         self,
@@ -290,8 +294,29 @@ class MailruCalendarProvider:
         *,
         caldav_url: str | None = None,
     ) -> CalDAVService:
-        return CalDAVService(
-            caldav_url=(caldav_url or DEFAULT_CALDAV_URL).strip(),
+        return self._cached_services(credentials, caldav_url=caldav_url).invitations
+
+    def _cached_services(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        caldav_url: str | None = None,
+    ) -> _CachedServicePair:
+        key = credentials.login.strip().casefold()
+        now = time.monotonic()
+        pair = self._service_instances.get(key)
+        if pair is not None and (now - pair.cached_at) < self._cache_ttl_sec:
+            return pair
+        seed = (caldav_url or DEFAULT_CALDAV_URL).strip()
+        plain = CalDAVService(
+            caldav_url=seed,
+            login=credentials.login.strip(),
+            app_password=credentials.secret,
+            cache_ttl_sec=self._cache_ttl_sec,
+            partstat_refresh_limit=0,
+        )
+        invitations = CalDAVService(
+            caldav_url=seed,
             login=credentials.login.strip(),
             app_password=credentials.secret,
             cache_ttl_sec=self._cache_ttl_sec,
@@ -299,3 +324,6 @@ class MailruCalendarProvider:
             partstat_refresh_timeout_sec=INVITATIONS_PARTSTAT_REFRESH_TIMEOUT_SEC,
             partstat_refresh_budget_sec=INVITATIONS_PARTSTAT_REFRESH_BUDGET_SEC,
         )
+        pair = _CachedServicePair(plain=plain, invitations=invitations, cached_at=now)
+        self._service_instances[key] = pair
+        return pair

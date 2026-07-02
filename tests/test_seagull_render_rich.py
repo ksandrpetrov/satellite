@@ -55,3 +55,13 @@ def test_rich_digest_stats_table_speaks_type_and_time():
     assert "Значение" not in html
     assert "<td>Встреч</td>" not in html
     assert "— 4 встреч" in html  # количество живёт в заголовке расписания
+
+
+def test_rich_digest_main_quote_has_no_author_cite():
+    """Прогноз уже говорит от лица Чайки — подпись <cite> в pull_quote лишняя."""
+    events = [make_event(f"M{i}", f"{10 + i:02d}:00", f"{10 + i:02d}:30") for i in range(10)]
+    stats = calculate_day_stats(events, date_label="Сегодня", plan_date=date(2026, 6, 12))
+    texts = build_seagull_texts(stats)
+    html = render_daily_digest_rich(stats, texts, tz=ZoneInfo("Europe/Moscow"))
+    assert "Чайка напрягла крылья" in html
+    assert "<cite>Чайка</cite>" not in html

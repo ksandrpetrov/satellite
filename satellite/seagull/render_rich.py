@@ -152,7 +152,7 @@ def render_daily_digest_rich(
     if weather_line:
         blocks.append(blockquote(escape_rich(weather_line)))
 
-    blocks.append(pull_quote(escape_rich(texts.main), author="Чайка"))
+    blocks.append(pull_quote(escape_rich(texts.main)))
 
     if stats.meetings_count > 0 and texts.overlaps:
         blocks.append(blockquote(escape_rich(texts.overlaps)))
