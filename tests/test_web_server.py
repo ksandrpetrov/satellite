@@ -424,6 +424,20 @@ def test_unknown_path_returns_404(started_server):
     assert body["error"] == "not_found"
 
 
+def test_unexpected_web_handler_error_returns_safe_500(started_server, monkeypatch):
+    _server, users, _calendar, base = started_server
+    _approve_user(users, 701)
+    init = _make_init_data(701)
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("satellite.web.server.find_route", lambda *_args, **_kwargs: _boom)
+    status, body = _http("GET", base + "/api/calendar/status", init_data=init)
+    assert status == 500
+    assert body["error"] == "request_failed"
+
+
 def test_init_data_invalid_signature_returns_401(started_server):
     _server, users, _calendar, base = started_server
     _approve_user(users, 700)

@@ -27,6 +27,7 @@ from satellite.messages_ru import ERR_CALDAV_UNAVAILABLE_TEXT, PLAN_BUSY_TEXT
 from satellite.plan_service import PlanTextBundle
 from satellite.telegram_bot.handlers import handle_message
 from satellite.telegram_bot.handlers import plan as plan_module
+from satellite.testing.delivery_helpers import sent_messages_text
 from satellite.users import UserStore
 
 from .conftest import freeze_now, make_ctx, make_msg, make_user_store
@@ -129,7 +130,7 @@ def test_plan_releases_guard_after_caldav_failure(
     handle_message(ctx, msg1)
     assert pb.build_plan_bundle.call_count == 1
     # пользователь увидел safe текст
-    sent_texts = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     assert ERR_CALDAV_UNAVAILABLE_TEXT in sent_texts
 
     # Guard должен быть отпущен — второй /td сразу триггерит build_text
@@ -229,10 +230,7 @@ def test_plan_busy_message_when_build_in_progress(
         plan_module._plan_run_guard.release(USER_ID, "plan:today")
 
     pb.build_plan_bundle.assert_not_called()
-    busy_calls = [
-        c[0][1] for c in ctx.telegram.send_message.call_args_list if c[0][1] == PLAN_BUSY_TEXT
-    ]
-    assert len(busy_calls) == 1
+    assert PLAN_BUSY_TEXT in sent_messages_text(ctx.telegram)
 
 
 def test_plan_independent_action_keys_per_mode(

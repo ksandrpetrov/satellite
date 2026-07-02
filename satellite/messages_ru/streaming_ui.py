@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..telegram_bot.rich_message import escape_rich, thinking_block
+from ..formatters.rich import escape_rich, thinking_block
 
 DEFAULT_THINKING_TEXT = "Чайка думает…"
 
@@ -13,6 +13,7 @@ UPCOMING_PROGRESS_LOADING = "🗓 Загружаю события на неде�
 INVITATIONS_PROGRESS_LOADING = "📨 Сверяю приглашения в календаре…"
 MANAGE_PROGRESS_LOADING = "🛠 Собираю встречи на неделе…"
 ANALYTICS_THINKING = "📊 Чайка сводит неделю по календарю…"
+SETTINGS_OPEN_THINKING = "⚙️ Открываю настройки…"
 
 
 def rich_thinking_status(text: str) -> str:

@@ -199,7 +199,9 @@ class SubscriptionStore:
     def __init__(self, path: str | Path) -> None:
         self._path = Path(path)
         self._lock = threading.Lock()
+        self._write_lock = threading.Lock()
         self._items: dict[int, DigestSettings] = self._load()
+        self._version = 0
 
     # --- подписка (back-compat) ------------------------------------------
 
@@ -240,13 +242,16 @@ class SubscriptionStore:
         Запись НЕ удаляется: настройки (дни/время) переживают отписку, чтобы
         при повторном включении пользователь не настраивал всё заново.
         """
+        changed = False
         with self._lock:
             existing = self._items.get(chat_id)
             if existing is None or not existing.digest_enabled:
                 return False
             self._items[chat_id] = replace(existing, digest_enabled=False)
+            changed = True
+        if changed:
             self._save_locked()
-            return True
+        return True
 
     # --- per-user settings ------------------------------------------------
 
@@ -381,6 +386,7 @@ class SubscriptionStore:
     def mark_digest_sent(self, chat_id: int, sent_date: date | str) -> None:
         """Записывает дату последней успешной автоотправки (YYYY-MM-DD)."""
         iso = sent_date.isoformat() if isinstance(sent_date, date) else str(sent_date)
+        changed = False
         with self._lock:
             existing = self._items.get(chat_id)
             if existing is None:
@@ -388,11 +394,14 @@ class SubscriptionStore:
             if existing.last_digest_sent_date == iso:
                 return
             self._items[chat_id] = replace(existing, last_digest_sent_date=iso)
+            changed = True
+        if changed:
             self._save_locked()
 
     def mark_pending_digest_sent(self, chat_id: int, sent_date: date | str) -> None:
         """Дата последней успешной автоотправки дайджеста непринятых встреч."""
         iso = sent_date.isoformat() if isinstance(sent_date, date) else str(sent_date)
+        changed = False
         with self._lock:
             existing = self._items.get(chat_id)
             if existing is None:
@@ -400,6 +409,8 @@ class SubscriptionStore:
             if existing.last_pending_digest_sent_date == iso:
                 return
             self._items[chat_id] = replace(existing, last_pending_digest_sent_date=iso)
+            changed = True
+        if changed:
             self._save_locked()
 
     def list_active(self) -> list[DigestSettings]:
@@ -431,13 +442,16 @@ class SubscriptionStore:
         Сохраняет только если что-то реально поменялось или запись только что
         появилась. Возвращает финальную запись.
         """
+        changed = False
         with self._lock:
             existing = self._items.get(chat_id)
             updated = build(existing)
             if updated != existing or chat_id not in self._items:
                 self._items[chat_id] = updated
-                self._save_locked()
-            return updated
+                changed = True
+        if changed:
+            self._save_locked()
+        return updated
 
     @staticmethod
     def _now_iso() -> str:
@@ -470,27 +484,40 @@ class SubscriptionStore:
                 items[chat_id] = record
         return items
 
-    def _save_locked(self) -> None:
+    def _snapshot_locked(self) -> tuple[dict[str, Any], int]:
+        self._version += 1
         payload = {str(chat_id): rec.to_json() for chat_id, rec in self._items.items()}
+        return payload, self._version
+
+    def _save_locked(self) -> None:
+        with self._lock:
+            payload, version = self._snapshot_locked()
+        self._save_snapshot(payload, version)
+
+    def _save_snapshot(self, payload: dict[str, Any], version: int) -> None:
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            fd, tmp_path = tempfile.mkstemp(
-                prefix=self._path.name + ".",
-                suffix=".tmp",
-                dir=self._path.parent,
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as file:
-                    json.dump(payload, file, ensure_ascii=False, indent=2)
-                    file.flush()
-                    os.fsync(file.fileno())
-                os.replace(tmp_path, self._path)
-            except Exception:
+            with self._write_lock:
+                with self._lock:
+                    if version < self._version:
+                        return
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                fd, tmp_path = tempfile.mkstemp(
+                    prefix=self._path.name + ".",
+                    suffix=".tmp",
+                    dir=self._path.parent,
+                )
                 try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
+                    with os.fdopen(fd, "w", encoding="utf-8") as file:
+                        json.dump(payload, file, ensure_ascii=False, indent=2)
+                        file.flush()
+                        os.fsync(file.fileno())
+                    os.replace(tmp_path, self._path)
+                except Exception:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
         except OSError as exc:
             log.error("Failed to persist subscriptions to %s: %s", self._path, exc)
             raise SubscriptionStorePersistenceError(

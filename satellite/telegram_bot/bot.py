@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import signal
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ..backup import snapshot_all
@@ -17,70 +15,34 @@ from ..calendar.user_calendar_service import UserCalendarService
 from ..config import Settings
 from ..plan_service import PlanBuilder
 from ..scheduler import DigestScheduler
-from ..security.token_vault import TokenDecryptError, TokenVault
+from ..security.token_vault import TokenVault
 from ..subscriptions import SubscriptionStore
-from ..users import USER_STATUS_APPROVED, UserStore
+from ..users import UserStore
 from ..weather.client import WeatherForecastClient
 from ..web.connect_token import ConnectTokenStore
 from ..web.server import WebAppServer, WebAppServerConfig
 from .api import TelegramClient, TelegramError
 from .commands import setup_bot_identity
 from .concurrency import ChatLockManager
-from .handlers import (
-    HandlerContext,
-    IncomingCallback,
-    IncomingMessage,
-    extract_callback_query,
-    extract_message,
-    handle_callback_query,
-    handle_message,
-    is_update_callback,
-    is_update_message,
-)
+from .handlers import HandlerContext
 from .handlers.calendar_state import CalendarStateStore
 from .handlers.digest_state import DigestStateStore
 from .offset_store import OffsetStore
 from .offset_tracker import OffsetTracker
+from .startup_checks import (
+    log_persistence_summary,
+    verify_encryption_key_against_existing_users,
+)
+from .startup_checks import (
+    warn_if_users_lost as warn_if_users_lost,
+)
+from .update_dispatcher import UpdateDispatcher
 
 log = logging.getLogger(__name__)
 
 _ERROR_BACKOFF_INITIAL_SEC = 1.0
 _ERROR_BACKOFF_MAX_SEC = 30.0
 _ERROR_BACKOFF_MULTIPLIER = 2.0
-
-
-def warn_if_users_lost(*, logs_dir: Path, users_total: int, subs_total: int) -> bool:
-    """Кричит WARNING, если стор пустой, но рядом лежат снапшоты `users.json.*.bak`.
-
-    Сценарий: миграцию systemd → Docker сделали без переноса `/opt/satellite/logs/`
-    в именованный volume. Контейнер видит пустую папку, спокойно стартует и начинает
-    «новую жизнь»; legacy-данные на хосте остались, но больше не видны. Если в
-    `backups/` уже есть снапшоты `users.json.*.bak` — раньше юзеры существовали,
-    значит, стор обнулили. Молчать тут нельзя.
-
-    Возвращает True, если warning был испущен (для тестов и сигнализации
-    наверх в будущем; сейчас вызывающий код игнорирует).
-    """
-    if users_total > 0 or subs_total > 0:
-        return False
-    backups_dir = logs_dir / "backups"
-    try:
-        had_users_backups = any(
-            item.name.startswith("users.json.") and item.name.endswith(".bak")
-            for item in backups_dir.iterdir()
-        )
-    except OSError:
-        had_users_backups = False
-    if not had_users_backups:
-        return False
-    log.warning(
-        "Persistence is empty (users=0, subs=0) but %s contains users.json.*.bak — "
-        "store likely reset (legacy systemd → Docker volume migration?). "
-        "Restore the latest snapshot or run scripts/migrate-legacy-logs.sh; "
-        "see docs/troubleshooting.md.",
-        backups_dir,
-    )
-    return True
 
 
 class TelegramBot:
@@ -155,6 +117,12 @@ class TelegramBot:
             weather_config=settings.weather,
             weather_client=self._weather_client,
         )
+        self._dispatcher = UpdateDispatcher(
+            executor=self._executor,
+            chat_locks=self._chat_locks,
+            offset_tracker=self._offset_tracker,
+            stop_event=self._stop_event,
+        )
 
     def run(self) -> None:
         self._install_signal_handlers()
@@ -177,69 +145,20 @@ class TelegramBot:
             self.shutdown()
 
     def _log_persistence_summary(self) -> None:
-        """Печатает в журнал, сколько пользователей и подписок загрузилось.
-
-        Нужно, чтобы при каждом ``systemctl restart`` админ видел в журнале
-        стабильные числа («users approved=2 connected=2 subs active=2») и не
-        ловил ложное «после деплоя всё сбросилось». Падать здесь нельзя — это
-        диагностика, а не валидация.
-        """
-        users = self._users.list_all()
-        approved = sum(1 for rec in users if rec.status == USER_STATUS_APPROVED)
-        with_calendar = sum(1 for rec in users if rec.has_calendar)
-        subs_all = self._subscriptions.list_all()
-        subs_active = sum(1 for sub in subs_all if sub.digest_enabled)
-        snapshots = [str(path) for path in self._startup_snapshots]
-        log.info(
-            "Persistence loaded: users total=%d approved=%d calendar_connected=%d "
-            "subscriptions total=%d active=%d users_path=%s subscriptions_path=%s "
-            "key_fingerprint=%s snapshots=%s",
-            len(users),
-            approved,
-            with_calendar,
-            len(subs_all),
-            subs_active,
-            self._users_path,
-            self._subscriptions_path,
-            _encryption_key_fingerprint(self._settings.security.encryption_key),
-            snapshots or "[]",
-        )
-        warn_if_users_lost(
-            logs_dir=self._users_path.parent,
-            users_total=len(users),
-            subs_total=len(subs_all),
+        log_persistence_summary(
+            users=self._users,
+            subscriptions=self._subscriptions,
+            users_path=self._users_path,
+            subscriptions_path=self._subscriptions_path,
+            encryption_key=self._settings.security.encryption_key,
+            startup_snapshots=self._startup_snapshots,
         )
 
     def _verify_encryption_key_against_existing_users(self) -> None:
-        """Пробует расшифровать хоть один существующий ``encrypted_credentials``.
-
-        Сценарий, ради которого это нужно: админ случайно перегенерил
-        ``TOKEN_ENCRYPTION_KEY`` в ``.env`` (или ``.env`` уехал из бэкапа со
-        старого хоста). Бот стартует, но все подключения календарей становятся
-        «битыми» — пользователи видят «настройки сбросились». Лучше один раз
-        громко крикнуть в журнал, чем молча работать с осиротевшими записями.
-        """
-        candidates = [
-            rec
-            for rec in self._users.list_all()
-            if rec.encrypted_credentials and rec.status == USER_STATUS_APPROVED
-        ]
-        if not candidates:
-            return
-        for rec in candidates:
-            try:
-                self._token_vault.decrypt(rec.encrypted_credentials or "")
-            except TokenDecryptError:
-                continue
-            return
-        log.critical(
-            "Encryption self-check failed: %d approved users have credentials, "
-            "but none decrypt with current TOKEN_ENCRYPTION_KEY (fingerprint=%s). "
-            "The key was likely rotated since users connected their calendars. "
-            "Restore the previous .env (or logs/backups snapshot) to keep settings; "
-            "see docs/troubleshooting.md.",
-            len(candidates),
-            _encryption_key_fingerprint(self._settings.security.encryption_key),
+        verify_encryption_key_against_existing_users(
+            users=self._users,
+            token_vault=self._token_vault,
+            encryption_key=self._settings.security.encryption_key,
         )
 
     def _register_identity_safely(self) -> None:
@@ -306,7 +225,7 @@ class TelegramBot:
             for update in updates:
                 if self._stop_event.is_set():
                     break
-                self._dispatch_update(ctx, update)
+                self._dispatcher.dispatch_update(ctx, update)
 
     def _poll_updates_or_backoff(self, backoff: float) -> list[dict] | None:
         try:
@@ -321,60 +240,6 @@ class TelegramBot:
         self._sleep_interruptible(backoff)
         return None
 
-    def _dispatch_update(self, ctx: HandlerContext, update: dict) -> None:
-        update_id = int(update.get("update_id") or 0)
-        if update_id <= 0:
-            return
-
-        if not self._offset_tracker.mark_dispatched(update_id):
-            return
-
-        if is_update_callback(update):
-            self._dispatch_callback(ctx, update, update_id)
-            return
-        if is_update_message(update):
-            self._dispatch_message(ctx, update, update_id)
-            return
-        self._offset_tracker.mark_completed(update_id)
-
-    def _dispatch_message(self, ctx: HandlerContext, update: dict, update_id: int) -> None:
-        msg = extract_message(update)
-
-        try:
-            future = self._executor.submit(self._run_message_handler, ctx, msg)
-        except RuntimeError:
-            log.info("Executor shut down; deferring update_id=%s", msg.update_id)
-            return
-
-        future.add_done_callback(lambda _fut: self._on_message_done(msg))
-
-    def _dispatch_callback(self, ctx: HandlerContext, update: dict, update_id: int) -> None:
-        cb = extract_callback_query(update)
-        if cb is None:
-            self._offset_tracker.mark_completed(update_id)
-            return
-
-        try:
-            future = self._executor.submit(self._run_callback_handler, ctx, cb)
-        except RuntimeError:
-            log.info("Executor shut down; deferring callback update_id=%s", cb.update_id)
-            return
-
-        future.add_done_callback(lambda _fut: self._offset_tracker.mark_completed(cb.update_id))
-
-    def _run_message_handler(self, ctx: HandlerContext, msg: IncomingMessage) -> None:
-        lock = self._chat_locks.acquire(msg.chat_id)
-        with lock:
-            handle_message(ctx, msg)
-
-    def _run_callback_handler(self, ctx: HandlerContext, cb: IncomingCallback) -> None:
-        lock = self._chat_locks.acquire(cb.chat_id)
-        with lock:
-            handle_callback_query(ctx, cb)
-
-    def _on_message_done(self, msg: IncomingMessage) -> None:
-        self._offset_tracker.mark_completed(msg.update_id)
-
     def _sleep_interruptible(self, seconds: float) -> None:
         end = time.monotonic() + seconds
         while not self._stop_event.is_set():
@@ -382,15 +247,3 @@ class TelegramBot:
             if remaining <= 0:
                 return
             self._stop_event.wait(timeout=min(0.5, remaining))
-
-
-def _encryption_key_fingerprint(encryption_key: str) -> str:
-    """Короткий отпечаток ключа шифрования для журнала.
-
-    SHA256 over the key, truncated to 8 hex chars. Не позволяет восстановить
-    ключ, но даёт визуальный «равно/не равно» между перезапусками — если
-    ``key_fingerprint`` поменялся, значит ``.env`` подменили (или его
-    перегенерировал ``make env`` / ``scripts/install.sh``).
-    """
-    digest = hashlib.sha256(encryption_key.encode("utf-8")).hexdigest()
-    return digest[:8]

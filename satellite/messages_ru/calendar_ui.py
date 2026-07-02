@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from .buttons import (
     BUTTON_CONNECT_CALENDAR,
+    BUTTON_CREATE_CANCEL,
+    BUTTON_CREATE_CONFIRM,
     BUTTON_CREATE_EVENT,
     BUTTON_DAY_AFTER,
     BUTTON_FOREIGN_CALENDARS,
@@ -14,6 +16,7 @@ from .buttons import (
     BUTTON_TODAY,
     BUTTON_TOMORROW,
     BUTTON_UPCOMING,
+    styled_button,
 )
 from .identity import BOT_INPUT_PLACEHOLDER
 
@@ -53,6 +56,10 @@ CREATE_EVENT_FAILED_HTML = (
     "Если не помогло — попробуй переподключить календарь в настройках."
 )
 CREATE_EVENT_CANCELLED_HTML = "🪶 Чайка сложила черновик. Встреча не создана."
+CREATE_EVENT_CREATING_TOAST = "Создаю…"
+CREATE_EVENT_ALREADY_CREATING_TOAST = "Уже создаём…"
+CREATE_EVENT_DONE_TOAST = "Готово"
+CREATE_EVENT_DONE_SHORT = "✅ Готово."
 
 CB_CREATE_CONFIRM = "create:confirm"
 CB_CREATE_CANCEL = "create:cancel"
@@ -60,6 +67,8 @@ CB_CREATE_DATE_TODAY = "create:date:today"
 CB_CREATE_DATE_TOMORROW = "create:date:tomorrow"
 CB_CREATE_DURATION_PREFIX = "create:dur:"
 CREATE_EVENT_DURATION_PRESETS_MIN: tuple[int, ...] = (15, 30, 45, 60)
+CREATE_DATE_ALIAS_TODAY = frozenset({"сегодня", "today"})
+CREATE_DATE_ALIAS_TOMORROW = frozenset({"завтра", "tomorrow"})
 
 
 def build_create_date_keyboard() -> dict:
@@ -72,8 +81,19 @@ def build_create_date_keyboard() -> dict:
     return {
         "inline_keyboard": [
             [
-                {"text": "📅 Сегодня", "callback_data": CB_CREATE_DATE_TODAY},
-                {"text": "➡️ Завтра", "callback_data": CB_CREATE_DATE_TOMORROW},
+                {"text": BUTTON_TODAY, "callback_data": CB_CREATE_DATE_TODAY},
+                {"text": BUTTON_TOMORROW, "callback_data": CB_CREATE_DATE_TOMORROW},
+            ]
+        ]
+    }
+
+
+def build_create_confirm_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                styled_button(BUTTON_CREATE_CONFIRM, CB_CREATE_CONFIRM, style="success"),
+                styled_button(BUTTON_CREATE_CANCEL, CB_CREATE_CANCEL, style="danger"),
             ]
         ]
     }

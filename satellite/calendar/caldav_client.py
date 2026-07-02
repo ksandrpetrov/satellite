@@ -19,11 +19,13 @@ from caldav.lib.error import DAVError
 from icalendar import Calendar as IcsCalendar
 from icalendar import Event as IcsEvent
 
+from . import caldav_discovery as discovery_helpers
+from . import caldav_partstat as partstat_helpers
 from .events import day_bounds, event_local_start_date, sort_key
 from .events._collectors import event_relevant_for_invitations
 from .events._partstat import user_partstat
 from .events._time import event_ends_after
-from .ical_parser import _attendee_to_str, parse_calendar_events
+from .ical_parser import parse_calendar_events
 
 DEFAULT_CALDAV_URL = "https://calendar.mail.ru/"
 
@@ -49,19 +51,12 @@ Event = dict[str, Any]
 
 
 def _normalize_url(url: str) -> str:
-    return url.rstrip("/")
+    return discovery_helpers.normalize_url(url)
 
 
 def login_variants_for_caldav(login: str) -> list[str]:
     """Варианты логина для Basic Auth (Mail.ru / корпоративные @vk.team и др.)."""
-    normalized = (login or "").strip()
-    if not normalized:
-        return [""]
-    variants = [normalized]
-    local, sep, _domain = normalized.partition("@")
-    if sep and local and local not in variants:
-        variants.append(local)
-    return variants
+    return discovery_helpers.login_variants_for_caldav(login)
 
 
 def _attendee_matches_login_variants(attendee: Any, login_variants: Sequence[str]) -> bool:
@@ -70,51 +65,23 @@ def _attendee_matches_login_variants(attendee: Any, login_variants: Sequence[str
     ``str(vCalAddress)`` отдаёт только mailto без PARTSTAT — сравниваем через
     ``_attendee_to_str``, как в ``ical_parser`` / ``events.user_partstat``.
     """
-    blob = _attendee_to_str(attendee).casefold()
-    if not blob:
-        return False
-    for variant in login_variants:
-        needle = (variant or "").strip().casefold()
-        if needle and needle in blob:
-            return True
-    return False
+    return partstat_helpers.attendee_matches_login_variants(attendee, login_variants)
 
 
 def _bump_vevent_dtstamp(component: Any) -> None:
-    for prop in ("dtstamp", "DTSTAMP"):
-        if prop in component:
-            del component[prop]
-    component.add("dtstamp", datetime.now(tz=timezone.utc))
+    partstat_helpers.bump_vevent_dtstamp(component)
 
 
 def _bump_vevent_sequence(component: Any) -> None:
     """Инкремент SEQUENCE перед PUT (Mail.ru отклоняет устаревшую версию без него)."""
-    seq = component.get("SEQUENCE")
-    try:
-        next_seq = int(seq) + 1 if seq is not None else 0
-    except (TypeError, ValueError):
-        next_seq = 1
-    for prop in ("sequence", "SEQUENCE"):
-        if prop in component:
-            del component[prop]
-    component.add("sequence", next_seq)
+    partstat_helpers.bump_vevent_sequence(component)
 
 
 def _update_vevent_attendee_partstat(
     component: Any, login_variants: Sequence[str], partstat: str
 ) -> bool:
     """Обновляет PARTSTAT существующего ATTENDEE; False, если совпадений нет."""
-    raw_attendees = component.get("ATTENDEE")
-    if raw_attendees is None:
-        return False
-    items = raw_attendees if isinstance(raw_attendees, list) else [raw_attendees]
-    updated = False
-    for attendee in items:
-        if not _attendee_matches_login_variants(attendee, login_variants):
-            continue
-        attendee.params["PARTSTAT"] = partstat
-        updated = True
-    return updated
+    return partstat_helpers.update_vevent_attendee_partstat(component, login_variants, partstat)
 
 
 def _update_vevent_pending_attendee_partstat(component: Any, partstat: str) -> bool:
@@ -123,75 +90,20 @@ def _update_vevent_pending_attendee_partstat(component: Any, partstat: str) -> b
     Mail.ru иногда кладёт в ICS другой mailto, чем логин CalDAV (алиас/CN), а
     единственная строка с ожиданием ответа — с PARTSTAT=NEEDS-ACTION.
     """
-    raw_attendees = component.get("ATTENDEE")
-    if raw_attendees is None:
-        return False
-    items = raw_attendees if isinstance(raw_attendees, list) else [raw_attendees]
-    for attendee in items:
-        blob = _attendee_to_str(attendee).casefold()
-        if "partstat=needs-action" in blob or "partstat=delegated" in blob:
-            attendee.params["PARTSTAT"] = partstat
-            return True
-    return False
+    return partstat_helpers.update_vevent_pending_attendee_partstat(component, partstat)
 
 
 def _add_vevent_attendee(component: Any, login: str, partstat: str) -> None:
     """Добавляет ATTENDEE для логина (Mail.ru иногда отдаёт PARTSTAT только в GET)."""
-    mailto = (login or "").strip()
-    if not mailto:
-        raise CalDAVError("Login is required to add ATTENDEE")
-    component.add(
-        "attendee",
-        f"mailto:{mailto}",
-        parameters={
-            "PARTSTAT": partstat,
-            "RSVP": "TRUE",
-            "ROLE": "REQ-PARTICIPANT",
-        },
-    )
+    try:
+        partstat_helpers.add_vevent_attendee(component, login, partstat)
+    except ValueError as exc:
+        raise CalDAVError(str(exc)) from exc
 
 
 def build_candidate_urls(caldav_url: str | None, login: str) -> list[str]:
     """Возвращает порядок эндпоинтов для попыток discovery (наиболее вероятные сверху)."""
-    login_name, _, domain = (login or "").partition("@")
-    domain = domain or "mail.ru"
-
-    seed = _normalize_url(caldav_url) if caldav_url else _normalize_url(DEFAULT_CALDAV_URL)
-    roots = [seed]
-    if seed.startswith("https://calendar.mail.ru"):
-        default_root = _normalize_url(DEFAULT_CALDAV_URL)
-        if default_root not in roots:
-            roots.append(default_root)
-
-    direct_mailru_principal = (
-        f"https://calendar.mail.ru/principals/{domain}/{login_name}" if login_name else ""
-    )
-    candidates: list[str] = []
-    if seed.startswith("https://calendar.mail.ru") and direct_mailru_principal:
-        candidates.append(direct_mailru_principal)
-        candidates.append(f"{direct_mailru_principal}/")
-    for root in roots:
-        candidates.extend(
-            [
-                root,
-                f"{root}/.well-known/caldav",
-                f"{root}/caldav",
-                f"{root}/dav",
-                f"{root}/principals/{domain}/{login_name}",
-                f"{root}/principals/{domain}/{login_name}/",
-                f"{root}/calendars/{domain}/{login_name}",
-                f"{root}/calendars/{domain}/{login_name}/",
-            ]
-        )
-
-    seen: set[str] = set()
-    unique: list[str] = []
-    for item in candidates:
-        key = item.rstrip("/")
-        if key not in seen:
-            seen.add(key)
-            unique.append(item)
-    return unique
+    return discovery_helpers.build_candidate_urls(caldav_url, login)
 
 
 def _normalize_calendar_name(name: str | None) -> str:
@@ -199,10 +111,7 @@ def _normalize_calendar_name(name: str | None) -> str:
 
 
 def calendar_matches(cal_name: str | None, target: str | None) -> bool:
-    target_norm = _normalize_calendar_name(target)
-    if not target_norm:
-        return True
-    return _normalize_calendar_name(cal_name) == target_norm
+    return discovery_helpers.calendar_matches(cal_name, target)
 
 
 @dataclass

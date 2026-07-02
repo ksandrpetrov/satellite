@@ -8,7 +8,6 @@ Builder'ы — pure (без I/O, без monkeypatch), фикстуры соби�
 from __future__ import annotations
 
 import socket
-import sys
 from collections.abc import Iterable
 from datetime import datetime, tzinfo
 from pathlib import Path
@@ -21,11 +20,14 @@ import pytest
 from satellite.calendar.stats import NormalizedEvent
 from satellite.calendar.time_utils import parse_hhmm
 from satellite.telegram_bot.handlers.context import IncomingCallback, IncomingMessage
-
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
+from satellite.testing.delivery_helpers import (
+    callback_edit_html,
+    callback_edit_markup,
+    callback_edit_was_called,
+    final_message_html,
+    final_reply_markup,
+    sent_messages_text,
+)
 
 # --- event builder (исторический, для калькулятора метрик) -----------------
 
@@ -119,36 +121,15 @@ def make_fake_telegram() -> MagicMock:
     return tg
 
 
-def final_message_html(telegram: MagicMock) -> str:
-    """HTML финального ответа: ``sendRichMessage`` или fallback ``sendMessage``."""
-    if telegram.send_rich_message.called:
-        payload = telegram.send_rich_message.call_args[0][1]
-        return str(payload["html"])
-    assert telegram.send_message.called
-    return str(telegram.send_message.call_args[0][1])
-
-
-def final_reply_markup(telegram: MagicMock):
-    """``reply_markup`` из финальной доставки (rich или legacy)."""
-    if telegram.send_rich_message.called:
-        return telegram.send_rich_message.call_args.kwargs.get("reply_markup")
-    return telegram.send_message.call_args.kwargs.get("reply_markup")
-
-
-def callback_edit_html(telegram: MagicMock) -> str:
-    """HTML после ``editMessageText`` (rich или legacy)."""
-    if telegram.edit_message_rich.called:
-        payload = telegram.edit_message_rich.call_args[0][2]
-        return str(payload["html"])
-    assert telegram.edit_message_text.called
-    return str(telegram.edit_message_text.call_args[0][2])
-
-
-def callback_edit_markup(telegram: MagicMock):
-    """``reply_markup`` из callback-edit (rich или legacy)."""
-    if telegram.edit_message_rich.called:
-        return telegram.edit_message_rich.call_args.kwargs.get("reply_markup")
-    return telegram.edit_message_text.call_args.kwargs.get("reply_markup")
+# Re-export for backward compatibility in tests that import from conftest via pytest.
+__all__ = [
+    "callback_edit_html",
+    "callback_edit_markup",
+    "callback_edit_was_called",
+    "final_message_html",
+    "final_reply_markup",
+    "sent_messages_text",
+]
 
 
 # --- IncomingMessage / IncomingCallback builders ---------------------------

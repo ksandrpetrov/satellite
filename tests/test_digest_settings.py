@@ -61,6 +61,16 @@ from satellite.telegram_bot.handlers import (
 )
 from satellite.telegram_bot.handlers.digest_state import DigestStateStore
 from satellite.telegram_bot.handlers.settings import handle_digest_time_input
+from satellite.testing.delivery_helpers import (
+    callback_edit_html,
+    callback_edit_markup,
+    callback_edit_was_called,
+    final_message_html,
+    final_reply_markup,
+    sent_messages_text,
+)
+
+from .conftest import make_fake_telegram
 
 # --- time validation -------------------------------------------------------
 
@@ -322,10 +332,7 @@ def _ctx(tmp_path: Path, *, username: str = "alice"):
     ctx.tz = ZoneInfo("Europe/Moscow")
     ctx.subscriptions = store
     ctx.digest_state = state
-    ctx.telegram = MagicMock()
-    ctx.telegram.send_message = MagicMock(return_value={"message_id": 1001})
-    ctx.telegram.edit_message_text = MagicMock(return_value={})
-    ctx.telegram.answer_callback_query = MagicMock(return_value=True)
+    ctx.telegram = make_fake_telegram()
     return ctx, store, state
 
 
@@ -357,11 +364,9 @@ def test_digest_settings_button_sends_inline_settings_screen(tmp_path: Path):
     )
     handle_message(ctx, msg)
 
-    ctx.telegram.send_message.assert_called_once()
-    call = ctx.telegram.send_message.call_args
-    assert call.args[0] == 900
-    assert "Настройки Чайки" in call.args[1]
-    keyboard = call.kwargs.get("reply_markup")
+    text = final_message_html(ctx.telegram)
+    assert "Настройки Чайки" in text
+    keyboard = final_reply_markup(ctx.telegram)
     assert keyboard is not None
     assert "inline_keyboard" in keyboard
     labels = [btn["text"] for row in keyboard["inline_keyboard"] for btn in row]
@@ -383,7 +388,7 @@ def test_settings_hub_digest_button_opens_digest_screen(tmp_path: Path):
 
     handle_callback_query(ctx, _callback(900, CB_SETTINGS_DIGEST))
 
-    text = ctx.telegram.edit_message_text.call_args.args[2]
+    text = callback_edit_html(ctx.telegram)
     assert "Настройки дайджеста на сегодня" in text
     assert "🔕" in text
     assert "будни" in text
@@ -404,7 +409,7 @@ def test_digest_settings_screen_shows_enabled_status_after_subscribe(tmp_path: P
     handle_message(ctx, msg)
     handle_callback_query(ctx, _callback(900, CB_SETTINGS_DIGEST))
 
-    text = ctx.telegram.edit_message_text.call_args.args[2]
+    text = callback_edit_html(ctx.telegram)
     assert "🔔" in text
     assert "включён" in text
 
@@ -441,9 +446,8 @@ def test_callback_days_screen_shows_current_value(tmp_path: Path):
 
     handle_callback_query(ctx, _callback(900, CB_DIGEST_DAYS))
 
-    ctx.telegram.edit_message_text.assert_called_once()
-    edit_args = ctx.telegram.edit_message_text.call_args
-    text = edit_args.args[2]
+    assert callback_edit_was_called(ctx.telegram)
+    text = callback_edit_html(ctx.telegram)
     assert "Дни отправки" in text
     assert "будни" in text
 
@@ -457,10 +461,10 @@ def test_callback_select_weekdays_saves_and_acks(tmp_path: Path):
 
     assert store.get(900).digest_days == DIGEST_DAYS_WEEKDAYS
     # после выбора отправляется подтверждение
-    sent_messages = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
+    sent_messages = sent_messages_text(ctx.telegram)
     assert DIGEST_DAYS_WEEKDAYS_APPLIED_TEXT in sent_messages
     # и сам inline-экран обновлён на главный (через editMessageText)
-    ctx.telegram.edit_message_text.assert_called()
+    assert callback_edit_was_called(ctx.telegram)
 
 
 def test_callback_select_all_days_saves_value(tmp_path: Path):
@@ -470,7 +474,7 @@ def test_callback_select_all_days_saves_value(tmp_path: Path):
     handle_callback_query(ctx, _callback(900, CB_DIGEST_DAYS_ALL))
 
     assert store.get(900).digest_days == DIGEST_DAYS_ALL
-    sent_messages = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
+    sent_messages = sent_messages_text(ctx.telegram)
     assert DIGEST_DAYS_ALL_APPLIED_TEXT in sent_messages
 
 
@@ -486,7 +490,7 @@ def test_callback_time_sets_waiting_state(tmp_path: Path):
     assert state.is_waiting_for_time(900)
     assert state.get(900).message_id == 77
     # пользователю показали экран ввода времени (через edit)
-    edit_text = ctx.telegram.edit_message_text.call_args.args[2]
+    edit_text = callback_edit_html(ctx.telegram)
     assert "Время отправки" in edit_text
     assert "09:30" in edit_text
 
@@ -504,7 +508,7 @@ def test_valid_time_input_saves_and_clears_state(tmp_path: Path):
     assert store.get(900).digest_time == "08:30"
     assert not state.is_waiting_for_time(900)
     # отправили подтверждение успеха
-    confirm = ctx.telegram.send_message.call_args.args[1]
+    confirm = final_message_html(ctx.telegram)
     assert confirm == digest_time_applied_text("08:30")
 
 
@@ -534,7 +538,7 @@ def test_invalid_time_input_keeps_state_and_does_not_change_settings(tmp_path: P
 
     assert store.get(900).digest_time == original_time
     assert state.is_waiting_for_time(900)  # state НЕ очищен
-    invalid_msg = ctx.telegram.send_message.call_args.args[1]
+    invalid_msg = final_message_html(ctx.telegram)
     assert invalid_msg == DIGEST_TIME_INVALID_TEXT
 
 
@@ -587,7 +591,7 @@ def test_callback_toggle_persistence_failure_sends_safe_text(
 
     handle_callback_query(ctx, _callback(900, CB_DIGEST_TOGGLE))
 
-    sent_texts = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     assert ERR_SETTINGS_SAVE_FAILED_TEXT in sent_texts
     ctx.telegram.edit_message_text.assert_not_called()
     ctx.telegram.answer_callback_query.assert_called()
@@ -616,10 +620,13 @@ def test_duplicate_callback_query_id_is_dropped(tmp_path: Path):
     handle_callback_query(ctx, cb)  # тот же id — должен быть проигнорирован
     handle_callback_query(ctx, cb)
 
-    # edit_message_text вызван только один раз; send_message — ни разу
+    # edit вызван только один раз; send_message — ни разу
     # (раньше fallback в send_message и был источником спама).
-    assert ctx.telegram.edit_message_text.call_count == 1
+    assert (
+        ctx.telegram.edit_message_rich.call_count + ctx.telegram.edit_message_text.call_count
+    ) == 1
     ctx.telegram.send_message.assert_not_called()
+    ctx.telegram.send_rich_message.assert_not_called()
     assert ctx.telegram.answer_callback_query.call_count == 3
 
 
@@ -649,7 +656,7 @@ def test_edit_failure_does_not_fallback_to_send_message(tmp_path: Path):
 
     handle_callback_query(ctx, _callback(900, CB_DIGEST_TIME))
 
-    ctx.telegram.edit_message_text.assert_called_once()
+    assert callback_edit_was_called(ctx.telegram)
     ctx.telegram.send_message.assert_not_called()
 
 
@@ -674,7 +681,7 @@ def test_callback_close_clears_state(tmp_path: Path):
     handle_callback_query(ctx, _callback(900, CB_DIGEST_CLOSE))
 
     assert not state.is_waiting_for_time(900)
-    edit_text = ctx.telegram.edit_message_text.call_args.args[2]
+    edit_text = callback_edit_html(ctx.telegram)
     assert edit_text == DIGEST_SETTINGS_CLOSED_TEXT
 
 
@@ -684,7 +691,7 @@ def test_callback_settings_opens_main_screen(tmp_path: Path):
 
     handle_callback_query(ctx, _callback(900, CB_DIGEST_SETTINGS))
 
-    edit_text = ctx.telegram.edit_message_text.call_args.args[2]
+    edit_text = callback_edit_html(ctx.telegram)
     assert "Настройки дайджеста на сегодня" in edit_text
 
 
@@ -697,8 +704,8 @@ def test_settings_hub_pending_button_opens_pending_screen(tmp_path: Path):
     ctx, store, _state = _ctx(tmp_path)
     handle_callback_query(ctx, _callback(900, CB_PENDING_DIGEST_SETTINGS))
 
-    text = ctx.telegram.edit_message_text.call_args.args[2]
-    assert "Настройки дайджеста непринятых встреч" in text
+    text = callback_edit_html(ctx.telegram)
+    assert "Дайджест непринятых встреч" in text
     assert "🔕" in text
 
 
@@ -711,7 +718,7 @@ def test_pending_digest_toggle_enables(tmp_path: Path):
     handle_callback_query(ctx, _callback(900, CB_PENDING_DIGEST_TOGGLE))
 
     assert store.get(900).pending_digest_enabled is True
-    text = ctx.telegram.edit_message_text.call_args.args[2]
+    text = callback_edit_html(ctx.telegram)
     assert "включён" in text
 
 
@@ -763,7 +770,7 @@ def test_pending_digest_days_keyboard_shows_weekday_toggles(tmp_path: Path):
 
     handle_callback_query(ctx, _callback(900, CB_PENDING_DIGEST_DAYS))
 
-    keyboard = ctx.telegram.edit_message_text.call_args.kwargs["reply_markup"]
+    keyboard = callback_edit_markup(ctx.telegram)
     rows = keyboard["inline_keyboard"]
     assert len(rows) == 9  # 7 дней + пресеты + назад
     assert rows[0][0]["text"] == "✅ Пн"
@@ -791,7 +798,7 @@ def test_pending_digest_time_input_updates_field(tmp_path: Path):
         ),
     )
     assert state.is_waiting_for_time(900)
-    assert ctx.telegram.send_message.call_args.args[1] == PENDING_DIGEST_TIME_INVALID_TEXT
+    assert final_message_html(ctx.telegram) == PENDING_DIGEST_TIME_INVALID_TEXT
 
     handle_digest_time_input(
         ctx,
@@ -836,7 +843,7 @@ def test_legacy_subscribe_button_enables_digest_via_settings_model(tmp_path: Pat
     assert settings.digest_time == "10:15"
 
     # подтверждение содержит реальное время пользователя и режим
-    confirmation = ctx.telegram.send_message.call_args.args[1]
+    confirmation = final_message_html(ctx.telegram)
     assert "10:15" in confirmation
     assert "каждый день" in confirmation
 
@@ -934,11 +941,9 @@ def test_settings_command_opens_inline_screen(tmp_path: Path):
     )
     handle_message(ctx, msg)
 
-    ctx.telegram.send_message.assert_called_once()
-    call = ctx.telegram.send_message.call_args
-    text = call.args[1]
+    text = final_message_html(ctx.telegram)
     assert "Настройки Чайки" in text
-    keyboard = call.kwargs.get("reply_markup")
+    keyboard = final_reply_markup(ctx.telegram)
     assert keyboard is not None
     assert "inline_keyboard" in keyboard
 
@@ -1019,5 +1024,5 @@ def test_daily_digest_weather_toggle_updates_user_preference(tmp_path: Path):
 
     assert users.get(1) is not None
     assert users.get(1).weather_in_plan_enabled is False
-    text = ctx.telegram.edit_message_text.call_args.args[2]
+    text = callback_edit_html(ctx.telegram)
     assert "Погода в дайджесте: <b>выключена</b>" in text

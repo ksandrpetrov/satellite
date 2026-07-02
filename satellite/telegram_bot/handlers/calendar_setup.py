@@ -5,20 +5,17 @@ from __future__ import annotations
 import json
 import logging
 
-from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
+from ...calendar.providers.base import CalendarProviderError
 from ...calendar.providers.registry import PROVIDER_IDS, PROVIDER_MAILRU, PROVIDER_YANDEX
 from ...messages_ru import (
     CALENDAR_CHECK_FAIL_HTML,
-    CALENDAR_CHECK_OK_HTML,
     CALENDAR_CONNECTED_HTML,
-    CALENDAR_DISCONNECTED_HTML,
     CALENDAR_NOT_CONNECTED_HTML,
     CALENDAR_RECONNECT_INTRO_HTML,
     build_webapp_connect_keyboard,
 )
 from ...security.token_vault import ProviderCredentials
 from ...users import UserStorePersistenceError
-from ..html_format import build_copy_text_button as _copy_btn
 from ..visual import (
     EFFECT_HEART,
     private_message_effect,
@@ -26,21 +23,15 @@ from ..visual import (
     set_default_menu_button_for_chat,
 )
 from .access import ensure_calendar_access
+from .calendar_actions import (
+    build_connected_login_keyboard,
+    calendar_check_result,
+    disconnect_calendar_action,
+)
 from .context import HandlerContext, IncomingMessage
 from .delivery import send, webapp_connect_url
 
 log = logging.getLogger(__name__)
-
-
-def _check_ok_keyboard(ctx: HandlerContext, user_id: int) -> dict | None:
-    try:
-        connected = ctx.calendar_service.require_connection(user_id)
-        login = (connected.context.login or "").strip()
-    except (CalendarNotConnectedError, CalendarProviderError):
-        return None
-    if not login:
-        return None
-    return {"inline_keyboard": [[_copy_btn("📋 Скопировать e-mail", login)]]}
 
 
 def handle_web_app_connect(ctx: HandlerContext, msg: IncomingMessage) -> None:
@@ -82,7 +73,7 @@ def handle_web_app_connect(ctx: HandlerContext, msg: IncomingMessage) -> None:
             msg.chat_id,
             CALENDAR_CONNECTED_HTML,
             message_effect_id=private_message_effect(EFFECT_HEART, msg.chat_id),
-            reply_markup=_check_ok_keyboard(ctx, msg.user_id),
+            reply_markup=build_connected_login_keyboard(ctx, msg.user_id),
         )
     except CalendarProviderError:
         send(ctx, msg.chat_id, CALENDAR_CHECK_FAIL_HTML)
@@ -110,24 +101,18 @@ def handle_connect_calendar_button(ctx: HandlerContext, msg: IncomingMessage) ->
 def handle_check_calendar(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_access(ctx, msg) or msg.chat_id is None or msg.user_id is None:
         return
-    try:
-        status = ctx.calendar_service.check_connection(msg.user_id)
-        text = CALENDAR_CHECK_OK_HTML if status.connected else CALENDAR_CHECK_FAIL_HTML
-        markup = _check_ok_keyboard(ctx, msg.user_id) if status.connected else None
-        if status.connected and markup:
-            ctx.telegram.send_message(msg.chat_id, text, reply_markup=markup)
-        else:
-            send(ctx, msg.chat_id, text)
-    except (CalendarNotConnectedError, CalendarProviderError):
-        send(ctx, msg.chat_id, CALENDAR_CHECK_FAIL_HTML)
+    text, markup = calendar_check_result(ctx, msg.user_id)
+    if markup is not None:
+        ctx.telegram.send_message(msg.chat_id, text, reply_markup=markup)
+        return
+    send(ctx, msg.chat_id, text)
 
 
 def handle_disconnect_calendar(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_access(ctx, msg) or msg.chat_id is None or msg.user_id is None:
         return
-    try:
-        ctx.calendar_service.disconnect(msg.user_id)
-        set_default_menu_button_for_chat(ctx.telegram, msg.chat_id)
-        send(ctx, msg.chat_id, CALENDAR_DISCONNECTED_HTML)
-    except KeyError:
-        send(ctx, msg.chat_id, CALENDAR_NOT_CONNECTED_HTML)
+    send(
+        ctx,
+        msg.chat_id,
+        disconnect_calendar_action(ctx, user_id=msg.user_id, chat_id=msg.chat_id),
+    )

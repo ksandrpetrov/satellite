@@ -19,7 +19,7 @@ BOT_DESCRIPTION_RU = (
 
 
 def _build_bot_welcome_html() -> str:
-    from ..telegram_bot.html_format import blockquote, replace_first_char_with_tg_emoji
+    from ..formatters.html import blockquote, replace_first_char_with_tg_emoji
 
     tip = blockquote(
         "Подсказка: добавь в встречу эмоджи 🍕 и слово «обед» — чайка засчитает её "
@@ -41,7 +41,7 @@ def _build_bot_welcome_html() -> str:
 
 
 def _build_bot_help_html() -> str:
-    from ..telegram_bot.html_format import expandable_blockquote, replace_first_char_with_tg_emoji
+    from ..formatters.html import expandable_blockquote, replace_first_char_with_tg_emoji
 
     commands_block = expandable_blockquote(
         "/today, /tomorrow, /aftertomorrow — план дня\n"
@@ -83,4 +83,18 @@ REPLY_KEYBOARD_REMOVE: dict = {"remove_keyboard": True}
 
 BOT_KEYBOARD_HINT = (
     "🪶 Чайка не узнала команду.\nЖми кнопку внизу или открой меню — там все основные действия."
+)
+
+# Порядок задаёт отображение в меню Telegram (без ведущего слэша).
+BOT_COMMANDS: tuple[tuple[str, str], ...] = (
+    ("start", "Перезапустить бота"),
+    ("today", "Встречи на сегодня"),
+    ("tomorrow", "Встречи на завтра"),
+    ("aftertomorrow", "Встречи на послезавтра"),
+    ("upcoming", "Ближайшие события"),
+    ("invitations", "Ответить на приглашения"),
+    ("manage", "Изменить статус встречи"),
+    ("create", "Создать событие"),
+    ("settings", "Настройки"),
+    ("help", "Как пользоваться ботом"),
 )

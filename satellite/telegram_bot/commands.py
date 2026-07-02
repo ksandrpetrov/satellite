@@ -12,6 +12,7 @@ import logging
 from collections.abc import Iterable
 
 from ..messages_ru import (
+    BOT_COMMANDS,
     BOT_DESCRIPTION_RU,
     BOT_NAME_RU,
     BOT_SHORT_DESCRIPTION_RU,
@@ -20,26 +21,8 @@ from .api import TelegramClient, TelegramError
 
 log = logging.getLogger(__name__)
 
-
-# (command, description). Описания пишем без ведущего слэша — Telegram сам
-# добавит его в меню. Порядок задаёт порядок отображения в клиенте.
-#
-# В меню сознательно нет /digest и /stopdigest: включение и отключение дайджеста
-# доступны из /settings (там же, где настройки дней и времени), чтобы меню не
-# распухало и подписка управлялась в одном месте. Сами команды /digest и
-# /stopdigest по-прежнему работают как текстовые — см. handlers.py.
-BOT_COMMANDS: tuple[tuple[str, str], ...] = (
-    ("start", "Перезапустить бота"),
-    ("today", "Встречи на сегодня"),
-    ("tomorrow", "Встречи на завтра"),
-    ("aftertomorrow", "Встречи на послезавтра"),
-    ("upcoming", "Ближайшие события"),
-    ("invitations", "Ответить на приглашения"),
-    ("manage", "Изменить статус встречи"),
-    ("create", "Создать событие"),
-    ("settings", "Настройки"),
-    ("help", "Как пользоваться ботом"),
-)
+# Реэкспорт для обратной совместимости тестов и внешних импортов.
+__all__ = ["BOT_COMMANDS", "setup_bot_identity"]
 
 _MENU_BUTTON_COMMANDS: dict[str, str] = {"type": "commands"}
 

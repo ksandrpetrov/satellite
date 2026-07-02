@@ -27,6 +27,7 @@ from satellite.messages_ru import (
 from satellite.telegram_bot.api import TelegramError
 from satellite.telegram_bot.handlers import IncomingCallback, handle_callback_query
 from satellite.telegram_bot.handlers.analytics import CB_ANALYTICS_RUN
+from satellite.testing.delivery_helpers import final_message_html
 from satellite.users import CALENDAR_CONNECTED, USER_STATUS_APPROVED, UserStore
 
 
@@ -106,7 +107,7 @@ def test_unexpected_exception_replaces_loading_message(tmp_path: Path, monkeypat
         _run_analytics_callback(ctx, build_side_effect=err, monkeypatch=monkeypatch)
 
     ctx.telegram.send_message.assert_called_once()
-    assert ctx.telegram.send_message.call_args[0][1] == ERR_GENERIC_HANDLER_TEXT
+    assert final_message_html(ctx.telegram) == ERR_GENERIC_HANDLER_TEXT
     ctx.telegram.edit_message_text.assert_not_called()
 
     assert any(record.exc_info is not None for record in caplog.records), (
@@ -120,7 +121,7 @@ def test_calendar_provider_error_uses_caldav_text(tmp_path: Path, monkeypatch):
     _run_analytics_callback(ctx, build_side_effect=err, monkeypatch=monkeypatch)
 
     ctx.telegram.send_message.assert_called_once()
-    assert ctx.telegram.send_message.call_args[0][1] == ERR_CALDAV_UNAVAILABLE_TEXT
+    assert final_message_html(ctx.telegram) == ERR_CALDAV_UNAVAILABLE_TEXT
 
 
 def test_not_connected_error_uses_caldav_text(tmp_path: Path, monkeypatch):
@@ -129,7 +130,7 @@ def test_not_connected_error_uses_caldav_text(tmp_path: Path, monkeypatch):
     _run_analytics_callback(ctx, build_side_effect=err, monkeypatch=monkeypatch)
 
     ctx.telegram.send_message.assert_called_once()
-    assert ctx.telegram.send_message.call_args[0][1] == ERR_CALDAV_UNAVAILABLE_TEXT, (
+    assert final_message_html(ctx.telegram) == ERR_CALDAV_UNAVAILABLE_TEXT, (
         "CalendarNotConnectedError должен показывать ERR_CALDAV_UNAVAILABLE_TEXT"
     )
 
@@ -155,7 +156,7 @@ def test_send_photo_failure_replaces_loading_message(tmp_path: Path, monkeypatch
     )
 
     ctx.telegram.send_message.assert_called_once()
-    assert ctx.telegram.send_message.call_args[0][1] == ERR_GENERIC_HANDLER_TEXT
+    assert final_message_html(ctx.telegram) == ERR_GENERIC_HANDLER_TEXT
 
 
 def test_duplicate_run_within_cooldown_skips_second_photo(tmp_path: Path, monkeypatch):

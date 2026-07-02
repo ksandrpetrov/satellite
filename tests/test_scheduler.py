@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -270,6 +271,7 @@ def _make_scheduler(
     *,
     tmp_path: Path,
     now: datetime,
+    max_parallel_deliveries: int = 4,
 ) -> tuple[DigestScheduler, SubscriptionStore, MagicMock]:
     store = SubscriptionStore(tmp_path / "subs.json")
     users = UserStore(tmp_path / "users.json")
@@ -302,6 +304,7 @@ def _make_scheduler(
         calendar_service=calendar_service,
         telegram=telegram,
         tick_interval_sec=30.0,
+        max_parallel_deliveries=max_parallel_deliveries,
         now_fn=lambda _tz: now,
     )
     scheduler._plan_builder = MagicMock()
@@ -615,6 +618,26 @@ def test_tick_failed_user_does_not_advance_last_digest_sent_date(tmp_path: Path)
     scheduler.tick()
     assert store.get(1).last_digest_sent_date is None
     assert store.get(2).last_digest_sent_date == "2026-05-11"
+
+
+def test_tick_processes_multiple_users_in_parallel(tmp_path: Path) -> None:
+    now = _at(2026, 5, 11, 9, 0)
+    scheduler, store, _telegram = _make_scheduler(
+        tmp_path=tmp_path,
+        now=now,
+        max_parallel_deliveries=2,
+    )
+    store.subscribe(1, "alice")
+    store.subscribe(2, "bob")
+    barrier = threading.Barrier(2, timeout=1.0)
+
+    def _blocked_deliver(_sub):
+        barrier.wait()
+        return (0, 0, 0, 0, 0, 0)
+
+    scheduler._maybe_deliver = MagicMock(side_effect=_blocked_deliver)
+    assert scheduler.tick() == 0
+    assert scheduler._maybe_deliver.call_count == 2
 
 
 def test_pending_digest_wednesday_only_mask(tmp_path: Path) -> None:

@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, tzinfo
 from zoneinfo import ZoneInfo
 
@@ -43,6 +44,7 @@ from .weather.client import WeatherForecastClient
 log = logging.getLogger(__name__)
 
 _DEFAULT_TICK_SEC = 30.0
+_DEFAULT_MAX_PARALLEL_DELIVERIES = 4
 
 
 def should_fire_at(
@@ -142,6 +144,7 @@ class DigestScheduler:
         telegram: TelegramClient,
         stop_event: threading.Event | None = None,
         tick_interval_sec: float = _DEFAULT_TICK_SEC,
+        max_parallel_deliveries: int = _DEFAULT_MAX_PARALLEL_DELIVERIES,
         now_fn: Callable[[tzinfo], datetime] | None = None,
         weather_config: WeatherConfig | None = None,
         weather_client: WeatherForecastClient | None = None,
@@ -162,6 +165,7 @@ class DigestScheduler:
         )
         self._stop_event = stop_event or threading.Event()
         self._tick_interval_sec = tick_interval_sec
+        self._max_parallel_deliveries = max(1, int(max_parallel_deliveries))
         self._now_fn = now_fn or (lambda tz_: datetime.now(tz=tz_))
         self._thread: threading.Thread | None = None
         self._tz_cache: dict[str, ZoneInfo] = {}
@@ -196,23 +200,61 @@ class DigestScheduler:
         daily_due = pending_due = 0
         daily_sent = pending_sent = 0
         daily_failed = pending_failed = 0
-        for sub in subscriptions:
-            if self._stop_event.is_set():
-                break
-            try:
-                d_due, d_sent, d_fail, p_due, p_sent, p_fail = self._maybe_deliver(sub)
-                daily_due += d_due
-                daily_sent += d_sent
-                daily_failed += d_fail
-                pending_due += p_due
-                pending_sent += p_sent
-                pending_failed += p_fail
-            except Exception:  # noqa: BLE001 - один пользователь не валит остальных
-                log.exception(
-                    "Failed to deliver digest to chat_id=%s username=%s",
-                    sub.chat_id,
-                    sub.username,
-                )
+        max_workers = min(self._max_parallel_deliveries, len(subscriptions))
+        if max_workers == 1:
+            results = True
+            futures_iter = None
+        else:
+            executor = ThreadPoolExecutor(
+                max_workers=max_workers,
+                thread_name_prefix="satellite-scheduler",
+            )
+            futures_iter = {executor.submit(self._maybe_deliver, sub): sub for sub in subscriptions}
+            results = None
+        try:
+            if results is not None:
+                for sub in subscriptions:
+                    if self._stop_event.is_set():
+                        break
+                    try:
+                        d_due, d_sent, d_fail, p_due, p_sent, p_fail = self._maybe_deliver(sub)
+                    except Exception:  # noqa: BLE001 - один пользователь не валит остальных
+                        log.exception(
+                            "Failed to deliver digest to chat_id=%s username=%s",
+                            sub.chat_id,
+                            sub.username,
+                        )
+                        continue
+                    daily_due += d_due
+                    daily_sent += d_sent
+                    daily_failed += d_fail
+                    pending_due += p_due
+                    pending_sent += p_sent
+                    pending_failed += p_fail
+            else:
+                assert futures_iter is not None
+                for future in as_completed(futures_iter):
+                    sub = futures_iter[future]
+                    if self._stop_event.is_set():
+                        break
+                    try:
+                        d_due, d_sent, d_fail, p_due, p_sent, p_fail = future.result()
+                    except Exception:  # noqa: BLE001 - один пользователь не валит остальных
+                        log.exception(
+                            "Failed to deliver digest to chat_id=%s username=%s",
+                            sub.chat_id,
+                            sub.username,
+                        )
+                        continue
+                    daily_due += d_due
+                    daily_sent += d_sent
+                    daily_failed += d_fail
+                    pending_due += p_due
+                    pending_sent += p_sent
+                    pending_failed += p_fail
+        finally:
+            if futures_iter is not None:
+                executor.shutdown(wait=True, cancel_futures=False)
         if daily_due or pending_due or daily_failed or pending_failed:
             log.info(
                 "Digest scheduler tick: checked=%d daily_due=%d daily_sent=%d "

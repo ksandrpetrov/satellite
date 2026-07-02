@@ -53,7 +53,11 @@ from ...messages_ru import (
     manage_detail_html,
     manage_list_html,
 )
-from ..presenters.calendar_lists import manage_detail_rich_html, manage_list_rich_html
+from ..presenters.calendar_lists import (
+    manage_detail_rich_html,
+    manage_list_body_lines,
+    manage_list_rich_html,
+)
 from ..visual import EFFECT_SPARKLES, private_message_effect, send_with_effect
 from .access import ensure_calendar_connected
 from .action_guard import ActionGuard
@@ -106,37 +110,13 @@ def _fetch_manageable_events_only(ctx: HandlerContext, user_id: int) -> list:
     return events
 
 
-def _format_list_lines(events: list, tz, reference_date: date) -> list[str]:
-    """Строки тела списка: заголовок дня + пронумерованные встречи со статусом.
-
-    Отличие от ``format_invitation_list_lines``: тут показываем ещё и текущий
-    PARTSTAT, чтобы пользователь видел, что именно нужно править.
-    """
-    if not events:
-        return []
-    lines: list[str] = []
-    last_day: date | None = None
-    for idx, ev in enumerate(events):
-        day = event_local_start_date(ev, tz)
-        if day is not None and day != last_day:
-            if lines:
-                lines.append("")
-            lines.append(f"<b>{format_upcoming_day_header(day, reference_date)}</b>")
-            last_day = day
-        marker = event_index_marker(idx)
-        title = html.escape(str(ev.get("summary") or "—"))
-        when = format_time_range(ev, tz)
-        lines.append(f"{marker} {when} — {title}")
-    return lines
-
-
 def _build_list_screen(
     events: list, *, tz, reference_date: date, truncated: bool
 ) -> tuple[str, str, dict]:
     if not events:
         empty = MANAGE_EMPTY_HTML
         return empty, empty, build_manage_list_keyboard([])
-    body = _format_list_lines(events, tz, reference_date)
+    body = manage_list_body_lines(events, tz, reference_date)
     rows: list[tuple[str, str]] = []
     for idx, ev in enumerate(events):
         token = event_callback_token(str(ev.get("url") or ""))

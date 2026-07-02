@@ -21,16 +21,18 @@ from __future__ import annotations
 
 import logging
 
+from ...calendar.constants import ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_19
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...messages_ru import (
-    CALENDAR_CHECK_FAIL_HTML,
-    CALENDAR_CHECK_OK_HTML,
     CALENDAR_DISCONNECT_TOAST,
     CALENDAR_DISCONNECTED_HTML,
     CALENDAR_NOT_CONNECTED_HTML,
     CALENDAR_SOURCES_LOAD_FAIL_HTML,
     CALENDAR_SOURCES_SINGLE_HTML,
     CALENDAR_SOURCES_UNAVAILABLE_TEXT,
+    CB_ANALYTICS_RUN,
+    CB_ANALYTICS_WORKDAY_9,
+    CB_ANALYTICS_WORKDAY_10,
     CB_PENDING_DIGEST_SETTINGS,
     CB_SETTINGS_ANALYTICS,
     CB_SETTINGS_BACK,
@@ -41,35 +43,50 @@ from ...messages_ru import (
     CB_SETTINGS_DIGEST,
     CB_SETTINGS_DISCONNECT,
     CB_SETTINGS_DISCONNECT_CONFIRM,
+    CB_SETTINGS_INVITATIONS,
     CB_SETTINGS_WEATHER_TOGGLE,
-    ERR_GENERIC_HANDLER_TEXT,
     ERR_SETTINGS_SAVE_FAILED_TEXT,
-    SETTINGS_CALENDAR_MENU_TEXT,
-    SETTINGS_DISCONNECT_CONFIRM_TEXT,
     SETTINGS_HUB_CLOSED_TEXT,
     build_settings_calendar_menu_keyboard,
     build_settings_disconnect_confirm_keyboard,
     build_settings_hub_keyboard,
-    settings_hub_text,
     weather_in_plan_toggle_notice_text,
 )
+from ...messages_ru.streaming_ui import SETTINGS_OPEN_THINKING, rich_thinking_status
 from ...subscriptions import SubscriptionStorePersistenceError
-from ...users.store import UserStorePersistenceError
 from ..api import TelegramError
-from ..visual import set_default_menu_button_for_chat
-from .analytics import CB_ANALYTICS_BACK, handle_open_analytics
+from ..presenters.calendar_screens import calendar_sources_bundle
+from ..presenters.settings_screens import (
+    settings_calendar_menu_bundle,
+    settings_disconnect_confirm_bundle,
+    settings_hub_bundle,
+)
+from .analytics import (
+    CB_ANALYTICS_BACK,
+    handle_open_analytics,
+    handle_run_analytics,
+    handle_set_analytics_workday,
+)
+from .calendar_actions import calendar_check_result, disconnect_calendar_action
+from .calendar_invitations import open_invitations_from_settings
 from .calendar_view import (
     CalendarSourcesScreenStatus,
     build_calendar_sources_screen,
+    enabled_url_set,
+    fetch_calendars,
 )
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
-    edit_callback_message,
+    edit_callback_bundle,
+    edit_callback_rich_or_html,
+    open_streaming_reply,
     safe_answer_callback,
     send,
+    send_rich_or_html,
     webapp_connect_url,
 )
 from .settings import show_digest_settings_screen, show_pending_digest_settings_screen
+from .settings_actions import toggle_weather_in_plan
 
 log = logging.getLogger(__name__)
 
@@ -135,7 +152,7 @@ def _calendar_login(ctx: HandlerContext, user_id: int) -> str | None:
         return None
 
 
-def _hub_text_and_keyboard(ctx: HandlerContext, user_id: int, chat_id: int):
+def _hub_bundle(ctx: HandlerContext, user_id: int, chat_id: int):
     record = ctx.users.get(user_id)
     has_cal = bool(record and record.has_calendar)
     digest_on = None
@@ -151,19 +168,24 @@ def _hub_text_and_keyboard(ctx: HandlerContext, user_id: int, chat_id: int):
         pending_on = sub.pending_digest_enabled
     else:
         pending_on = None
-    text = settings_hub_text(
-        digest_enabled=digest_on,
-        pending_digest_enabled=pending_on,
-        weather_in_plan_enabled=weather_on,
-        has_calendar=has_cal,
-    )
     keyboard = build_settings_hub_keyboard(
         webapp_url=webapp_connect_url(ctx, user_id),
         has_calendar=has_cal,
         weather_in_plan_enabled=weather_on,
         calendar_login=_calendar_login(ctx, user_id) if has_cal else None,
     )
-    return text, keyboard
+    return settings_hub_bundle(
+        digest_enabled=digest_on,
+        pending_digest_enabled=pending_on,
+        weather_in_plan_enabled=weather_on,
+        has_calendar=has_cal,
+        reply_markup=keyboard,
+    )
+
+
+def _hub_text_and_keyboard(ctx: HandlerContext, user_id: int, chat_id: int):
+    bundle = _hub_bundle(ctx, user_id, chat_id)
+    return bundle.fallback_html, bundle.reply_markup
 
 
 # --- главный экран --------------------------------------------------------
@@ -177,7 +199,7 @@ def handle_open_settings_hub(ctx: HandlerContext, msg: IncomingMessage) -> None:
         log.info("Closed settings hub via reply: chat_id=%s user_id=%s", msg.chat_id, msg.user_id)
         return
     try:
-        text, keyboard = _hub_text_and_keyboard(ctx, msg.user_id, msg.chat_id)
+        bundle = _hub_bundle(ctx, msg.user_id, msg.chat_id)
     except SubscriptionStorePersistenceError:
         log.exception(
             "Failed to persist settings hub state: chat_id=%s user_id=%s",
@@ -186,7 +208,20 @@ def handle_open_settings_hub(ctx: HandlerContext, msg: IncomingMessage) -> None:
         )
         send(ctx, msg.chat_id, ERR_SETTINGS_SAVE_FAILED_TEXT)
         return
-    sent = ctx.telegram.send_message(msg.chat_id, text, reply_markup=keyboard)
+    stream = open_streaming_reply(
+        ctx,
+        msg.chat_id,
+        rich_thinking_status(SETTINGS_OPEN_THINKING),
+        rich=True,
+    )
+    sent = send_rich_or_html(
+        ctx,
+        msg.chat_id,
+        rich_html=bundle.rich_html,
+        fallback_html=bundle.fallback_html,
+        reply_markup=bundle.reply_markup,
+    )
+    stream.dismiss()
     message_id = sent.get("message_id") if isinstance(sent, dict) else None
     _track_hub_message(msg.chat_id, message_id)
     log.info("Opened settings hub: chat_id=%s user_id=%s", msg.chat_id, msg.user_id)
@@ -196,8 +231,8 @@ def show_settings_hub_screen(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.chat_id is None or cb.user_id is None:
         return
     ctx.digest_state.clear(cb.chat_id)
-    text, keyboard = _hub_text_and_keyboard(ctx, cb.user_id, cb.chat_id)
-    edit_callback_message(ctx, cb, text, keyboard)
+    bundle = _hub_bundle(ctx, cb.user_id, cb.chat_id)
+    edit_callback_bundle(ctx, cb, bundle)
     if cb.message_id is not None:
         _track_hub_message(cb.chat_id, cb.message_id)
 
@@ -215,7 +250,8 @@ def show_settings_calendar_menu(ctx: HandlerContext, cb: IncomingCallback) -> No
         safe_answer_callback(ctx, cb)
         return
     keyboard = build_settings_calendar_menu_keyboard(webapp_url=webapp_connect_url(ctx, cb.user_id))
-    edit_callback_message(ctx, cb, SETTINGS_CALENDAR_MENU_TEXT, keyboard)
+    bundle = settings_calendar_menu_bundle(reply_markup=keyboard)
+    edit_callback_bundle(ctx, cb, bundle)
     safe_answer_callback(ctx, cb)
 
 
@@ -227,12 +263,10 @@ def show_settings_disconnect_confirm(ctx: HandlerContext, cb: IncomingCallback) 
         show_settings_hub_screen(ctx, cb)
         safe_answer_callback(ctx, cb)
         return
-    edit_callback_message(
-        ctx,
-        cb,
-        SETTINGS_DISCONNECT_CONFIRM_TEXT,
-        build_settings_disconnect_confirm_keyboard(),
+    bundle = settings_disconnect_confirm_bundle(
+        reply_markup=build_settings_disconnect_confirm_keyboard(),
     )
+    edit_callback_bundle(ctx, cb, bundle)
     safe_answer_callback(ctx, cb)
 
 
@@ -265,6 +299,15 @@ def _route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> b
     if data == CB_SETTINGS_ANALYTICS:
         handle_open_analytics(ctx, cb)
         return True
+    if data == CB_ANALYTICS_RUN:
+        handle_run_analytics(ctx, cb)
+        return True
+    if data == CB_ANALYTICS_WORKDAY_9:
+        handle_set_analytics_workday(ctx, cb, ANALYTICS_WORKDAY_9_18)
+        return True
+    if data == CB_ANALYTICS_WORKDAY_10:
+        handle_set_analytics_workday(ctx, cb, ANALYTICS_WORKDAY_10_19)
+        return True
     if data == CB_SETTINGS_WEATHER_TOGGLE:
         _toggle_weather_in_plan(ctx, cb)
         return True
@@ -278,11 +321,20 @@ def _route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> b
         if cb.chat_id is not None:
             ctx.digest_state.clear(cb.chat_id)
             _untrack_hub_message(cb.chat_id)
-        edit_callback_message(ctx, cb, SETTINGS_HUB_CLOSED_TEXT, reply_markup=None)
+        edit_callback_rich_or_html(
+            ctx,
+            cb,
+            rich_html=SETTINGS_HUB_CLOSED_TEXT,
+            fallback_html=SETTINGS_HUB_CLOSED_TEXT,
+            reply_markup=None,
+        )
         safe_answer_callback(ctx, cb)
         return True
     if data == CB_SETTINGS_CALENDARS:
         _open_calendar_sources_from_callback(ctx, cb)
+        return True
+    if data == CB_SETTINGS_INVITATIONS:
+        open_invitations_from_settings(ctx, cb)
         return True
     if data == CB_SETTINGS_CHECK:
         _check_calendar_from_callback(ctx, cb)
@@ -300,20 +352,9 @@ def _toggle_weather_in_plan(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
-    record = ctx.users.get(cb.user_id)
-    if record is None:
+    new_enabled = toggle_weather_in_plan(ctx, cb.user_id)
+    if new_enabled is None:
         safe_answer_callback(ctx, cb)
-        return
-    new_enabled = not record.weather_in_plan_enabled
-    try:
-        ctx.users.set_weather_in_plan_enabled(cb.user_id, enabled=new_enabled)
-    except KeyError:
-        safe_answer_callback(ctx, cb)
-        return
-    except UserStorePersistenceError:
-        log.exception("Failed to save weather_in_plan for user_id=%s", cb.user_id)
-        safe_answer_callback(ctx, cb)
-        send(ctx, cb.chat_id, ERR_GENERIC_HANDLER_TEXT)
         return
     show_settings_hub_screen(ctx, cb)
     safe_answer_callback(
@@ -348,7 +389,17 @@ def _open_calendar_sources_from_callback(ctx: HandlerContext, cb: IncomingCallba
     if screen.text is None or screen.keyboard is None:
         safe_answer_callback(ctx, cb)
         return
-    edit_callback_message(ctx, cb, screen.text, screen.keyboard)
+    result = fetch_calendars(ctx, cb.user_id)
+    record = ctx.users.get(cb.user_id)
+    if record is None or not result.ok:
+        safe_answer_callback(ctx, cb)
+        return
+    bundle = calendar_sources_bundle(
+        calendars=list(result.calendars),
+        enabled_urls=enabled_url_set(record),
+        reply_markup=screen.keyboard,
+    )
+    edit_callback_bundle(ctx, cb, bundle)
     safe_answer_callback(ctx, cb)
     log.info("Opened calendar sources from hub: user_id=%s", cb.user_id)
 
@@ -357,11 +408,7 @@ def _check_calendar_from_callback(ctx: HandlerContext, cb: IncomingCallback) -> 
     if cb.user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
-    try:
-        status = ctx.calendar_service.check_connection(cb.user_id)
-        text = CALENDAR_CHECK_OK_HTML if status.connected else CALENDAR_CHECK_FAIL_HTML
-    except (CalendarNotConnectedError, CalendarProviderError):
-        text = CALENDAR_CHECK_FAIL_HTML
+    text, _markup = calendar_check_result(ctx, cb.user_id)
     send(ctx, cb.chat_id, text)
     safe_answer_callback(ctx, cb)
 
@@ -376,13 +423,10 @@ def _disconnect_calendar_from_callback(ctx: HandlerContext, cb: IncomingCallback
     if cb.user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
-    try:
-        ctx.calendar_service.disconnect(cb.user_id)
-        if cb.chat_id is not None:
-            set_default_menu_button_for_chat(ctx.telegram, cb.chat_id)
-        send(ctx, cb.chat_id, CALENDAR_DISCONNECTED_HTML)
+    result_text = disconnect_calendar_action(ctx, user_id=cb.user_id, chat_id=cb.chat_id)
+    send(ctx, cb.chat_id, result_text)
+    if result_text == CALENDAR_DISCONNECTED_HTML:
         show_settings_hub_screen(ctx, cb)
-    except KeyError:
-        safe_answer_callback(ctx, cb)
-    else:
         safe_answer_callback(ctx, cb, text=CALENDAR_DISCONNECT_TOAST)
+        return
+    safe_answer_callback(ctx, cb)

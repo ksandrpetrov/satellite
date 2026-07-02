@@ -22,7 +22,6 @@ from ..telegram_bot.rich_message import (
     footnote_def,
     footnote_ref,
     join_blocks,
-    mark,
     paragraph,
     pull_quote,
     section_heading,
@@ -42,7 +41,6 @@ _SCHEDULE_DETAILS_MIN_MEETINGS = 4
 _ANCHOR_FORECAST = "forecast"
 _ANCHOR_SCHEDULE = "schedule"
 _LONG_DAY_MEETINGS = 10
-_DENSE_BUSY_MINUTES = 240
 
 
 def _relative_forecast_title(stats: DayCalendarStats) -> str:
@@ -127,13 +125,10 @@ def _stats_table(stats: DayCalendarStats) -> str:
     расписания («Расписание — N встреч»), а в колонке «Время» число без
     единиц читалось как ошибка.
     """
-    busy_cell = escape_rich(format_duration_ru(stats.busy_minutes))
-    if stats.busy_minutes > _DENSE_BUSY_MINUTES:
-        busy_cell = mark(busy_cell)
     return table(
         [t.RICH_STATS_HEADER_TYPE, t.RICH_STATS_HEADER_TIME],
         [
-            [t.RICH_STATS_ROW_BUSY, busy_cell],
+            [t.RICH_STATS_ROW_BUSY, escape_rich(format_duration_ru(stats.busy_minutes))],
             [t.RICH_STATS_ROW_FREE, escape_rich(format_duration_ru(stats.free_minutes))],
         ],
     )

@@ -15,6 +15,7 @@ from satellite.messages_ru import (
     UPCOMING_EMPTY_HTML,
 )
 from satellite.telegram_bot.handlers import handle_message
+from satellite.testing.delivery_helpers import sent_messages_text
 from satellite.users import UserStore
 
 from .conftest import FakeCalendarService, freeze_now, make_ctx, make_msg, make_user_store
@@ -76,7 +77,7 @@ def test_upcoming_empty_shows_empty_html(store: UserStore, monkeypatch: pytest.M
     ctx = _upcoming_ctx(store, FakeCalendarService(events=[]))
     handle_message(ctx, make_msg(text="/upcoming", chat_id=CHAT_ID, user_id=USER_ID, update_id=3))
 
-    sent = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
+    sent = sent_messages_text(ctx.telegram)
     assert UPCOMING_EMPTY_HTML in sent
 
 
@@ -93,7 +94,7 @@ def test_upcoming_caldav_error_shows_safe_text(
     ctx = _upcoming_ctx(store, cal)
     handle_message(ctx, make_msg(text="/upcoming", chat_id=CHAT_ID, user_id=USER_ID, update_id=4))
 
-    sent = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
+    sent = sent_messages_text(ctx.telegram)
     assert ERR_CALDAV_UNAVAILABLE_TEXT in sent
 
 

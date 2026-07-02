@@ -56,6 +56,11 @@ from satellite.telegram_bot.handlers.routing import (
     SubscriptionCommand,
     UpcomingCommand,
 )
+from satellite.testing.delivery_helpers import (
+    final_message_html,
+    final_reply_markup,
+    sent_messages_text,
+)
 from satellite.users import USER_STATUS_APPROVED, USER_STATUS_PENDING
 
 
@@ -257,7 +262,7 @@ def test_settings_command_clears_create_fsm_and_opens_hub():
     handle_message(ctx, msg)
     ctx.calendar_state.clear.assert_called_once_with(9001)
     ctx.digest_state.clear.assert_any_call(9001)
-    sent = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
+    sent = sent_messages_text(ctx.telegram)
     assert any("Настройки Чайки" in t for t in sent)
 
 
@@ -451,7 +456,7 @@ def test_plan_legacy_loading_then_edit_when_draft_unavailable():
     handle_message(ctx, msg)
 
     assert ctx.telegram.send_message.call_count == 1
-    assert ctx.telegram.send_message.call_args[0][1] == "⏳"
+    assert final_message_html(ctx.telegram) == "⏳"
     assert ctx.telegram.edit_message_text.call_count >= 1
     assert ctx.telegram.edit_message_text.call_args[0][2] == "<b>Plan HTML</b>"
     ctx.plan_builder.return_value.build_plan_bundle.assert_called_once()
@@ -493,9 +498,9 @@ def test_plan_replaces_loading_with_caldav_error_text(
         handle_message(ctx, msg)
 
     ctx.telegram.send_message.assert_called_once()
-    assert ctx.telegram.send_message.call_args[0][1] == ERR_CALDAV_UNAVAILABLE_TEXT
+    assert final_message_html(ctx.telegram) == ERR_CALDAV_UNAVAILABLE_TEXT
     ctx.telegram.edit_message_text.assert_not_called()
-    assert "boom" not in (ctx.telegram.send_message.call_args[0][1] or "")
+    assert "boom" not in (final_message_html(ctx.telegram) or "")
     assert any("boom" in record.getMessage() for record in caplog.records)
 
 
@@ -515,9 +520,9 @@ def test_plan_replaces_loading_with_generic_error_on_unexpected_exception(
         handle_message(ctx, msg)
 
     ctx.telegram.send_message.assert_called_once()
-    assert ctx.telegram.send_message.call_args[0][1] == ERR_DIGEST_BUILD_FAILED_TEXT
+    assert final_message_html(ctx.telegram) == ERR_DIGEST_BUILD_FAILED_TEXT
     ctx.telegram.edit_message_text.assert_not_called()
-    assert "token expired" not in (ctx.telegram.send_message.call_args[0][1] or "")
+    assert "token expired" not in (final_message_html(ctx.telegram) or "")
     # Стек должен попасть в лог (exc_info), но не в пользовательский текст.
     assert any(record.exc_info is not None for record in caplog.records)
 
@@ -539,7 +544,7 @@ def test_plan_button_uses_error_text_when_build_fails():
     handle_message(ctx, msg)
 
     ctx.telegram.send_message.assert_called_once()
-    assert ctx.telegram.send_message.call_args[0][1] == ERR_DIGEST_BUILD_FAILED_TEXT
+    assert final_message_html(ctx.telegram) == ERR_DIGEST_BUILD_FAILED_TEXT
     ctx.telegram.edit_message_text.assert_not_called()
 
 
@@ -563,7 +568,7 @@ def test_plan_legacy_skips_edit_when_loading_send_failed():
 
     handle_message(ctx, msg)
 
-    assert ctx.telegram.send_message.call_args[0][1] == "<b>Plan HTML</b>"
+    assert final_message_html(ctx.telegram) == "<b>Plan HTML</b>"
     ctx.telegram.edit_message_text.assert_not_called()
 
 
@@ -619,11 +624,8 @@ def test_unknown_text_does_not_send_old_reply_keyboard():
     )
     handle_message(ctx, msg)
 
-    assert ctx.telegram.send_message.call_count == 1
-    call = ctx.telegram.send_message.call_args
-    # сообщение-подсказка отправляется без reply_markup (None — значит
-    # клиент сохранит то, что было; новых ReplyKeyboardMarkup мы не шлём)
-    sent_markup = call.kwargs.get("reply_markup")
+    assert final_message_html(ctx.telegram)
+    sent_markup = final_reply_markup(ctx.telegram)
     assert sent_markup is None or sent_markup == REPLY_KEYBOARD_REMOVE
     # и точно НЕ кастомная клавиатура (`keyboard` поле)
     if isinstance(sent_markup, dict):
@@ -649,7 +651,7 @@ def test_unexpected_error_in_subscription_sends_generic_notice(
         handle_message(ctx, msg)
 
     # Последнее отправленное сообщение — нейтральный текст без техдеталей.
-    sent_texts = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     assert ERR_GENERIC_HANDLER_TEXT in sent_texts
     assert all("secret123" not in (t or "") for t in sent_texts)
     # Стек обязан попасть в лог.
@@ -670,7 +672,7 @@ def test_subscription_persistence_error_sends_save_failed_text():
 
     handle_message(ctx, msg)
 
-    sent_texts = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     assert sent_texts == [ERR_SETTINGS_SAVE_FAILED_TEXT]
     ctx.telegram.set_message_reaction.assert_not_called()
 
@@ -692,4 +694,4 @@ def test_unexpected_error_in_welcome_sends_generic_notice():
     handle_message(ctx, msg)
 
     assert ctx.telegram.send_message.call_count == 1
-    assert ctx.telegram.send_message.call_args.args[1] == ERR_GENERIC_HANDLER_TEXT
+    assert final_message_html(ctx.telegram) == ERR_GENERIC_HANDLER_TEXT

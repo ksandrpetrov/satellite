@@ -59,7 +59,9 @@ class UserStore:
     def __init__(self, path: str | Path) -> None:
         self._path = Path(path)
         self._lock = threading.Lock()
+        self._write_lock = threading.Lock()
         self._items: dict[int, UserRecord] = self._load()
+        self._version = 0
 
     # --- queries ---------------------------------------------------------
 
@@ -114,6 +116,7 @@ class UserStore:
         normalized_user = (username or "").strip().lower() or None
         normalized_name = (display_name or "").strip() or None
         now_iso = self._now_iso()
+        changed = False
         with self._lock:
             existing = self._items.get(telegram_user_id)
             if existing is None:
@@ -127,20 +130,23 @@ class UserStore:
                     updated_at=now_iso,
                 )
                 self._items[telegram_user_id] = record
-                self._save_locked()
-                return record
-            updated = existing
-            if chat_id is not None and existing.chat_id != chat_id:
-                updated = replace(updated, chat_id=chat_id)
-            if normalized_user is not None and existing.username != normalized_user:
-                updated = replace(updated, username=normalized_user)
-            if normalized_name is not None and existing.display_name != normalized_name:
-                updated = replace(updated, display_name=normalized_name)
-            if updated is not existing:
-                updated = replace(updated, updated_at=now_iso)
-                self._items[telegram_user_id] = updated
-                self._save_locked()
-            return updated
+                changed = True
+            else:
+                updated = existing
+                if chat_id is not None and existing.chat_id != chat_id:
+                    updated = replace(updated, chat_id=chat_id)
+                if normalized_user is not None and existing.username != normalized_user:
+                    updated = replace(updated, username=normalized_user)
+                if normalized_name is not None and existing.display_name != normalized_name:
+                    updated = replace(updated, display_name=normalized_name)
+                if updated is not existing:
+                    updated = replace(updated, updated_at=now_iso)
+                    self._items[telegram_user_id] = updated
+                    changed = True
+                record = updated
+        if changed:
+            self._save_locked()
+        return record
 
     def submit_access_request(self, telegram_user_id: int) -> tuple[UserRecord, bool]:
         """Помечает заявку как ``pending`` (если не уже).
@@ -150,6 +156,7 @@ class UserStore:
         создаёт новую заявку и не дёргает админа второй раз.
         """
         now_iso = self._now_iso()
+        changed = False
         with self._lock:
             existing = self._items.get(telegram_user_id)
             if existing is None:
@@ -168,8 +175,10 @@ class UserStore:
                 updated_at=now_iso,
             )
             self._items[telegram_user_id] = updated
+            changed = True
+        if changed:
             self._save_locked()
-            return updated, True
+        return updated, True
 
     def approve(self, telegram_user_id: int, *, admin_telegram_id: int) -> UserRecord:
         return self._resolve_request(
@@ -356,6 +365,7 @@ class UserStore:
         ``updated_at`` всегда обновляется на ``now_iso``.
         """
         now_iso = self._now_iso()
+        changed = False
         with self._lock:
             existing = self._items.get(telegram_user_id)
             if existing is None:
@@ -363,8 +373,10 @@ class UserStore:
             fields = change(existing, now_iso)
             updated = replace(existing, **fields, updated_at=now_iso)
             self._items[telegram_user_id] = updated
+            changed = True
+        if changed:
             self._save_locked()
-            return updated
+        return updated
 
     @staticmethod
     def _now_iso() -> str:
@@ -396,27 +408,40 @@ class UserStore:
                 log.warning("Skipping malformed user record %r", key, exc_info=True)
         return items
 
-    def _save_locked(self) -> None:
+    def _snapshot_locked(self) -> tuple[dict[str, Any], int]:
+        self._version += 1
         payload = {str(rec.telegram_user_id): rec.to_json() for rec in self._items.values()}
+        return payload, self._version
+
+    def _save_locked(self) -> None:
+        with self._lock:
+            payload, version = self._snapshot_locked()
+        self._save_snapshot(payload, version)
+
+    def _save_snapshot(self, payload: dict[str, Any], version: int) -> None:
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            fd, tmp_path = tempfile.mkstemp(
-                prefix=self._path.name + ".",
-                suffix=".tmp",
-                dir=self._path.parent,
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as file:
-                    json.dump(payload, file, ensure_ascii=False, indent=2)
-                    file.flush()
-                    os.fsync(file.fileno())
-                os.replace(tmp_path, self._path)
-            except Exception:
+            with self._write_lock:
+                with self._lock:
+                    if version < self._version:
+                        return
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                fd, tmp_path = tempfile.mkstemp(
+                    prefix=self._path.name + ".",
+                    suffix=".tmp",
+                    dir=self._path.parent,
+                )
                 try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
+                    with os.fdopen(fd, "w", encoding="utf-8") as file:
+                        json.dump(payload, file, ensure_ascii=False, indent=2)
+                        file.flush()
+                        os.fsync(file.fileno())
+                    os.replace(tmp_path, self._path)
+                except Exception:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
         except OSError as exc:
             log.error("Failed to persist users to %s: %s", self._path, exc)
             raise UserStorePersistenceError(

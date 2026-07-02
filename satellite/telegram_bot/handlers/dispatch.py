@@ -11,7 +11,25 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from ...messages_ru import BOT_KEYBOARD_HINT
+from ...messages_ru import (
+    BOT_KEYBOARD_HINT,
+    CB_ANALYTICS_BACK,
+    CB_ANALYTICS_RUN,
+    CB_ANALYTICS_WORKDAY_9,
+    CB_ANALYTICS_WORKDAY_10,
+    CB_SETTINGS_ANALYTICS,
+    CB_SETTINGS_BACK,
+    CB_SETTINGS_CALENDAR_MENU,
+    CB_SETTINGS_CALENDARS,
+    CB_SETTINGS_CHECK,
+    CB_SETTINGS_CLOSE,
+    CB_SETTINGS_DIGEST,
+    CB_SETTINGS_DISCONNECT,
+    CB_SETTINGS_DISCONNECT_CONFIRM,
+    CB_SETTINGS_INVITATIONS,
+    CB_SETTINGS_RECONNECT,
+    CB_SETTINGS_WEATHER_TOGGLE,
+)
 from ..api import TelegramError
 from .access import (
     ensure_calendar_access,
@@ -19,7 +37,6 @@ from .access import (
     handle_start_or_help,
 )
 from .admin import handle_pending_command, route_admin_callback
-from .analytics import route_analytics_callback
 from .calendar_create import handle_create_text_input, route_create_callback, start_create_event
 from .calendar_foreign import (
     handle_open_foreign_calendars,
@@ -215,7 +232,7 @@ _MESSAGE_ROUTES: dict[type, _MessageRoute] = {
 def _dispatch_recognized(ctx: HandlerContext, msg: IncomingMessage, cmd: RecognizedCommand) -> None:
     route = _MESSAGE_ROUTES.get(type(cmd))
     if route is None:
-        return
+        raise LookupError(f"Recognized command is not routed: {type(cmd).__name__}")
     if route.access_guard is not None and not route.access_guard(ctx, msg):
         return
     route.handler(ctx, msg, cmd)
@@ -261,11 +278,29 @@ _CALLBACK_ROUTERS: list[CallbackRouter] = [
     route_invitations_callback,
     route_manage_events_callback,
     route_settings_hub_callback,
-    route_analytics_callback,
     route_settings_callback,
     route_calendar_sources_callback,
     route_foreign_calendars_callback,
 ]
+
+_SETTINGS_CALLBACK_OWNERS: dict[str, str] = {
+    CB_SETTINGS_DIGEST: "settings_hub",
+    CB_SETTINGS_ANALYTICS: "settings_hub",
+    CB_SETTINGS_CALENDAR_MENU: "settings_hub",
+    CB_SETTINGS_CALENDARS: "settings_hub",
+    CB_SETTINGS_INVITATIONS: "settings_hub",
+    CB_SETTINGS_CHECK: "settings_hub",
+    CB_SETTINGS_RECONNECT: "web_app",
+    CB_SETTINGS_DISCONNECT: "settings_hub",
+    CB_SETTINGS_DISCONNECT_CONFIRM: "settings_hub",
+    CB_SETTINGS_BACK: "settings_hub",
+    CB_SETTINGS_CLOSE: "settings_hub",
+    CB_SETTINGS_WEATHER_TOGGLE: "settings_hub",
+    CB_ANALYTICS_RUN: "settings_hub",
+    CB_ANALYTICS_WORKDAY_9: "settings_hub",
+    CB_ANALYTICS_WORKDAY_10: "settings_hub",
+    CB_ANALYTICS_BACK: "settings_hub",
+}
 
 
 def _route_callback(ctx: HandlerContext, cb: IncomingCallback) -> None:

@@ -29,6 +29,7 @@ from satellite.telegram_bot.handlers.context import (
     IncomingCallback,
     IncomingMessage,
 )
+from satellite.testing.delivery_helpers import final_message_html
 from satellite.users import (
     ACCESS_REQUEST_PENDING,
     USER_STATUS_APPROVED,
@@ -112,7 +113,7 @@ def test_second_start_does_not_spam_admin(users: UserStore) -> None:
     handle_start_or_help(ctx, _user_msg(text="/start"), is_start=True)
 
     assert ctx.telegram.send_message.call_count == 1
-    assert ctx.telegram.send_message.call_args[0][1] == ACCESS_PENDING_HTML
+    assert final_message_html(ctx.telegram) == ACCESS_PENDING_HTML
 
 
 def test_help_opens_request_for_pending_user_without_prior_start(users: UserStore) -> None:
@@ -124,7 +125,7 @@ def test_help_opens_request_for_pending_user_without_prior_start(users: UserStor
     assert record.access_request_status == ACCESS_REQUEST_PENDING
     assert users.list_pending_requests() == [record]
 
-    assert ctx.telegram.send_message.call_args[0][1] == BOT_HELP_HTML
+    assert final_message_html(ctx.telegram) == BOT_HELP_HTML
     admin_msg = ctx.telegram.send_message.call_args_list[0][0][1]
     assert "Новый пользователь" in admin_msg
 
@@ -169,7 +170,7 @@ def test_admin_reject_notifies_user(users: UserStore) -> None:
     record = users.get(USER_ID)
     assert record is not None
     assert record.status == USER_STATUS_REJECTED
-    user_notify = ctx.telegram.send_message.call_args[0][1]
+    user_notify = final_message_html(ctx.telegram)
     assert user_notify == ACCESS_REJECTED_HTML
 
 
@@ -242,6 +243,6 @@ def test_pending_command_lists_open_requests(users: UserStore) -> None:
 
     handle_pending_command(ctx, msg)
 
-    body = ctx.telegram.send_message.call_args[0][1]
+    body = final_message_html(ctx.telegram)
     assert str(USER_ID) in body
     assert "New" in body

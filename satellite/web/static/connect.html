@@ -275,6 +275,37 @@
   </section>
 
   <script>
+    const COPY = window.__SATELLITE_COPY__ || {};
+    function copyText(key, fallback) {
+      const value = COPY[key];
+      return (typeof value === 'string' && value) ? value : (fallback || '');
+    }
+    function applyStaticCopy() {
+      if (!COPY.heading) return;
+      document.title = copyText('page_title', document.title);
+      const h1 = document.querySelector('h1');
+      if (h1) h1.textContent = copyText('heading', h1.textContent);
+      const hint = document.getElementById('userHint');
+      if (hint) hint.textContent = copyText('user_hint_default', hint.textContent);
+      const tabs = document.querySelectorAll('.tabs button');
+      if (tabs[0]) tabs[0].textContent = copyText('tab_connection', tabs[0].textContent);
+      if (tabs[1]) tabs[1].textContent = copyText('tab_events', tabs[1].textContent);
+      if (tabs[2]) tabs[2].textContent = copyText('tab_create', tabs[2].textContent);
+      const connectBtn = document.getElementById('connectBtn');
+      if (connectBtn) connectBtn.textContent = copyText('connect_btn', connectBtn.textContent);
+      const checkBtn = document.getElementById('checkBtn');
+      if (checkBtn) checkBtn.textContent = copyText('check_btn', checkBtn.textContent);
+      const disconnectBtn = document.getElementById('disconnectBtn');
+      if (disconnectBtn) disconnectBtn.textContent = copyText('disconnect_btn', disconnectBtn.textContent);
+      const refreshBtn = document.getElementById('refreshBtn');
+      if (refreshBtn) refreshBtn.textContent = copyText('events_refresh', refreshBtn.textContent);
+      const createCancelBtn = document.getElementById('createCancelBtn');
+      if (createCancelBtn) createCancelBtn.textContent = copyText('create_cancel', createCancelBtn.textContent);
+      const createConfirmBtn = document.getElementById('createConfirmBtn');
+      if (createConfirmBtn) createConfirmBtn.textContent = copyText('create_confirm', createConfirmBtn.textContent);
+    }
+    applyStaticCopy();
+
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
 
@@ -367,18 +398,9 @@
     }
 
     function telegramErrorMessage(code) {
-      if (code === 'no_init_data') {
-        return 'Не удалось подтвердить сессию. Закройте окно и снова нажмите «Подключить календарь» в чате с ботом.';
-      }
-      if (code === 'bad_signature') {
-        return 'На сервере другой TELEGRAM_BOT_TOKEN. Проверьте .env и перезапустите бота.';
-      }
-      if (code === 'expired') {
-        return 'Сессия устарела. Закройте окно и откройте снова из бота.';
-      }
-      if (code === 'connect_token_invalid') {
-        return 'Ссылка устарела. Закройте окно и снова нажмите «Подключить календарь» в боте.';
-      }
+      const errors = (COPY && COPY.telegram_errors) || {};
+      if (errors[code]) return errors[code];
+      if (errors.default) return errors.default;
       return 'Не удалось войти. Закройте окно и откройте снова из бота.';
     }
 

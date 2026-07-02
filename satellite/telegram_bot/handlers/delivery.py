@@ -13,7 +13,8 @@ from urllib.parse import quote
 from ...config import WebAppConfig
 from ...messages_ru import ERR_GENERIC_HANDLER_TEXT
 from ..api import TelegramError
-from ..message_delivery import edit_rich_or_html
+from ..message_delivery import deliver_rich_or_html, edit_rich_or_html
+from ..presenters.bundle import ScreenBundle
 from ..streaming_delivery import StreamingReply
 from ..streaming_delivery import open_streaming_reply as _open_streaming_reply
 from .context import HandlerContext, IncomingCallback
@@ -31,7 +32,33 @@ def send(ctx: HandlerContext, chat_id: int | None, text: str) -> None:
     """
     if chat_id is None:
         return
-    ctx.telegram.send_message(chat_id, text)
+    send_rich_or_html(ctx, chat_id, rich_html=text, fallback_html=text)
+
+
+def send_rich_or_html(
+    ctx: HandlerContext,
+    chat_id: int | None,
+    *,
+    rich_html: str,
+    fallback_html: str,
+    reply_markup: dict | list | str | None = None,
+    message_effect_id: str | None = None,
+) -> dict | None:
+    """``sendRichMessage`` с fallback на legacy ``sendMessage`` HTML."""
+    if chat_id is None:
+        return None
+    try:
+        return deliver_rich_or_html(
+            ctx.telegram,
+            chat_id,
+            rich_html=rich_html,
+            fallback_html=fallback_html,
+            reply_markup=reply_markup,
+            message_effect_id=message_effect_id,
+        )
+    except TelegramError as exc:
+        log.warning("send_rich_or_html failed chat_id=%s: %s", chat_id, exc)
+        return None
 
 
 def open_streaming_reply(
@@ -84,6 +111,21 @@ def edit_callback_rich_or_html(
         log.info("Edit callback rich message ignored: %s", exc)
     except Exception as error:  # noqa: BLE001
         log.warning("Unexpected error editing rich callback message: %s", error)
+
+
+def edit_callback_bundle(
+    ctx: HandlerContext,
+    cb: IncomingCallback,
+    bundle: ScreenBundle,
+) -> None:
+    """Редактирует callback-сообщение из ``ScreenBundle``."""
+    edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=bundle.rich_html,
+        fallback_html=bundle.fallback_html,
+        reply_markup=bundle.reply_markup,
+    )
 
 
 def edit_callback_message(

@@ -67,11 +67,19 @@ from ...subscriptions import (
     DigestSettings,
     SubscriptionStorePersistenceError,
 )
-from ...users.store import UserStorePersistenceError
+from ..presenters.bundle import ScreenBundle
+from ..presenters.settings_screens import (
+    digest_days_bundle,
+    digest_settings_bundle,
+    digest_time_bundle,
+    pending_digest_days_bundle,
+    pending_digest_settings_bundle,
+)
 from .access import effective_username, effective_username_from_callback
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from .delivery import edit_callback_message, safe_answer_callback, send
+from .delivery import edit_callback_bundle, edit_callback_rich_or_html, safe_answer_callback, send
 from .digest_state import DIGEST_KIND_DAILY, DIGEST_KIND_PENDING, DigestKind
+from .settings_actions import toggle_weather_in_plan
 
 log = logging.getLogger(__name__)
 
@@ -183,6 +191,46 @@ _BINDINGS: dict[DigestKind, DigestKindBindings] = {
 
 def _bindings(kind: DigestKind) -> DigestKindBindings:
     return _BINDINGS[kind]
+
+
+def _digest_settings_bundle(
+    settings: DigestSettings,
+    bindings: DigestKindBindings,
+    *,
+    kind: DigestKind,
+    keyboard: dict,
+    weather_in_plan_enabled: bool = True,
+) -> ScreenBundle:
+    if kind == DIGEST_KIND_DAILY:
+        return digest_settings_bundle(
+            digest_enabled=_enabled(settings, bindings),
+            digest_days=_days(settings, bindings),
+            digest_time=_time(settings, bindings),
+            weather_in_plan_enabled=weather_in_plan_enabled,
+            reply_markup=keyboard,
+        )
+    return pending_digest_settings_bundle(
+        digest_enabled=_enabled(settings, bindings),
+        digest_days=_days(settings, bindings),
+        digest_time=_time(settings, bindings),
+        reply_markup=keyboard,
+    )
+
+
+def _digest_days_bundle(
+    digest_days: str,
+    bindings: DigestKindBindings,
+    *,
+    kind: DigestKind,
+    keyboard: dict,
+) -> ScreenBundle:
+    if kind == DIGEST_KIND_DAILY:
+        return digest_days_bundle(digest_days=digest_days, reply_markup=keyboard)
+    return pending_digest_days_bundle(digest_days=digest_days, reply_markup=keyboard)
+
+
+def _digest_time_bundle(digest_time: str, keyboard: dict) -> ScreenBundle:
+    return digest_time_bundle(digest_time=digest_time, reply_markup=keyboard)
 
 
 def _update_settings(
@@ -316,12 +364,14 @@ def show_digest_days_screen(
         return
     username = effective_username_from_callback(cb)
     settings = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
-    edit_callback_message(
-        ctx,
-        cb,
-        bindings.days_screen_text(_days(settings, bindings)),
-        bindings.build_days_keyboard(digest_days=_days(settings, bindings)),
+    keyboard = bindings.build_days_keyboard(digest_days=_days(settings, bindings))
+    bundle = _digest_days_bundle(
+        _days(settings, bindings),
+        bindings,
+        kind=kind,
+        keyboard=keyboard,
     )
+    edit_callback_bundle(ctx, cb, bundle)
     safe_answer_callback(ctx, cb)
 
 
@@ -399,12 +449,14 @@ def handle_pending_digest_day_toggle(
         username,
         _days(updated, bindings),
     )
-    edit_callback_message(
-        ctx,
-        cb,
-        bindings.days_screen_text(_days(updated, bindings)),
-        bindings.build_days_keyboard(digest_days=_days(updated, bindings)),
+    keyboard = bindings.build_days_keyboard(digest_days=_days(updated, bindings))
+    bundle = _digest_days_bundle(
+        _days(updated, bindings),
+        bindings,
+        kind=DIGEST_KIND_PENDING,
+        keyboard=keyboard,
     )
+    edit_callback_bundle(ctx, cb, bundle)
     safe_answer_callback(ctx, cb)
 
 
@@ -417,12 +469,9 @@ def handle_callback_time(
     username = effective_username_from_callback(cb)
     settings = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
     ctx.digest_state.set_waiting_for_time(cb.chat_id, cb.message_id, digest_kind=kind)
-    edit_callback_message(
-        ctx,
-        cb,
-        bindings.time_screen_text(_time(settings, bindings)),
-        bindings.build_time_keyboard(),
-    )
+    keyboard = bindings.build_time_keyboard()
+    bundle = _digest_time_bundle(_time(settings, bindings), keyboard)
+    edit_callback_bundle(ctx, cb, bundle)
     safe_answer_callback(ctx, cb)
 
 
@@ -433,7 +482,13 @@ def handle_callback_close(
     if cb.chat_id is None:
         return
     ctx.digest_state.clear(cb.chat_id)
-    edit_callback_message(ctx, cb, bindings.settings_closed_text, reply_markup=None)
+    edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=bindings.settings_closed_text,
+        fallback_html=bindings.settings_closed_text,
+        reply_markup=None,
+    )
     safe_answer_callback(ctx, cb)
 
 
@@ -451,41 +506,28 @@ def render_digest_settings_screen(
         if record is not None:
             weather_in_plan_enabled = record.weather_in_plan_enabled
     if kind == DIGEST_KIND_DAILY:
-        text = bindings.screen_text(
-            digest_enabled=_enabled(settings, bindings),
-            digest_days=_days(settings, bindings),
-            digest_time=_time(settings, bindings),
-            weather_in_plan_enabled=weather_in_plan_enabled,
-        )
-    else:
-        text = bindings.screen_text(
-            digest_enabled=_enabled(settings, bindings),
-            digest_days=_days(settings, bindings),
-            digest_time=_time(settings, bindings),
-        )
-    if kind == DIGEST_KIND_DAILY:
         keyboard = bindings.build_settings_keyboard(
             digest_enabled=_enabled(settings, bindings),
             weather_in_plan_enabled=weather_in_plan_enabled,
         )
     else:
         keyboard = bindings.build_settings_keyboard(digest_enabled=_enabled(settings, bindings))
-    edit_callback_message(ctx, cb, text, keyboard)
+    bundle = _digest_settings_bundle(
+        settings,
+        bindings,
+        kind=kind,
+        keyboard=keyboard,
+        weather_in_plan_enabled=weather_in_plan_enabled,
+    )
+    edit_callback_bundle(ctx, cb, bundle)
 
 
 def handle_daily_weather_toggle(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.chat_id is None or cb.user_id is None:
         safe_answer_callback(ctx, cb)
         return
-    record = ctx.users.get(cb.user_id)
-    if record is None:
-        safe_answer_callback(ctx, cb)
-        return
-    new_enabled = not record.weather_in_plan_enabled
-    try:
-        ctx.users.set_weather_in_plan_enabled(cb.user_id, enabled=new_enabled)
-    except (KeyError, UserStorePersistenceError):
-        log.exception("Failed to toggle weather_in_plan in digest settings: user_id=%s", cb.user_id)
+    new_enabled = toggle_weather_in_plan(ctx, cb.user_id)
+    if new_enabled is None:
         safe_answer_callback(ctx, cb)
         return
     username = effective_username_from_callback(cb)

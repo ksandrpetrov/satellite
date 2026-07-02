@@ -21,7 +21,6 @@ from ...messages_ru import (
     CB_INV_CLOSE,
     CB_INV_REFRESH,
     CB_INV_RESPOND_PREFIX,
-    CB_SETTINGS_INVITATIONS,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     INVITATIONS_CLOSED_TEXT,
     INVITATIONS_FETCH_STATUS,
@@ -52,10 +51,10 @@ from .partstat_flow import (
 from .partstat_flow import (
     find_event_by_token as _find_event_by_token,
 )
-from .settings_hub import show_settings_calendar_menu
 
 __all__ = [
     "handle_open_invitations",
+    "open_invitations_from_settings",
     "route_invitations_callback",
     "_find_event_by_token",
 ]
@@ -139,6 +138,10 @@ def _edit_invitations_screen(
     safe_answer_callback(ctx, cb, text=toast)
 
 
+def open_invitations_from_settings(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    _edit_invitations_screen(ctx, cb)
+
+
 def _on_success(ctx: HandlerContext, cb: IncomingCallback, code: str, _toast: str) -> None:
     """Приглашения: эффект и фиксированный текст шлём только для ACCEPTED."""
     if code != "a" or cb.chat_id is None:
@@ -175,9 +178,6 @@ def route_invitations_callback(ctx: HandlerContext, cb: IncomingCallback) -> boo
     data = (cb.data or "").strip()
     if not data:
         return False
-    if data == CB_SETTINGS_INVITATIONS:
-        _edit_invitations_screen(ctx, cb)
-        return True
     if not data.startswith("inv:"):
         return False
     if data == CB_INV_CLOSE:
@@ -185,6 +185,8 @@ def route_invitations_callback(ctx: HandlerContext, cb: IncomingCallback) -> boo
         safe_answer_callback(ctx, cb)
         return True
     if data == CB_INV_BACK:
+        from .settings_hub import show_settings_calendar_menu
+
         show_settings_calendar_menu(ctx, cb)
         return True
     if data == CB_INV_REFRESH:

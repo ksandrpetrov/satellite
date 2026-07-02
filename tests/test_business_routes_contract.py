@@ -49,6 +49,7 @@ from satellite.telegram_bot.commands import BOT_COMMANDS
 from satellite.telegram_bot.handlers.dispatch import (
     _CALLBACK_ROUTERS,
     _MESSAGE_ROUTES,
+    _SETTINGS_CALLBACK_OWNERS,
 )
 from satellite.telegram_bot.handlers.routing import (
     CalendarSourcesCommand,
@@ -300,6 +301,30 @@ def test_every_cb_constant_has_a_router() -> None:
     assert not failures, (
         "callback constants без router'а (добавьте route_*_callback или внесите в _CB_NOT_ROUTED_ALLOWLIST): "
         + ", ".join(failures)
+    )
+
+
+def test_settings_callbacks_are_owned_by_settings_hub() -> None:
+    constants = _all_cb_constants()
+    settings_callbacks = {
+        value
+        for name, value in constants.items()
+        if name.startswith("CB_SETTINGS_") or name.startswith("CB_ANALYTICS_")
+    }
+    assert settings_callbacks, "не нашли settings/analytics callback constants"
+    missing = settings_callbacks - set(_SETTINGS_CALLBACK_OWNERS)
+    assert not missing, f"settings callbacks without explicit owner: {sorted(missing)}"
+
+    invitations_owned = {
+        name: value
+        for name, value in constants.items()
+        if name.startswith("CB_SETTINGS_")
+        and value != "settings_reconnect"
+        and value in _SETTINGS_CALLBACK_OWNERS
+        and _SETTINGS_CALLBACK_OWNERS[value] != "settings_hub"
+    }
+    assert not invitations_owned, "CB_SETTINGS_* должны принадлежать settings_hub: " + ", ".join(
+        f"{name}={value!r}" for name, value in sorted(invitations_owned.items())
     )
 
 

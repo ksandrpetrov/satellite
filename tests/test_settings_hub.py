@@ -30,8 +30,6 @@ from satellite.messages_ru import (
     CB_SETTINGS_DISCONNECT,
     CB_SETTINGS_DISCONNECT_CONFIRM,
     CB_SETTINGS_WEATHER_TOGGLE,
-    SETTINGS_CALENDAR_MENU_TEXT,
-    SETTINGS_DISCONNECT_CONFIRM_TEXT,
     SETTINGS_HUB_CLOSED_TEXT,
     SETTINGS_HUB_TEXT,
     build_settings_calendar_menu_keyboard,
@@ -46,6 +44,11 @@ from satellite.telegram_bot.handlers import (
     handle_message,
 )
 from satellite.telegram_bot.handlers.digest_state import DigestStateStore
+from satellite.testing.delivery_helpers import (
+    callback_edit_html,
+    callback_edit_markup,
+    final_message_html,
+)
 from satellite.users import USER_STATUS_APPROVED
 
 _WEBAPP = "https://example.com/connect"
@@ -161,9 +164,8 @@ def test_disconnect_first_click_shows_confirmation_only(tmp_path: Path):
     handle_callback_query(ctx, _cb(900, CB_SETTINGS_DISCONNECT))
 
     ctx.calendar_service.disconnect.assert_not_called()
-    edit = ctx.telegram.edit_message_text.call_args
-    assert edit.args[2] == SETTINGS_DISCONNECT_CONFIRM_TEXT
-    keyboard = edit.kwargs.get("reply_markup") or edit.args[-1]
+    assert "Точно отключить календарь" in callback_edit_html(ctx.telegram)
+    keyboard = callback_edit_markup(ctx.telegram)
     labels = [btn["text"] for row in keyboard["inline_keyboard"] for btn in row]
     assert BUTTON_DISCONNECT_CALENDAR_CONFIRM in labels
     assert BUTTON_DISCONNECT_CALENDAR_CANCEL in labels
@@ -185,8 +187,7 @@ def test_disconnect_cancel_returns_to_calendar_menu(tmp_path: Path):
     handle_callback_query(ctx, _cb(900, CB_SETTINGS_CALENDAR_MENU))
 
     ctx.calendar_service.disconnect.assert_not_called()
-    last_edit = ctx.telegram.edit_message_text.call_args
-    assert last_edit.args[2] == SETTINGS_CALENDAR_MENU_TEXT
+    assert "Календарь" in callback_edit_html(ctx.telegram)
 
 
 def test_weather_toggle_disables_and_updates_hub(tmp_path: Path):
@@ -207,9 +208,8 @@ def test_weather_toggle_disables_and_updates_hub(tmp_path: Path):
 
     assert store.get(1) is not None
     assert store.get(1).weather_in_plan_enabled is False
-    edit = ctx.telegram.edit_message_text.call_args
-    assert "Погода в плане выключена" in edit.args[2]
-    keyboard = edit.kwargs.get("reply_markup") or edit.args[-1]
+    assert "Погода в плане выключена" in callback_edit_html(ctx.telegram)
+    keyboard = callback_edit_markup(ctx.telegram)
     labels = [btn["text"] for row in keyboard["inline_keyboard"] for btn in row]
     assert "🌤 Включить погоду в плане" in labels
 
@@ -227,14 +227,13 @@ def test_settings_button_opens_hub(tmp_path: Path):
     )
     handle_message(ctx, msg)
 
-    call = ctx.telegram.send_message.call_args
-    assert "Настройки Чайки" in call.args[1]
+    assert "Настройки Чайки" in final_message_html(ctx.telegram)
 
 
 def test_settings_reply_button_toggles_hub_closed(tmp_path: Path):
     """Повторная «⚙️ Настройки» сворачивает открытый inline-хаб, как «Закрыть»."""
     ctx = _ctx(tmp_path)
-    ctx.telegram.send_message = MagicMock(return_value={"message_id": 55})
+    ctx.telegram.send_rich_message = MagicMock(return_value={"message_id": 55})
     msg = IncomingMessage(
         update_id=1,
         chat_id=900,
@@ -244,7 +243,7 @@ def test_settings_reply_button_toggles_hub_closed(tmp_path: Path):
         text=BUTTON_SETTINGS,
     )
     handle_message(ctx, msg)
-    assert ctx.telegram.send_message.call_count == 1
+    assert ctx.telegram.send_rich_message.call_count == 1
 
     handle_message(
         ctx,
@@ -257,11 +256,17 @@ def test_settings_reply_button_toggles_hub_closed(tmp_path: Path):
             text=BUTTON_SETTINGS,
         ),
     )
-    ctx.telegram.send_message.assert_called_once()
-    edit = ctx.telegram.edit_message_text.call_args
-    assert edit.args[0] == 900
-    assert edit.args[1] == 55
-    assert SETTINGS_HUB_CLOSED_TEXT in edit.args[2]
+    ctx.telegram.send_rich_message.assert_called_once()
+    if ctx.telegram.edit_message_rich.called:
+        edit = ctx.telegram.edit_message_rich.call_args
+        assert edit.args[0] == 900
+        assert edit.args[1] == 55
+        assert SETTINGS_HUB_CLOSED_TEXT in edit.args[2]["html"]
+    else:
+        edit = ctx.telegram.edit_message_text.call_args
+        assert edit.args[0] == 900
+        assert edit.args[1] == 55
+        assert SETTINGS_HUB_CLOSED_TEXT in edit.args[2]
 
 
 # --- подтверждение всегда отдаёт корректную клавиатуру ---------------------

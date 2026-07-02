@@ -6,6 +6,7 @@ from .buttons import (
     BUTTON_CALENDAR_SOURCES,
     BUTTON_CHECK_CALENDAR,
     BUTTON_CONNECT_CALENDAR,
+    BUTTON_COPY_EMAIL,
     BUTTON_DISCONNECT_CALENDAR,
     BUTTON_INVITATIONS,
     BUTTON_RECONNECT_CALENDAR,
@@ -50,7 +51,7 @@ def settings_hub_text(
     weather_in_plan_enabled: bool | None = None,
     has_calendar: bool = True,
 ) -> str:
-    from ..telegram_bot.html_format import blockquote
+    from ..formatters.html import blockquote
 
     status_bits: list[str] = []
     if digest_enabled is not None:
@@ -152,7 +153,7 @@ def build_settings_hub_keyboard(
     «Календарь» — это уменьшает число кнопок на главном экране и убирает
     деструктивный «Отключить» из зоны случайного нажатия.
     """
-    from ..telegram_bot.html_format import build_copy_text_button
+    from ..formatters.html import build_copy_text_button
 
     rows: list[list[dict[str, object]]] = [
         [{"text": "🔔 Дайджест на сегодня", "callback_data": CB_SETTINGS_DIGEST}],
@@ -171,7 +172,7 @@ def build_settings_hub_keyboard(
             rows.append(
                 [
                     build_copy_text_button(
-                        "📋 Скопировать e-mail",
+                        BUTTON_COPY_EMAIL,
                         calendar_login,
                     )
                 ]
@@ -255,7 +256,7 @@ def build_invitations_keyboard(
 
 
 def invitations_list_html(*, body_lines: list[str], truncated: bool) -> str:
-    from ..telegram_bot.html_format import expandable_blockquote
+    from ..formatters.html import expandable_blockquote
 
     parts = [INVITATIONS_INTRO_HTML]
     if body_lines:
@@ -360,7 +361,7 @@ def build_manage_detail_keyboard(token: str, *, partstat: str | None) -> dict:
 
 
 def manage_list_html(*, body_lines: list[str], truncated: bool) -> str:
-    from ..telegram_bot.html_format import expandable_blockquote
+    from ..formatters.html import expandable_blockquote
 
     parts = [MANAGE_INTRO_HTML]
     if body_lines:

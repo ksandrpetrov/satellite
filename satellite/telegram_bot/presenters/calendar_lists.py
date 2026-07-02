@@ -14,23 +14,22 @@ from ...calendar.events import (
     format_upcoming_day_header,
     parse_iso,
 )
-from ...messages_ru.settings_ui import (
-    INVITATIONS_INTRO_HTML,
-    MANAGE_INTRO_HTML,
-    manage_partstat_label,
-)
-from ..html_format import expandable_blockquote
-from ..rich_message import (
+from ...formatters.html import expandable_blockquote
+from ...formatters.rich import (
     bold,
     datetime_link,
     details_block,
     escape_rich,
     join_blocks,
-    mark,
     paragraph,
     section_heading,
     truncate_rich_html,
     unordered_list,
+)
+from ...messages_ru.settings_ui import (
+    INVITATIONS_INTRO_HTML,
+    MANAGE_INTRO_HTML,
+    manage_partstat_label,
 )
 
 UPCOMING_DAY_EXPANDABLE_MIN_LINES = 2
@@ -107,10 +106,7 @@ def upcoming_events_plain_fallback_html(
 
 
 def _day_header_rich(header: str) -> str:
-    escaped = escape_rich(header)
-    if header.startswith(("Сегодня", "Завтра", "Послезавтра")):
-        return mark(escaped)
-    return escaped
+    return escape_rich(header)
 
 
 def _event_start_unix(event: dict[str, Any], tz: tzinfo) -> int | None:
@@ -236,6 +232,26 @@ def invitations_list_rich_html(
     if truncated:
         blocks.append(paragraph("<i>Показаны первые встречи — обновите список после ответов.</i>"))
     return truncate_rich_html(join_blocks(blocks))
+
+
+def manage_list_body_lines(events, tz, reference_date: date) -> list[str]:
+    """Строки legacy HTML тела списка manage (заголовок дня + встречи)."""
+    if not events:
+        return []
+    lines: list[str] = []
+    last_day: date | None = None
+    for idx, ev in enumerate(events):
+        day = event_local_start_date(ev, tz)
+        if day is not None and day != last_day:
+            if lines:
+                lines.append("")
+            lines.append(f"<b>{format_upcoming_day_header(day, reference_date)}</b>")
+            last_day = day
+        marker = event_index_marker(idx)
+        title = escape(str(ev.get("summary") or "—"))
+        when = format_time_range(ev, tz)
+        lines.append(f"{marker} {when} — {title}")
+    return lines
 
 
 def manage_list_rich_html(

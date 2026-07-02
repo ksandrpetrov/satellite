@@ -14,21 +14,41 @@ from ...messages_ru import (
     CB_CAL_CLOSE,
     CB_CAL_TOGGLE_PREFIX,
     build_calendar_sources_keyboard,
-    calendar_sources_screen_text,
     calendar_sources_toggle_notice,
 )
+from ..presenters.calendar_screens import calendar_sources_bundle
 from .calendar_view import (
     CalendarSourcesScreenStatus,
     build_calendar_sources_screen,
     enabled_url_set,
     fetch_calendars,
     normalize_calendar_url,
-    screen_lines,
 )
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from .delivery import edit_callback_message, safe_answer_callback, send
+from .delivery import (
+    edit_callback_bundle,
+    edit_callback_rich_or_html,
+    safe_answer_callback,
+    send,
+    send_rich_or_html,
+)
 
 log = logging.getLogger(__name__)
+
+
+def _sources_bundle(calendars: list, enabled_urls: set[str]) -> tuple:
+    pairs = [(entry.name, entry.url) for entry in calendars]
+    keyboard = build_calendar_sources_keyboard(
+        calendars=pairs,
+        enabled_urls=enabled_urls,
+        url_tokens=[calendar_callback_token(url) for _name, url in pairs],
+    )
+    bundle = calendar_sources_bundle(
+        calendars=calendars,
+        enabled_urls=enabled_urls,
+        reply_markup=keyboard,
+    )
+    return bundle, keyboard
 
 
 def handle_open_calendar_sources(ctx: HandlerContext, msg: IncomingMessage) -> None:
@@ -51,7 +71,23 @@ def handle_open_calendar_sources(ctx: HandlerContext, msg: IncomingMessage) -> N
         return
     if screen.text is None or screen.keyboard is None:
         return
-    ctx.telegram.send_message(msg.chat_id, screen.text, reply_markup=screen.keyboard)
+    result = fetch_calendars(ctx, msg.user_id)
+    if not result.ok:
+        return
+    record = ctx.users.get(msg.user_id)
+    if record is None:
+        return
+    bundle, _keyboard = _sources_bundle(
+        list(result.calendars),
+        enabled_url_set(record),
+    )
+    send_rich_or_html(
+        ctx,
+        msg.chat_id,
+        rich_html=bundle.rich_html,
+        fallback_html=bundle.fallback_html,
+        reply_markup=bundle.reply_markup,
+    )
     log.info("Opened calendar sources: user_id=%s", msg.user_id)
 
 
@@ -72,7 +108,13 @@ def _handle_close(ctx: HandlerContext, cb: IncomingCallback) -> None:
     from ...messages_ru import CALENDAR_SOURCES_CLOSED_TEXT
 
     if cb.chat_id is not None and cb.message_id is not None:
-        edit_callback_message(ctx, cb, CALENDAR_SOURCES_CLOSED_TEXT, reply_markup=None)
+        edit_callback_rich_or_html(
+            ctx,
+            cb,
+            rich_html=CALENDAR_SOURCES_CLOSED_TEXT,
+            fallback_html=CALENDAR_SOURCES_CLOSED_TEXT,
+            reply_markup=None,
+        )
     safe_answer_callback(ctx, cb)
     log.info("Closed calendar sources: user_id=%s", cb.user_id)
 
@@ -115,14 +157,8 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
 
     updated = ctx.users.set_enabled_calendar_urls(cb.user_id, calendar_urls=sorted(current))
     enabled_urls = enabled_url_set(updated)
-    text = calendar_sources_screen_text(lines=screen_lines(calendars, enabled_urls))
-    pairs = [(entry.name, entry.url) for entry in calendars]
-    keyboard = build_calendar_sources_keyboard(
-        calendars=pairs,
-        enabled_urls=enabled_urls,
-        url_tokens=[calendar_callback_token(url) for _name, url in pairs],
-    )
-    edit_callback_message(ctx, cb, text, reply_markup=keyboard)
+    bundle, _keyboard = _sources_bundle(calendars, enabled_urls)
+    edit_callback_bundle(ctx, cb, bundle)
     notice = calendar_sources_toggle_notice(enabled=enabled_now, name=target.name)
     safe_answer_callback(ctx, cb, text=notice)
     log.info(

@@ -12,24 +12,23 @@ from ...messages_ru import (
     ANALYTICS_BUSY_TOAST,
     ANALYTICS_FETCH_STATUS,
     ANALYTICS_SAVED_TOAST,
-    ANALYTICS_WORKDAY_APPLIED_TEXT,
     CB_ANALYTICS_BACK,  # noqa: F401 — re-exported для settings_hub
     CB_ANALYTICS_RUN,
     CB_ANALYTICS_WORKDAY_9,
     CB_ANALYTICS_WORKDAY_10,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_GENERIC_HANDLER_TEXT,
-    analytics_options_screen_text,
     build_analytics_options_keyboard,
 )
 from ..api import TelegramError
 from ..message_delivery import deliver_rich_or_html
-from ..visual import EFFECT_SPARKLES, is_private_chat
+from ..presenters.settings_screens import analytics_options_bundle, analytics_workday_applied_bundle
+from ..visual import pick_analytics_effect, private_message_effect
 from .access import ensure_calendar_connected
 from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback
 from .delivery import (
-    edit_callback_message,
+    edit_callback_bundle,
     open_streaming_reply,
     safe_answer_callback,
 )
@@ -54,12 +53,9 @@ def handle_open_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         return
     record = ctx.users.get(cb.user_id)
     preset = record.analytics_workday if record else ANALYTICS_WORKDAY_10_19
-    edit_callback_message(
-        ctx,
-        cb,
-        analytics_options_screen_text(workday_preset=preset),
-        build_analytics_options_keyboard(workday_preset=preset),
-    )
+    keyboard = build_analytics_options_keyboard(workday_preset=preset)
+    bundle = analytics_options_bundle(workday_preset=preset, reply_markup=keyboard)
+    edit_callback_bundle(ctx, cb, bundle)
     safe_answer_callback(ctx, cb)
 
 
@@ -110,7 +106,7 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
             stream.finish(ERR_GENERIC_HANDLER_TEXT, rich=False)
             return
 
-        effect = EFFECT_SPARKLES if is_private_chat(cb.chat_id) else None
+        effect = private_message_effect(pick_analytics_effect(), cb.chat_id)
         try:
             ctx.telegram.send_photo(
                 cb.chat_id,
@@ -148,12 +144,9 @@ def handle_set_analytics_workday(ctx: HandlerContext, cb: IncomingCallback, pres
     except (KeyError, ValueError):
         safe_answer_callback(ctx, cb)
         return
-    edit_callback_message(
-        ctx,
-        cb,
-        ANALYTICS_WORKDAY_APPLIED_TEXT,
-        build_analytics_options_keyboard(workday_preset=preset),
-    )
+    keyboard = build_analytics_options_keyboard(workday_preset=preset)
+    bundle = analytics_workday_applied_bundle(workday_preset=preset, reply_markup=keyboard)
+    edit_callback_bundle(ctx, cb, bundle)
     safe_answer_callback(ctx, cb, text=ANALYTICS_SAVED_TOAST)
 
 

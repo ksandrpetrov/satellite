@@ -14,7 +14,9 @@ from ...calendar.selection import (
     foreign_calendar_entries,
     sort_calendar_entries,
 )
+from ...formatters.html import build_copy_text_button, strip_bold_tags
 from ...messages_ru import (
+    BUTTON_COPY_LIST,
     CALENDAR_NOT_CONNECTED_HTML,
     CB_FOREIGN_BACK,
     CB_FOREIGN_CLOSE,
@@ -34,7 +36,6 @@ from ...messages_ru import (
     foreign_calendars_day_result_text,
     foreign_calendars_pick_day_text,
 )
-from ..html_format import build_copy_text_button
 from .access import ensure_calendar_connected
 from .calendar_view import CalendarListStatus, fetch_calendars, normalize_calendar_url
 from .context import HandlerContext, IncomingCallback, IncomingMessage
@@ -223,9 +224,9 @@ def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
         text = ERR_CALDAV_UNAVAILABLE_TEXT
 
     markup = None
-    plain = text.replace("<b>", "").replace("</b>", "")
+    plain = strip_bold_tags(text)
     if len(plain) <= 256 and "—" in plain:
-        markup = {"inline_keyboard": [[build_copy_text_button("📋 Скопировать список", plain)]]}
+        markup = {"inline_keyboard": [[build_copy_text_button(BUTTON_COPY_LIST, plain)]]}
     edit_callback_message(ctx, cb, text, reply_markup=markup)
     log.info(
         "Foreign calendar day: user_id=%s calendar=%s offset=%d",

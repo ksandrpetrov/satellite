@@ -186,4 +186,11 @@ def _dispatch(handler: BaseHTTPRequestHandler, method: str, deps: Deps) -> None:
     if route is None:
         json_response(handler, HTTPStatus.NOT_FOUND, {"error": "not_found"})
         return
-    route(handler, deps)
+    try:
+        route(handler, deps)
+    except Exception:  # noqa: BLE001 - request thread must fail closed
+        log.exception("WebApp request failed method=%s path=%s", method, path)
+        try:
+            json_response(handler, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "request_failed"})
+        except Exception:  # noqa: BLE001 - connection may already be broken
+            log.exception("Failed to send safe 500 response method=%s path=%s", method, path)

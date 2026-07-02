@@ -8,20 +8,20 @@ from html import escape
 from ..calendar.events import event_index_marker, pizza_meal_kind
 from ..calendar.stats import DayCalendarStats, NormalizedEvent
 from ..calendar.time_utils import format_hhmm, merge_intervals
+from ..formatters.html import expandable_blockquote, replace_first_char_with_tg_emoji
+from ..formatters.rich import bold
 from ..messages_ru import (
     PLAN_STATS_BREAKFAST,
     PLAN_STATS_DINNER,
     PLAN_STATS_LUNCH,
     format_duration_ru,
 )
-from ..telegram_bot.html_format import expandable_blockquote, replace_first_char_with_tg_emoji
+from ..messages_ru.tokens import PENDING_MARK, TENTATIVE_MARK
 from . import templates as t
 from .rules import SeagullTexts
 
 _SCHEDULE_EXPANDABLE_MIN_MEETINGS = 4
 
-PENDING_MARK = "⚠️"
-TENTATIVE_MARK = "⚖️"
 MAX_DIGEST_MESSAGE_LEN = 3800
 TRUNCATED_NOTICE = "…\n\nСообщение укорочено: встреч слишком много для одного сообщения."
 MAX_EVENT_FIELD_CHARS = 320
@@ -31,11 +31,6 @@ _RELATIVE_WORD_LOWER = {
     t.LABEL_TOMORROW: "завтра",
     t.LABEL_DAY_AFTER: "послезавтра",
 }
-
-
-def _html_b(fragment: str) -> str:
-    """Telegram HTML: жирный текст. Аргумент — без пользовательского HTML."""
-    return f"<b>{fragment}</b>"
 
 
 def _ellipsize(text: str, *, max_chars: int = MAX_EVENT_FIELD_CHARS) -> str:
@@ -81,7 +76,7 @@ def _forecast_header(stats: DayCalendarStats) -> str:
         raw = t.FORECAST_HEADER_RELATIVE.format(rel=rel, date=date_str)
     else:
         raw = t.FORECAST_HEADER_PLAIN_DATE.format(date=date_str)
-    header = f"📬 {_html_b(raw)}"
+    header = f"📬 {bold(raw)}"
     return replace_first_char_with_tg_emoji(header, "📬")
 
 
@@ -145,17 +140,17 @@ def render_daily_digest(
         lines.append(texts.overlaps)
 
     lines.append("")
-    lines.append(_html_b(t.FIRST_LINE.format(value=stats.first_meeting_start or t.NO_VALUE)))
+    lines.append(bold(t.FIRST_LINE.format(value=stats.first_meeting_start or t.NO_VALUE)))
     last_template = t.LAST_LINE if stats.last_meeting_end else t.LAST_LINE_EMPTY
-    lines.append(_html_b(last_template.format(value=stats.last_meeting_end or t.NO_VALUE)))
+    lines.append(bold(last_template.format(value=stats.last_meeting_end or t.NO_VALUE)))
     lines.append("")
     if stats.meetings_count == 0:
-        lines.append(_html_b(t.SCHEDULE_TITLE))
+        lines.append(bold(t.SCHEDULE_TITLE))
         lines.append(t.EMPTY_SCHEDULE)
         lines.append("")
     else:
         events = list(stats.events)
-        schedule_lines: list[str] = [_html_b(t.SCHEDULE_TITLE)]
+        schedule_lines: list[str] = [bold(t.SCHEDULE_TITLE)]
         for index, ev in enumerate(events):
             schedule_lines.extend(_render_event(index, ev, escape_html=escape_html))
             if index < len(events) - 1:
@@ -189,6 +184,6 @@ def _render_event(index: int, ev: NormalizedEvent, *, escape_html: bool) -> list
     location = escape(location_raw) if escape_html else location_raw
     time_range = f"{ev.start_hhmm}–{ev.end_hhmm}"
     return [
-        f"{marker} {_html_b(time_range)} — {title}",
+        f"{marker} {bold(time_range)} — {title}",
         t.ROOM_LINE.format(location=location),
     ]

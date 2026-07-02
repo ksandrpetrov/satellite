@@ -66,6 +66,17 @@ def pick_upcoming_message_effect(text: str) -> str | None:
     return None
 
 
+def pick_analytics_effect(*, load_percent: float | None = None) -> str | None:
+    """Эффект для финальной подписи недельной аналитики."""
+    if load_percent is None:
+        return EFFECT_SPARKLES
+    if load_percent >= 85:
+        return EFFECT_FIRE
+    if load_percent <= 35:
+        return EFFECT_SPARKLES
+    return EFFECT_PARTY
+
+
 def send_with_effect(
     telegram: TelegramClient,
     chat_id: int,

@@ -15,6 +15,9 @@ from ...messages_ru import (
     CB_CREATE_DATE_TODAY,
     CB_CREATE_DATE_TOMORROW,
     CB_CREATE_DURATION_PREFIX,
+    CREATE_DATE_ALIAS_TODAY,
+    CREATE_DATE_ALIAS_TOMORROW,
+    CREATE_EVENT_ALREADY_CREATING_TOAST,
     CREATE_EVENT_ASK_DATE,
     CREATE_EVENT_ASK_DURATION,
     CREATE_EVENT_ASK_TIME,
@@ -22,12 +25,16 @@ from ...messages_ru import (
     CREATE_EVENT_CANCELLED_HTML,
     CREATE_EVENT_CONFIRM_HTML,
     CREATE_EVENT_CREATING_HTML,
+    CREATE_EVENT_CREATING_TOAST,
+    CREATE_EVENT_DONE_SHORT,
+    CREATE_EVENT_DONE_TOAST,
     CREATE_EVENT_FAILED_HTML,
     CREATE_EVENT_INVALID_DATE,
     CREATE_EVENT_INVALID_DURATION,
     CREATE_EVENT_INVALID_TIME,
     CREATE_EVENT_SUCCESS_HTML,
     ERR_CALDAV_UNAVAILABLE_TEXT,
+    build_create_confirm_keyboard,
     build_create_date_keyboard,
     build_create_duration_keyboard,
 )
@@ -44,7 +51,7 @@ from .calendar_state import (
     CreateEventDraft,
 )
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from .delivery import edit_callback_message, safe_answer_callback, send
+from .delivery import edit_callback_rich_or_html, safe_answer_callback, send
 
 log = logging.getLogger(__name__)
 
@@ -203,16 +210,7 @@ def _send_confirm(ctx: HandlerContext, chat_id: int, draft: CreateEventDraft) ->
         start=draft.start_time,
         end=end_time,
     )
-    from ...messages_ru import styled_button
-
-    keyboard = {
-        "inline_keyboard": [
-            [
-                styled_button("✅ Создать", CB_CREATE_CONFIRM, style="success"),
-                styled_button("❌ Отмена", CB_CREATE_CANCEL, style="danger"),
-            ]
-        ]
-    }
+    keyboard = build_create_confirm_keyboard()
     ctx.telegram.send_message(chat_id, text, reply_markup=keyboard)
 
 
@@ -222,7 +220,7 @@ def _confirm_create(ctx: HandlerContext, cb: IncomingCallback) -> None:
         return
     flow = ctx.calendar_state.get(cb.chat_id)
     if flow is None or flow.state == STATE_CREATE_SUBMITTING:
-        safe_answer_callback(ctx, cb, text="Уже создаём…")
+        safe_answer_callback(ctx, cb, text=CREATE_EVENT_ALREADY_CREATING_TOAST)
         return
     if flow.state != STATE_CREATE_CONFIRM:
         safe_answer_callback(ctx, cb)
@@ -238,28 +236,46 @@ def _confirm_create(ctx: HandlerContext, cb: IncomingCallback) -> None:
 
     flow.state = STATE_CREATE_SUBMITTING
     ctx.calendar_state.set(cb.chat_id, flow)
-    safe_answer_callback(ctx, cb, text="Создаю…")
-    edit_callback_message(ctx, cb, CREATE_EVENT_CREATING_HTML, reply_markup=None)
+    safe_answer_callback(ctx, cb, text=CREATE_EVENT_CREATING_TOAST)
+    edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=CREATE_EVENT_CREATING_HTML,
+        fallback_html=CREATE_EVENT_CREATING_HTML,
+        reply_markup=None,
+    )
 
     try:
         ctx.calendar_service.create_event(cb.user_id, payload, tz=ctx.tz)
     except CalendarProviderError as exc:
         log.error("Create event failed user_id=%s code=%s", cb.user_id, exc.error_code)
         ctx.calendar_state.clear(cb.chat_id)
-        edit_callback_message(ctx, cb, _create_failure_text(exc), reply_markup=None)
+        edit_callback_rich_or_html(
+            ctx,
+            cb,
+            rich_html=_create_failure_text(exc),
+            fallback_html=_create_failure_text(exc),
+            reply_markup=None,
+        )
         safe_answer_callback(ctx, cb)
         return
 
     ctx.calendar_state.clear(cb.chat_id)
-    edit_callback_message(ctx, cb, CREATE_EVENT_SUCCESS_HTML, reply_markup=None)
+    edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=CREATE_EVENT_SUCCESS_HTML,
+        fallback_html=CREATE_EVENT_SUCCESS_HTML,
+        reply_markup=None,
+    )
     if cb.chat_id is not None:
         send_with_effect(
             ctx.telegram,
             cb.chat_id,
-            "✅ Готово.",
+            CREATE_EVENT_DONE_SHORT,
             message_effect_id=private_message_effect(EFFECT_PARTY, cb.chat_id),
         )
-    safe_answer_callback(ctx, cb, text="Готово")
+    safe_answer_callback(ctx, cb, text=CREATE_EVENT_DONE_TOAST)
 
 
 def _create_failure_text(exc: CalendarProviderError) -> str:
@@ -275,9 +291,9 @@ def _create_failure_text(exc: CalendarProviderError) -> str:
 def _parse_target_date(text: str, ctx: HandlerContext) -> date | None:
     raw = (text or "").strip().lower()
     today = datetime.now(tz=ctx.tz).date()
-    if raw in {"сегодня", "today"}:
+    if raw in CREATE_DATE_ALIAS_TODAY:
         return today
-    if raw in {"завтра", "tomorrow"}:
+    if raw in CREATE_DATE_ALIAS_TOMORROW:
         return today + timedelta(days=1)
     for fmt in ("%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d"):
         try:

@@ -26,6 +26,10 @@ BUTTON_DISCONNECT_CALENDAR = "🗑 Отключить календарь"
 BUTTON_CHECK_CALENDAR = "✅ Проверить подключение"
 BUTTON_CALENDAR_SOURCES = "📚 Календари"
 BUTTON_FOREIGN_CALENDARS = "👥 Чужие календари"
+BUTTON_COPY_EMAIL = "📋 Скопировать e-mail"
+BUTTON_COPY_LIST = "📋 Скопировать список"
+BUTTON_CREATE_CONFIRM = "✅ Создать"
+BUTTON_CREATE_CANCEL = "❌ Отмена"
 
 ButtonStyle = str  # "primary" | "success" | "danger"
 

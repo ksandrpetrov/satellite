@@ -21,6 +21,7 @@ from satellite.messages_ru import (
 from satellite.messages_ru import _core as messages_core
 from satellite.subscriptions import SubscriptionStore
 from satellite.telegram_bot.handlers import handle_callback_query
+from satellite.testing.delivery_helpers import callback_edit_html, callback_edit_was_called
 
 from .conftest import make_callback, make_ctx, make_user_store
 
@@ -35,6 +36,7 @@ def ctx(tmp_path: Path) -> MagicMock:
     c = make_ctx(users, subscriptions=store)
     c.tz = ZoneInfo("Europe/Moscow")
     c.telegram.send_message = MagicMock(return_value={"message_id": 8300})
+    c.telegram.edit_message_rich = MagicMock(return_value={"message_id": 8300})
     c.telegram.edit_message_text = MagicMock(return_value={})
     c.telegram.answer_callback_query = MagicMock(return_value=True)
     c.calendar_service.check_connection = MagicMock(return_value=MagicMock(connected=True))
@@ -55,7 +57,7 @@ def test_settings_hub_entry_callbacks_route(ctx: MagicMock, callback_data: str) 
         ctx,
         make_callback(data=callback_data, chat_id=CHAT_ID, user_id=USER_ID),
     )
-    assert ctx.telegram.edit_message_text.called or ctx.telegram.send_message.called
+    assert callback_edit_was_called(ctx.telegram) or ctx.telegram.send_rich_message.called
 
 
 def test_digest_back_returns_to_hub(ctx: MagicMock) -> None:
@@ -63,7 +65,7 @@ def test_digest_back_returns_to_hub(ctx: MagicMock) -> None:
         ctx,
         make_callback(data=CB_DIGEST_BACK, chat_id=CHAT_ID, user_id=USER_ID),
     )
-    text = ctx.telegram.edit_message_text.call_args[0][2]
+    text = callback_edit_html(ctx.telegram)
     assert SETTINGS_HUB_TEXT.split()[0] in text or "Настройки" in text
 
 
@@ -72,7 +74,7 @@ def test_analytics_back_returns_to_hub(ctx: MagicMock) -> None:
         ctx,
         make_callback(data=CB_ANALYTICS_BACK, chat_id=CHAT_ID, user_id=USER_ID),
     )
-    text = ctx.telegram.edit_message_text.call_args[0][2]
+    text = callback_edit_html(ctx.telegram)
     assert "Настройки" in text or SETTINGS_HUB_TEXT[:10] in text
 
 

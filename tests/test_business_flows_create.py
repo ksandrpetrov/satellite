@@ -34,6 +34,11 @@ from satellite.telegram_bot.handlers.calendar_state import (
     CalendarFlowState,
     CreateEventDraft,
 )
+from satellite.testing.delivery_helpers import (
+    callback_edit_html,
+    final_message_html,
+    sent_messages_text,
+)
 from satellite.users import UserStore
 
 from .conftest import freeze_now, make_callback, make_ctx, make_msg, make_user_store
@@ -51,9 +56,6 @@ def store(tmp_path: Path) -> UserStore:
 def _create_ctx(users: UserStore) -> MagicMock:
     ctx = make_ctx(users)
     ctx.tz = TZ
-    ctx.telegram.send_message = MagicMock(return_value={"message_id": 8200})
-    ctx.telegram.edit_message_text = MagicMock(return_value={})
-    ctx.telegram.answer_callback_query = MagicMock(return_value=True)
     ctx.calendar_service.create_event = MagicMock()
     return ctx
 
@@ -68,14 +70,14 @@ def test_create_fsm_full_text_path(store: UserStore, monkeypatch: pytest.MonkeyP
 
     ctx = _create_ctx(store)
     _start_create(ctx)
-    assert CREATE_EVENT_ASK_TITLE in ctx.telegram.send_message.call_args[0][1]
+    assert CREATE_EVENT_ASK_TITLE in final_message_html(ctx.telegram)
 
     from satellite.telegram_bot.handlers.calendar_create import handle_create_text_input
 
     handle_create_text_input(
         ctx, make_msg(text="  ", chat_id=CHAT_ID, user_id=USER_ID, update_id=2)
     )
-    assert ctx.telegram.send_message.call_args[0][1] == CREATE_EVENT_ASK_TITLE
+    assert final_message_html(ctx.telegram) == CREATE_EVENT_ASK_TITLE
 
     handle_message(ctx, make_msg(text="Standup", chat_id=CHAT_ID, user_id=USER_ID, update_id=3))
     handle_message(ctx, make_msg(text="25.05.2026", chat_id=CHAT_ID, user_id=USER_ID, update_id=4))
@@ -99,15 +101,15 @@ def test_create_invalid_date_time_duration(
     _start_create(ctx)
     handle_message(ctx, make_msg(text="Meet", chat_id=CHAT_ID, user_id=USER_ID, update_id=10))
     handle_message(ctx, make_msg(text="вчера", chat_id=CHAT_ID, user_id=USER_ID, update_id=11))
-    assert CREATE_EVENT_INVALID_DATE in ctx.telegram.send_message.call_args[0][1]
+    assert CREATE_EVENT_INVALID_DATE in final_message_html(ctx.telegram)
 
     handle_message(ctx, make_msg(text="сегодня", chat_id=CHAT_ID, user_id=USER_ID, update_id=12))
     handle_message(ctx, make_msg(text="утром", chat_id=CHAT_ID, user_id=USER_ID, update_id=13))
-    assert CREATE_EVENT_INVALID_TIME in ctx.telegram.send_message.call_args[0][1]
+    assert CREATE_EVENT_INVALID_TIME in final_message_html(ctx.telegram)
 
     handle_message(ctx, make_msg(text="10:00", chat_id=CHAT_ID, user_id=USER_ID, update_id=14))
     handle_message(ctx, make_msg(text="-5", chat_id=CHAT_ID, user_id=USER_ID, update_id=15))
-    assert CREATE_EVENT_INVALID_DURATION in ctx.telegram.send_message.call_args[0][1]
+    assert CREATE_EVENT_INVALID_DURATION in final_message_html(ctx.telegram)
 
 
 def test_create_date_and_duration_callbacks(
@@ -127,7 +129,7 @@ def test_create_date_and_duration_callbacks(
         ctx,
         make_callback(data=CB_CREATE_DATE_TODAY, chat_id=CHAT_ID, user_id=USER_ID),
     )
-    assert CREATE_EVENT_ASK_TIME in ctx.telegram.send_message.call_args[0][1]
+    assert CREATE_EVENT_ASK_TIME in final_message_html(ctx.telegram)
 
     flow = ctx.calendar_state.get(CHAT_ID)
     flow.state = STATE_CREATE_TIME
@@ -177,7 +179,7 @@ def test_create_confirm_success_and_cancel(
         ctx,
         make_callback(data=CB_CREATE_CANCEL, chat_id=CHAT_ID, user_id=USER_ID),
     )
-    sent = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
+    sent = sent_messages_text(ctx.telegram)
     assert CREATE_EVENT_CANCELLED_HTML in sent
 
 
@@ -216,7 +218,7 @@ def test_create_failure_text_mapping(
         ctx,
         make_callback(data=CB_CREATE_CONFIRM, chat_id=CHAT_ID, user_id=USER_ID, message_id=100),
     )
-    edited = ctx.telegram.edit_message_text.call_args[0][2]
+    edited = callback_edit_html(ctx.telegram)
     assert expected_fragment[:20] in edited or expected_fragment in edited
 
 

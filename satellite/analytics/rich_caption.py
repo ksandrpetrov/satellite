@@ -9,7 +9,6 @@ from ..telegram_bot.rich_message import (
     escape_rich,
     footnote_def,
     join_blocks,
-    mark,
     paragraph,
     section_heading,
     table,
@@ -75,9 +74,4 @@ def build_analytics_rich_caption(report: AnalyticsReport) -> str:
 
 
 def _compare_rich(report: AnalyticsReport) -> str:
-    line = _compare_line(report)
-    delta_pct = abs(report.current.load_percent - report.previous.load_percent)
-    escaped = escape_rich(line)
-    if delta_pct > 10:
-        return mark(escaped)
-    return escaped
+    return escape_rich(_compare_line(report))

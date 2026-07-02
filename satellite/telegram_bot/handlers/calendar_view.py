@@ -28,6 +28,7 @@ from ...messages_ru import (
     calendar_sources_screen_text,
 )
 from ...users import UserRecord
+from ..presenters.calendar_screens import calendar_source_toggle_lines
 from .context import HandlerContext
 
 log = logging.getLogger(__name__)
@@ -56,11 +57,7 @@ def enabled_url_set(record: UserRecord) -> set[str]:
 
 
 def screen_lines(calendars: list[CalendarListEntry], enabled_urls: set[str]) -> list[str]:
-    lines: list[str] = []
-    for entry in calendars:
-        mark = "✅" if normalize_calendar_url(entry.url) in enabled_urls else "⬜️"
-        lines.append(f"{mark} {entry.name}")
-    return lines
+    return calendar_source_toggle_lines(calendars, enabled_urls)
 
 
 def fetch_calendars(ctx: HandlerContext, user_id: int) -> CalendarListResult:

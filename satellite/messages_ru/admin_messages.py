@@ -50,3 +50,8 @@ def admin_pending_list_html(lines: list[str]) -> str:
 
 
 ADMIN_ACTION_FORBIDDEN_HTML = "⛔️ Эта команда доступна только администратору."
+
+ADMIN_TOAST_FORBIDDEN = "Недостаточно прав"
+ADMIN_TOAST_USER_NOT_FOUND = "Пользователь не найден"
+ADMIN_TOAST_APPROVED = "Доступ открыт"
+ADMIN_TOAST_REJECTED = "Отклонено"

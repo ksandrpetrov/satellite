@@ -31,12 +31,20 @@ from satellite.telegram_bot.handlers import (
     handle_message,
 )
 from satellite.telegram_bot.handlers.routing import is_calendar_sources_request
+from satellite.testing.delivery_helpers import (
+    callback_edit_was_called,
+    final_message_html,
+    final_reply_markup,
+    sent_messages_text,
+)
 from satellite.users import (
     CALENDAR_CONNECTED,
     USER_STATUS_APPROVED,
     UserRecord,
     UserStore,
 )
+
+from .conftest import make_fake_telegram
 
 
 def test_user_record_weather_in_plan_defaults_true_and_persists(tmp_path: Path):
@@ -149,10 +157,7 @@ def _ctx(tmp_path: Path, *, calendars: list[CalendarListEntry] | None):
     ctx.digest_state.is_waiting_for_time = MagicMock(return_value=False)
     ctx.tz = ZoneInfo("Europe/Moscow")
     ctx.subscriptions = MagicMock()
-    ctx.telegram = MagicMock()
-    ctx.telegram.send_message = MagicMock(return_value={"message_id": 1001})
-    ctx.telegram.edit_message_text = MagicMock(return_value={})
-    ctx.telegram.answer_callback_query = MagicMock(return_value=True)
+    ctx.telegram = make_fake_telegram()
     ctx.calendar_service = MagicMock()
     if calendars is not None:
         ctx.calendar_service.list_calendars = MagicMock(return_value=calendars)
@@ -174,8 +179,9 @@ def test_calendar_sources_button_opens_inline_keyboard(tmp_path: Path):
         text=BUTTON_CALENDAR_SOURCES,
     )
     handle_message(ctx, msg)
-    ctx.telegram.send_message.assert_called_once()
-    markup = ctx.telegram.send_message.call_args.kwargs.get("reply_markup")
+    text = final_message_html(ctx.telegram)
+    assert "календар" in text.lower()
+    markup = final_reply_markup(ctx.telegram)
     assert markup is not None
     rows = markup["inline_keyboard"]
     assert len(rows) == 3
@@ -247,7 +253,7 @@ def test_single_calendar_shows_hint(tmp_path: Path):
         text=BUTTON_CALENDAR_SOURCES,
     )
     handle_message(ctx, msg)
-    text = ctx.telegram.send_message.call_args.args[1]
+    text = final_message_html(ctx.telegram)
     assert "один календарь" in text.lower()
 
 
@@ -326,7 +332,7 @@ def test_build_calendar_sources_keyboard_marks_enabled():
 
 
 def _assert_no_generic_error(ctx) -> None:
-    sent_texts = [c.args[1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     assert ERR_GENERIC_HANDLER_TEXT not in sent_texts, (
         "Пользователь получил generic error — значит хендлер кинул исключение."
     )
@@ -349,7 +355,7 @@ def test_toggle_updates_inline_keyboard_without_generic_error(tmp_path: Path):
         data=f"{CB_CAL_TOGGLE_PREFIX}{calendar_callback_token('https://cal/home')}",
     )
     handle_callback_query(ctx, cb)
-    ctx.telegram.edit_message_text.assert_called_once()
+    assert callback_edit_was_called(ctx.telegram)
     _assert_no_generic_error(ctx)
 
 
@@ -365,5 +371,5 @@ def test_close_calendar_sources_without_generic_error(tmp_path: Path):
         data=CB_CAL_CLOSE,
     )
     handle_callback_query(ctx, cb)
-    ctx.telegram.edit_message_text.assert_called_once()
+    assert callback_edit_was_called(ctx.telegram)
     _assert_no_generic_error(ctx)

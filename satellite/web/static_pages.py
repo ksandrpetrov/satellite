@@ -12,6 +12,8 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
+from ..messages_ru.webapp_ui import webapp_copy_json
+from .errors import error_payload
 from .responses import json_response
 
 
@@ -47,9 +49,15 @@ def serve_html(
     ломает WebView Telegram Desktop/Web.
     """
     if not page.path.is_file():
-        json_response(handler, HTTPStatus.NOT_FOUND, {"error": "not_found"})
+        json_response(handler, HTTPStatus.NOT_FOUND, error_payload("not_found"))
         return
     body = page.path.read_bytes()
+    copy_inject = "<script>window.__SATELLITE_COPY__=" + webapp_copy_json() + ";</script>\n  "
+    marker = b"<script>"
+    if marker in body:
+        body = body.replace(marker, copy_inject.encode("utf-8") + marker, 1)
+    else:
+        body = copy_inject.encode("utf-8") + body
     if path_token:
         inject = (
             "<script>window.__SATELLITE_CONNECT_TOKEN__="

@@ -6,6 +6,10 @@ import logging
 
 from ...messages_ru import (
     ADMIN_ACTION_FORBIDDEN_HTML,
+    ADMIN_TOAST_APPROVED,
+    ADMIN_TOAST_FORBIDDEN,
+    ADMIN_TOAST_REJECTED,
+    ADMIN_TOAST_USER_NOT_FOUND,
     CB_ADMIN_APPROVE_PREFIX,
     CB_ADMIN_REJECT_PREFIX,
     admin_pending_list_html,
@@ -59,12 +63,12 @@ def _parse_target_id(data: str, prefix: str) -> int | None:
 
 def _handle_approve(ctx: HandlerContext, cb: IncomingCallback, target_id: int) -> None:
     if cb.user_id is None or not ctx.admin.is_admin(cb.user_id):
-        safe_answer_callback(ctx, cb, text="Недостаточно прав")
+        safe_answer_callback(ctx, cb, text=ADMIN_TOAST_FORBIDDEN)
         return
     try:
         record = ctx.users.approve(target_id, admin_telegram_id=cb.user_id)
     except KeyError:
-        safe_answer_callback(ctx, cb, text="Пользователь не найден")
+        safe_answer_callback(ctx, cb, text=ADMIN_TOAST_USER_NOT_FOUND)
         return
     webapp_url = webapp_connect_url(ctx, target_id)
     if record.chat_id is not None:
@@ -72,20 +76,20 @@ def _handle_approve(ctx: HandlerContext, cb: IncomingCallback, target_id: int) -
         notify_user_access_decision(
             ctx, chat_id=record.chat_id, approved=True, webapp_url=webapp_url
         )
-    safe_answer_callback(ctx, cb, text="Доступ открыт")
+    safe_answer_callback(ctx, cb, text=ADMIN_TOAST_APPROVED)
     log.info("Admin %s approved user %s", cb.user_id, target_id)
 
 
 def _handle_reject(ctx: HandlerContext, cb: IncomingCallback, target_id: int) -> None:
     if cb.user_id is None or not ctx.admin.is_admin(cb.user_id):
-        safe_answer_callback(ctx, cb, text="Недостаточно прав")
+        safe_answer_callback(ctx, cb, text=ADMIN_TOAST_FORBIDDEN)
         return
     try:
         record = ctx.users.reject(target_id, admin_telegram_id=cb.user_id)
     except KeyError:
-        safe_answer_callback(ctx, cb, text="Пользователь не найден")
+        safe_answer_callback(ctx, cb, text=ADMIN_TOAST_USER_NOT_FOUND)
         return
     if record.chat_id is not None:
         notify_user_access_decision(ctx, chat_id=record.chat_id, approved=False, webapp_url="")
-    safe_answer_callback(ctx, cb, text="Отклонено")
+    safe_answer_callback(ctx, cb, text=ADMIN_TOAST_REJECTED)
     log.info("Admin %s rejected user %s", cb.user_id, target_id)

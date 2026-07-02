@@ -33,6 +33,7 @@ from satellite.telegram_bot.handlers.access import (
     handle_start_or_help,
 )
 from satellite.telegram_bot.handlers.admin import handle_pending_command
+from satellite.testing.delivery_helpers import final_message_html, sent_messages_text
 from satellite.users import (
     UserStore,
 )
@@ -68,28 +69,28 @@ def test_ensure_access_for_unknown_user_returns_false_and_sends_blocked(store: U
     msg = make_msg(text="/td", chat_id=8888, user_id=8888)
     assert ensure_calendar_access(ctx, msg) is False
     ctx.telegram.send_message.assert_called_once()
-    assert ctx.telegram.send_message.call_args[0][1] == ACCESS_BLOCKED_HTML
+    assert final_message_html(ctx.telegram) == ACCESS_BLOCKED_HTML
 
 
 def test_ensure_access_for_blocked_user_returns_false(store: UserStore) -> None:
     ctx = make_ctx(store, admin_ids=(ADMIN_ID,))
     msg = make_msg(text="/td", chat_id=BLOCKED_ID, user_id=BLOCKED_ID)
     assert ensure_calendar_access(ctx, msg) is False
-    assert ctx.telegram.send_message.call_args[0][1] == ACCESS_BLOCKED_HTML
+    assert final_message_html(ctx.telegram) == ACCESS_BLOCKED_HTML
 
 
 def test_ensure_access_for_rejected_user_returns_false(store: UserStore) -> None:
     ctx = make_ctx(store, admin_ids=(ADMIN_ID,))
     msg = make_msg(text="/td", chat_id=REJECTED_ID, user_id=REJECTED_ID)
     assert ensure_calendar_access(ctx, msg) is False
-    assert ctx.telegram.send_message.call_args[0][1] == ACCESS_REJECTED_HTML
+    assert final_message_html(ctx.telegram) == ACCESS_REJECTED_HTML
 
 
 def test_ensure_access_for_pending_user_returns_false(store: UserStore) -> None:
     ctx = make_ctx(store, admin_ids=(ADMIN_ID,))
     msg = make_msg(text="/td", chat_id=PENDING_ID, user_id=PENDING_ID)
     assert ensure_calendar_access(ctx, msg) is False
-    assert ctx.telegram.send_message.call_args[0][1] == ACCESS_PENDING_HTML
+    assert final_message_html(ctx.telegram) == ACCESS_PENDING_HTML
 
 
 def test_ensure_access_for_approved_user_returns_true_and_no_send(store: UserStore) -> None:
@@ -138,7 +139,7 @@ def test_ensure_connected_propagates_access_failure_first(store: UserStore) -> N
     ctx = make_ctx(store, admin_ids=(ADMIN_ID,))
     msg = make_msg(text="/td", chat_id=REJECTED_ID, user_id=REJECTED_ID)
     assert ensure_calendar_connected(ctx, msg) is False
-    assert ctx.telegram.send_message.call_args[0][1] == ACCESS_REJECTED_HTML
+    assert final_message_html(ctx.telegram) == ACCESS_REJECTED_HTML
 
 
 # --- /start: admin auto-approve -------------------------------------------
@@ -156,7 +157,7 @@ def test_admin_auto_approves_on_first_start(tmp_path: Path) -> None:
     assert record.status == "approved"
     # последний send — это либо BOT_WELCOME_HTML (если has_calendar) либо
     # ACCESS_APPROVED_HTML; для нового admin без календаря допустим второй.
-    sent_texts = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     assert any(text in sent_texts for text in (BOT_WELCOME_HTML, "ACCESS_APPROVED_HTML")) or True
     # Точная проверка: для admin без календаря отправляется ACCESS_APPROVED_HTML
     from satellite.messages_ru import ACCESS_APPROVED_HTML
@@ -168,7 +169,7 @@ def test_rejected_user_running_start_sees_rejected_text(store: UserStore) -> Non
     ctx = make_ctx(store, admin_ids=(ADMIN_ID,))
     msg = make_msg(text="/start", chat_id=REJECTED_ID, user_id=REJECTED_ID, username="rej")
     handle_start_or_help(ctx, msg, is_start=True)
-    sent_texts = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     assert ACCESS_REJECTED_HTML in sent_texts
 
 
@@ -176,7 +177,7 @@ def test_blocked_user_running_start_sees_blocked_text(store: UserStore) -> None:
     ctx = make_ctx(store, admin_ids=(ADMIN_ID,))
     msg = make_msg(text="/start", chat_id=BLOCKED_ID, user_id=BLOCKED_ID, username="blk")
     handle_start_or_help(ctx, msg, is_start=True)
-    sent_texts = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     assert ACCESS_BLOCKED_HTML in sent_texts
 
 
@@ -184,7 +185,7 @@ def test_pending_user_running_start_first_time_sees_request_sent(store: UserStor
     ctx = make_ctx(store, admin_ids=(ADMIN_ID,))
     msg = make_msg(text="/start", chat_id=PENDING_ID, user_id=PENDING_ID, username="newbie")
     handle_start_or_help(ctx, msg, is_start=True)
-    sent_texts = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     # PENDING_ID уже имеет статус pending без open access_request
     # → submit_access_request создаст request → send_message покажет REQUEST_SENT
     assert ACCESS_REQUEST_SENT_HTML in sent_texts or ACCESS_PENDING_HTML in sent_texts
@@ -200,7 +201,7 @@ def test_help_for_unknown_user_uses_keyboard_remove(tmp_path: Path) -> None:
     msg = make_msg(text="/help", chat_id=USER_ID, user_id=USER_ID, username="newbie")
     handle_start_or_help(ctx, msg, is_start=False)
 
-    sent_texts = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     assert BOT_HELP_HTML in sent_texts
     # последний send (с /help-текстом) должен идти с REPLY_KEYBOARD_REMOVE.
     help_call = next(
@@ -229,7 +230,7 @@ def test_pending_for_non_admin_responds_with_forbidden(store: UserStore) -> None
     msg = make_msg(text="/pending", chat_id=APPROVED_WITH_CAL_ID, user_id=APPROVED_WITH_CAL_ID)
     handle_pending_command(ctx, msg)
 
-    sent_texts = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     assert ADMIN_ACTION_FORBIDDEN_HTML in sent_texts
 
 
@@ -244,7 +245,7 @@ def test_pending_for_admin_lists_open_requests(store: UserStore) -> None:
     ctx = make_ctx(store, admin_ids=(ADMIN_ID,))
     msg = make_msg(text="/pending", chat_id=ADMIN_ID, user_id=ADMIN_ID, username="admin")
     handle_pending_command(ctx, msg)
-    sent_texts = [c[0][1] for c in ctx.telegram.send_message.call_args_list]
+    sent_texts = sent_messages_text(ctx.telegram)
     body = sent_texts[-1]
     assert str(PENDING_ID) in body, body
 
