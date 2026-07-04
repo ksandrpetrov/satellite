@@ -93,13 +93,8 @@ def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
         return
     sent = False
     try:
-        stream = open_streaming_reply(
-            ctx,
-            msg.chat_id,
-            initial_text=INVITATIONS_FETCH_STATUS,
-            draft_id=msg.update_id,
-            rich=True,
-        )
+        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id, rich=True)
+        stream.push_status(INVITATIONS_FETCH_STATUS)
 
         try:
             rich_text, fallback_text, keyboard = _load_screen(ctx, msg.user_id)

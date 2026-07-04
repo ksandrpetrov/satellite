@@ -19,6 +19,7 @@ from satellite.messages_ru import (
     CB_INV_REFRESH,
     CB_INV_RESPOND_PREFIX,
     CB_SETTINGS_INVITATIONS,
+    INVITATIONS_FETCH_STATUS,
 )
 from satellite.telegram_bot.handlers import handle_callback_query, handle_message
 from satellite.users import USER_STATUS_APPROVED
@@ -92,6 +93,33 @@ def _ctx(*, events: list[dict] | None = None, raise_on_list: Exception | None = 
     ctx.calendar_service.list_events_for_invitations = MagicMock(side_effect=list_invitations)
     ctx.calendar_service.set_attendee_partstat = MagicMock()
     return ctx
+
+
+def test_invitations_open_uses_tg_thinking_status_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Стартовый rich-draft — ``<tg-thinking>`` со статусом, не plain HTML."""
+    now = datetime(2026, 5, 22, 10, 0, tzinfo=TZ)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return now.astimezone(tz) if tz else now
+
+    monkeypatch.setattr("satellite.invitations_view.datetime", _FixedDatetime)
+
+    ctx = _ctx(events=[])
+    handle_message(
+        ctx, make_msg(text="/invitations", chat_id=CHAT_ID, user_id=USER_ID, update_id=1)
+    )
+
+    assert ctx.telegram.send_rich_message_draft.called
+    draft_htmls = [
+        call[0][2]["html"] for call in ctx.telegram.send_rich_message_draft.call_args_list
+    ]
+    assert draft_htmls[0].startswith("<tg-thinking>")
+    assert INVITATIONS_FETCH_STATUS not in draft_htmls[0]
+    assert all(html.startswith("<tg-thinking>") for html in draft_htmls)
 
 
 def test_invitations_list_uses_60d_forward_and_14d_lookback(

@@ -146,7 +146,7 @@ Legacy-тексты старой клавиатуры тоже распозна�
 `11.` и т.д. (`event_index_marker` в
 [`calendar/events/_filters.py`](../satellite/calendar/events/_filters.py),
 импорт через `satellite.calendar.events`). Сценарий:
-`open_streaming_reply` → `UserCalendarService.list_events` → финальный список;
+`open_streaming_reply` + `push_status` → `UserCalendarService.list_events` → финальный список;
 см. [Streaming delivery](#streaming-delivery). Повтор
 `/upcoming` в cooldown — молча (`ActionGuard`, 15 с).
 
@@ -159,7 +159,7 @@ Legacy-тексты старой клавиатуры тоже распозна�
 (`collect_pending_invitations` в
 [`calendar/events/_collectors.py`](../satellite/calendar/events/_collectors.py)).
 
-Сценарий открытия — `open_streaming_reply` → статус «📨 Чайка собирает приглашения…»
+Сценарий открытия — `open_streaming_reply` + `push_status` («📨 Чайка собирает приглашения…»)
 → `UserCalendarService.list_events_for_invitations` → `collect_pending_invitations`
 → `stream.finish` (список + inline-кнопки). Повтор `/invitations` в cooldown — молча
 (`ActionGuard`, 10 с). См. [Streaming delivery](#streaming-delivery).
@@ -175,7 +175,7 @@ Callback data: префикс `inv:` (`CB_INV_*` в [`messages_ru/_core.py`](../
 
 `/manage` (кнопка «🛠 Изменить статус», алиасы `/edit`, `/status`) — список встреч
 на 7 дней, где можно сменить свой `PARTSTAT` (не только NEEDS-ACTION). Открытие
-списка — streaming (`MANAGE_FETCH_STATUS` → финал с кнопками); cooldown 10 с.
+списка — streaming (`open_streaming_reply` + `push_status` → финал с кнопками); cooldown 10 с.
 Детальный экран по встрече, те же CalDAV-операции, что в `/invitations`
 (`set_attendee_partstat`). Callback data: префикс `mng:` (`CB_MANAGE_*`).
 
