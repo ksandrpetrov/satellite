@@ -8,11 +8,11 @@
 
 from __future__ import annotations
 
+from ..presentation.html import replace_first_char_with_tg_emoji
+
 
 def _seagull_line(text: str) -> str:
-    """Премиум ``<tg-emoji>`` для 🪶 — fallback в ``api.py`` при отказе Telegram."""
-    from ..telegram_bot.html_format import replace_first_char_with_tg_emoji
-
+    """Премиум ``<tg-emoji>`` для 🪶 — fallback в ``api/client.py`` при отказе Telegram."""
     return replace_first_char_with_tg_emoji(text, "🪶")
 
 

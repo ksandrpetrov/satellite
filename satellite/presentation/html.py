@@ -115,3 +115,8 @@ def build_copy_text_button(label: str, copy_value: str) -> dict[str, object]:
         "text": label,
         "copy_text": {"text": copy_value[:256]},
     }
+
+
+def strip_bold_tags(html_text: str) -> str:
+    """Убирает парные ``<b>`` — для plain fallback в foreign calendars."""
+    return html_text.replace("<b>", "").replace("</b>", "")

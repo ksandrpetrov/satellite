@@ -13,7 +13,7 @@ from ...messages_ru import (
     UPCOMING_EMPTY_HTML,
     UPCOMING_FETCH_STATUS,
 )
-from ..presenters.calendar_lists import (
+from ...presentation.calendar_lists import (
     upcoming_events_plain_fallback_html,
     upcoming_events_rich_html,
 )

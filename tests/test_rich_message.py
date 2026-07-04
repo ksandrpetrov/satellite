@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from satellite.telegram_bot.rich_message import (
+from satellite.presentation.rich import (
     blockquote,
     details_block,
     escape_rich,

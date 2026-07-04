@@ -1,8 +1,8 @@
 """Сборка Rich Message HTML для Bot API 10.1 (``sendRichMessage``).
 
 Централизует теги, которых нет в legacy ``parse_mode=HTML``: ``<h*>``,
-``<details>``, ``<table>``, ``<time>``, якоря. Legacy ``html_format.py``
-остаётся для ``sendMessage`` fallback.
+``<details>``, ``<table>``, ``<time>``, якоря. Legacy HTML для
+``sendMessage``-fallback живёт рядом в ``presentation/html.py``.
 """
 
 from __future__ import annotations

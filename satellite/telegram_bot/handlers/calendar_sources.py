@@ -7,6 +7,7 @@ import logging
 from ...calendar.selection import calendar_callback_token, find_calendar_entry_by_token
 from ...messages_ru import (
     CALENDAR_NOT_CONNECTED_HTML,
+    CALENDAR_SOURCES_CLOSED_TEXT,
     CALENDAR_SOURCES_FETCH_STATUS,
     CALENDAR_SOURCES_LAST_ENABLED_TEXT,
     CALENDAR_SOURCES_LOAD_FAIL_HTML,
@@ -102,8 +103,6 @@ def route_calendar_sources_callback(ctx: HandlerContext, cb: IncomingCallback) -
 
 
 def _handle_close(ctx: HandlerContext, cb: IncomingCallback) -> None:
-    from ...messages_ru import CALENDAR_SOURCES_CLOSED_TEXT
-
     if cb.chat_id is not None and cb.message_id is not None:
         edit_callback_rich_or_html(
             ctx,

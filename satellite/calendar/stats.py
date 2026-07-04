@@ -10,6 +10,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, tzinfo
 
+from .events import event_datetime_bounds, is_cancelled_event, user_partstat
 from .time_utils import (
     Interval,
     clip_interval,
@@ -150,8 +151,6 @@ def normalize_caldav_event(
     Если задан `login`, проверяется attendee-список и проставляется
     `is_pending=True`, когда пользователь приглашён, но встречу не подтвердил.
     """
-    from .events import event_datetime_bounds, is_cancelled_event  # late import to avoid cycle
-
     start_local, end_local = event_datetime_bounds(event, tz)
     if not start_local or not end_local or end_local <= start_local:
         return None
@@ -188,8 +187,6 @@ def _partstat_flags(event: Mapping[str, object], login: str | None) -> tuple[boo
     """
     if not login:
         return False, False
-    from .events import user_partstat  # late import to avoid cycle
-
     status = user_partstat(event, login)
     if status == "TENTATIVE":
         return False, True

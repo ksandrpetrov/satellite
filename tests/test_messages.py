@@ -16,7 +16,7 @@ from satellite.messages_ru import (
     format_duration_ru,
     normalize_button_text,
 )
-from satellite.telegram_bot.presenters.calendar_lists import (
+from satellite.presentation.calendar_lists import (
     upcoming_events_day_sections,
     upcoming_events_html,
 )

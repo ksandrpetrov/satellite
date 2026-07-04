@@ -14,7 +14,7 @@ from ..calendar.events import (
     format_upcoming_day_header,
     parse_iso,
 )
-from ..messages_ru.settings_ui import (
+from ..messages_ru.meetings_ui import (
     INVITATIONS_INTRO_HTML,
     MANAGE_INTRO_HTML,
     manage_partstat_label,

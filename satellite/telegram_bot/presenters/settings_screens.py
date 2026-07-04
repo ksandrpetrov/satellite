@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
-from ...formatters.rich import blockquote, bold, join_blocks, paragraph, section_heading
-from ...messages_ru.settings_ui import (
-    ANALYTICS_WORKDAY_APPLIED_TEXT,
+from ...digest_utils import format_digest_days_label
+from ...messages_ru.digest_ui import (
     DIGEST_DAYS_LABEL,
-    SETTINGS_CALENDAR_MENU_TEXT,
-    SETTINGS_DISCONNECT_CONFIRM_TEXT,
-    analytics_options_screen_text,
     digest_days_screen_text,
     digest_settings_screen_text,
     digest_time_screen_text,
     pending_digest_days_screen_text,
     pending_digest_settings_screen_text,
     pending_digest_time_screen_text,
+)
+from ...messages_ru.settings_ui import (
+    ANALYTICS_WORKDAY_APPLIED_TEXT,
+    SETTINGS_CALENDAR_MENU_TEXT,
+    SETTINGS_DISCONNECT_CONFIRM_TEXT,
+    analytics_options_screen_text,
     settings_hub_text,
 )
+from ...presentation.rich import blockquote, bold, join_blocks, paragraph, section_heading
 from .bundle import ScreenBundle
 
 
@@ -175,8 +178,6 @@ def pending_digest_settings_bundle(
     digest_time: str,
     reply_markup: dict | None = None,
 ) -> ScreenBundle:
-    from ...digest_utils import format_digest_days_label
-
     fallback = pending_digest_settings_screen_text(
         digest_enabled=digest_enabled,
         digest_days=digest_days,
@@ -200,8 +201,6 @@ def pending_digest_settings_bundle(
 def pending_digest_days_bundle(
     *, digest_days: str, reply_markup: dict | None = None
 ) -> ScreenBundle:
-    from ...digest_utils import format_digest_days_label
-
     fallback = pending_digest_days_screen_text(digest_days)
     days_label = format_digest_days_label(digest_days)
     rich = join_blocks(

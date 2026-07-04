@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from ...calendar.providers.base import CalendarListEntry
 from ...calendar.selection import normalize_calendar_url
-from ...formatters.rich import bold, join_blocks, paragraph, section_heading, unordered_list
 from ...messages_ru.calendar_ui import calendar_sources_screen_text
 from ...messages_ru.tokens import MARK_DISABLED, MARK_ENABLED
+from ...presentation.rich import bold, join_blocks, paragraph, section_heading, unordered_list
 from .bundle import ScreenBundle
 
 

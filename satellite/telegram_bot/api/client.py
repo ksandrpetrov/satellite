@@ -11,6 +11,7 @@ from typing import Any
 import requests
 from requests.adapters import HTTPAdapter
 
+from ...presentation.html import strip_expandable_blockquote, strip_tg_emoji_tags
 from .errors import (
     TelegramError,
     is_custom_emoji_rejected,
@@ -104,9 +105,20 @@ class TelegramClient:
             data["link_preview_options"] = json.dumps({"is_disabled": True}, ensure_ascii=False)
 
     @staticmethod
-    def _strip_rich_html(text: str) -> str:
-        from ...presentation.html import strip_expandable_blockquote, strip_tg_emoji_tags
+    def _attach_reply_markup(
+        data: dict[str, Any],
+        reply_markup: dict | list | str | None,
+    ) -> None:
+        if reply_markup is None:
+            return
+        data["reply_markup"] = (
+            json.dumps(reply_markup, ensure_ascii=False)
+            if isinstance(reply_markup, (dict, list))
+            else reply_markup
+        )
 
+    @staticmethod
+    def _strip_rich_html(text: str) -> str:
         return strip_expandable_blockquote(strip_tg_emoji_tags(text))
 
     def _retry_html_text(self, data: dict[str, Any], *, method: str, **call_kw: Any) -> Any:
@@ -118,6 +130,41 @@ class TelegramClient:
             retry_data["caption"] = self._strip_rich_html(str(retry_data["caption"]))
         log.info("%s HTML markup rejected, retrying without tg-emoji/expandable", method)
         return self._call(method, data=retry_data, **call_kw)
+
+    def _call_with_fallbacks(
+        self,
+        method_name: str,
+        data: dict[str, Any],
+        *,
+        strip_html_on_reject: bool,
+        **call_kw: Any,
+    ) -> Any:
+        """``_call`` с деградацией на отказах Telegram.
+
+        1. ``message_effect_id`` отклонён (нет Premium) — повтор без эффекта.
+        2. HTML-разметка отклонена (``<tg-emoji>`` / entities) и
+           ``strip_html_on_reject`` — повтор без rich-тегов
+           (см. :meth:`_retry_html_text`).
+        """
+        try:
+            return self._call(method_name, data=data, **call_kw)
+        except TelegramError as exc:
+            if data.get("message_effect_id") and is_message_effect_rejected(exc):
+                log.info(
+                    "%s message_effect_id rejected, retrying without effect: %s",
+                    method_name,
+                    exc,
+                )
+                data.pop("message_effect_id", None)
+                try:
+                    return self._call(method_name, data=data, **call_kw)
+                except TelegramError as exc2:
+                    exc = exc2
+            if strip_html_on_reject and (
+                is_custom_emoji_rejected(exc) or is_html_entities_rejected(exc)
+            ):
+                return self._retry_html_text(data, method=method_name, **call_kw)
+            raise
 
     # --- public API -------------------------------------------------------
 
@@ -148,32 +195,14 @@ class TelegramClient:
             data["message_thread_id"] = message_thread_id
         if message_effect_id:
             data["message_effect_id"] = message_effect_id
-        if reply_markup is not None:
-            data["reply_markup"] = (
-                json.dumps(reply_markup, ensure_ascii=False)
-                if isinstance(reply_markup, (dict, list))
-                else reply_markup
-            )
-        call_kw: dict[str, Any] = {
-            "timeout": _SEND_MESSAGE_TIMEOUT_SEC,
-            "max_retries": _SEND_MESSAGE_MAX_RETRIES,
-        }
-        try:
-            return self._call("sendMessage", data=data, **call_kw)
-        except TelegramError as exc:
-            if message_effect_id and is_message_effect_rejected(exc):
-                log.info(
-                    "sendMessage message_effect_id rejected, retrying without effect: %s",
-                    exc,
-                )
-                data.pop("message_effect_id", None)
-                try:
-                    return self._call("sendMessage", data=data, **call_kw)
-                except TelegramError as exc2:
-                    exc = exc2
-            if is_custom_emoji_rejected(exc) or is_html_entities_rejected(exc):
-                return self._retry_html_text(data, method="sendMessage", **call_kw)
-            raise
+        self._attach_reply_markup(data, reply_markup)
+        return self._call_with_fallbacks(
+            "sendMessage",
+            data,
+            strip_html_on_reject=True,
+            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+            max_retries=_SEND_MESSAGE_MAX_RETRIES,
+        )
 
     def send_photo(
         self,
@@ -199,33 +228,15 @@ class TelegramClient:
             data["message_thread_id"] = message_thread_id
         if message_effect_id:
             data["message_effect_id"] = message_effect_id
-        if reply_markup is not None:
-            data["reply_markup"] = (
-                json.dumps(reply_markup, ensure_ascii=False)
-                if isinstance(reply_markup, (dict, list))
-                else reply_markup
-            )
-        call_kw: dict[str, Any] = {
-            "files": files,
-            "timeout": _SEND_MESSAGE_TIMEOUT_SEC,
-            "max_retries": _SEND_MESSAGE_MAX_RETRIES,
-        }
-        try:
-            return self._call("sendPhoto", data=data, **call_kw)
-        except TelegramError as exc:
-            if message_effect_id and is_message_effect_rejected(exc):
-                log.info(
-                    "sendPhoto message_effect_id rejected, retrying without effect: %s",
-                    exc,
-                )
-                data.pop("message_effect_id", None)
-                try:
-                    return self._call("sendPhoto", data=data, **call_kw)
-                except TelegramError as exc2:
-                    exc = exc2
-            if caption and (is_custom_emoji_rejected(exc) or is_html_entities_rejected(exc)):
-                return self._retry_html_text(data, method="sendPhoto", **call_kw)
-            raise
+        self._attach_reply_markup(data, reply_markup)
+        return self._call_with_fallbacks(
+            "sendPhoto",
+            data,
+            strip_html_on_reject=bool(caption),
+            files=files,
+            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+            max_retries=_SEND_MESSAGE_MAX_RETRIES,
+        )
 
     def answer_callback_query(
         self,
@@ -283,22 +294,14 @@ class TelegramClient:
             link_preview_options=link_preview_options,
             disable_web_page_preview=disable_web_page_preview,
         )
-        if reply_markup is not None:
-            data["reply_markup"] = (
-                json.dumps(reply_markup, ensure_ascii=False)
-                if isinstance(reply_markup, (dict, list))
-                else reply_markup
-            )
-        call_kw: dict[str, Any] = {
-            "timeout": _EDIT_MESSAGE_TIMEOUT_SEC,
-            "max_retries": _EDIT_MESSAGE_MAX_RETRIES,
-        }
-        try:
-            return self._call("editMessageText", data=data, **call_kw)
-        except TelegramError as exc:
-            if is_custom_emoji_rejected(exc) or is_html_entities_rejected(exc):
-                return self._retry_html_text(data, method="editMessageText", **call_kw)
-            raise
+        self._attach_reply_markup(data, reply_markup)
+        return self._call_with_fallbacks(
+            "editMessageText",
+            data,
+            strip_html_on_reject=True,
+            timeout=_EDIT_MESSAGE_TIMEOUT_SEC,
+            max_retries=_EDIT_MESSAGE_MAX_RETRIES,
+        )
 
     def send_message_draft(
         self,
@@ -360,27 +363,14 @@ class TelegramClient:
             data["message_thread_id"] = message_thread_id
         if message_effect_id:
             data["message_effect_id"] = message_effect_id
-        if reply_markup is not None:
-            data["reply_markup"] = (
-                json.dumps(reply_markup, ensure_ascii=False)
-                if isinstance(reply_markup, (dict, list))
-                else reply_markup
-            )
-        call_kw: dict[str, Any] = {
-            "timeout": _SEND_MESSAGE_TIMEOUT_SEC,
-            "max_retries": _SEND_MESSAGE_MAX_RETRIES,
-        }
-        try:
-            return self._call("sendRichMessage", data=data, **call_kw)
-        except TelegramError as exc:
-            if message_effect_id and is_message_effect_rejected(exc):
-                log.info(
-                    "sendRichMessage message_effect_id rejected, retrying without effect: %s",
-                    exc,
-                )
-                data.pop("message_effect_id", None)
-                return self._call("sendRichMessage", data=data, **call_kw)
-            raise
+        self._attach_reply_markup(data, reply_markup)
+        return self._call_with_fallbacks(
+            "sendRichMessage",
+            data,
+            strip_html_on_reject=False,
+            timeout=_SEND_MESSAGE_TIMEOUT_SEC,
+            max_retries=_SEND_MESSAGE_MAX_RETRIES,
+        )
 
     def send_rich_message_draft(
         self,
@@ -422,12 +412,7 @@ class TelegramClient:
             "message_id": message_id,
             "rich_message": json.dumps(rich_message, ensure_ascii=False),
         }
-        if reply_markup is not None:
-            data["reply_markup"] = (
-                json.dumps(reply_markup, ensure_ascii=False)
-                if isinstance(reply_markup, (dict, list))
-                else reply_markup
-            )
+        self._attach_reply_markup(data, reply_markup)
         return self._call(
             "editMessageText",
             data=data,

@@ -323,5 +323,51 @@ Behaviour-preserving: `make check` зелёный (954 теста).
 
 ---
 
+## Фаза 16: один canonical-путь + слои импортов (2026-07-04)
+
+Цель — «какой импорт правильный?» перестаёт быть вопросом: один canonical-путь
+`presentation/*`, домен не знает о `telegram_bot`, дубли схлопнуты.
+
+1. **Canonical presentation** — удалены шимы `telegram_bot/{html_format,rich_message,message_delivery}.py`,
+   `telegram_bot/presenters/calendar_lists.py`, пакет `formatters/`,
+   `messages_ru/_core.py`; `strip_bold_tags` переехал в `presentation/html.py`;
+   `presentation/__init__.py` — docstring-only (без re-export'ов, ушёл скрытый
+   цикл `presentation ↔ telegram_bot.api`); фасад `messages_ru/__init__` —
+   star-import подмодулей напрямую. Импортёры (прод + тесты) переведены на
+   `satellite.presentation.*`.
+2. **Lazy-imports hoisted** — top-level импорты в `api/client.py`,
+   `seagull/templates.py`, `messages_ru/{settings_ui,identity}.py`,
+   `presenters/settings_screens.py`, `calendar/stats.py` (комментарии «avoid
+   cycle» устарели). Единственный оставшийся lazy — `calendar_ui.py →
+   calendar.selection` (реальный цикл через `caldav_client → events →
+   messages_ru`, задокументирован на месте).
+3. **Слой-тест** — `tests/test_import_layers.py` переписан: чистый домен
+   (calendar, seagull, weather, analytics, messages_ru, presentation,
+   scheduler, plan_service, …) не импортирует `telegram_bot`; allowlist —
+   только `presentation/delivery.py → telegram_bot.api`; web/scheduler не
+   импортируют `telegram_bot.handlers`.
+4. **Scheduler** — постоянный `ThreadPoolExecutor` (создаётся в `__init__`,
+   закрывается в `stop()`, отмена queued-доставок при остановке) вместо нового
+   пула каждые 30 с; единый блок агрегации вместо двух копий
+   (sequential/parallel).
+5. **TelegramClient** — `_attach_reply_markup` (5 копий сериализации → 1) и
+   `_call_with_fallbacks` (3 копии retry-без-effect → 1, включая HTML-fallback).
+6. **messages_ru split** — `settings_ui.py` (740 строк) → `settings_ui.py`
+   (хаб + аналитика + подэкран «Календарь» + ERR_*), `digest_ui.py` (daily +
+   pending настройки), `meetings_ui.py` (/invitations + /manage UI); plan-тексты
+   → `plan_strings.py`, upcoming/foreign-тоасты → `calendar_ui.py`. Фасад
+   сохраняет все имена.
+7. **settings_bindings** — публичный кросс-модульный API: `BINDINGS`,
+   `bindings_for`, `enabled_value`/`days_value`/`time_value`, `update_settings`,
+   `build_{settings,days,time}_screen_bundle` (вместо `_BINDINGS`, `_bindings`, …).
+8. **Docs** — AGENTS.md (карта модулей, инвариант 15 «слои импортов»,
+   антипаттерны), architecture.md, telegram-ux.md; `pyproject.toml` — вычищен
+   stale ignore `messages_ru/_core.py`.
+
+Behaviour-preserving: тексты, callback_data, HTTP-контракт, формат сторов не
+менялись. `make check` зелёный.
+
+---
+
 **Далее:** [architecture.md](architecture.md) · [AGENTS.md](../AGENTS.md) ·
 [test-coverage-audit.md](test-coverage-audit.md)

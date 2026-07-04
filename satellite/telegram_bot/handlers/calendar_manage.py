@@ -55,7 +55,7 @@ from ...messages_ru import (
     manage_detail_html,
     manage_list_html,
 )
-from ..presenters.calendar_lists import (
+from ...presentation.calendar_lists import (
     manage_detail_rich_html,
     manage_list_body_lines,
     manage_list_rich_html,

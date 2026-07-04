@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
-from ...formatters.html import build_copy_text_button
 from ...messages_ru import (
     BUTTON_COPY_EMAIL,
     CALENDAR_CHECK_FAIL_HTML,
@@ -11,6 +10,7 @@ from ...messages_ru import (
     CALENDAR_DISCONNECTED_HTML,
     CALENDAR_NOT_CONNECTED_HTML,
 )
+from ...presentation.html import build_copy_text_button
 from ..visual import set_default_menu_button_for_chat
 from .context import HandlerContext
 

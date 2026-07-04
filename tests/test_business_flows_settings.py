@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+import satellite.messages_ru as messages_core
 from satellite.messages_ru import (
     CB_ANALYTICS_BACK,
     CB_DIGEST_BACK,
@@ -18,7 +19,6 @@ from satellite.messages_ru import (
     CB_SETTINGS_DIGEST,
     SETTINGS_HUB_TEXT,
 )
-from satellite.messages_ru import _core as messages_core
 from satellite.subscriptions import SubscriptionStore
 from satellite.telegram_bot.handlers import handle_callback_query
 from satellite.testing.delivery_helpers import callback_edit_html, callback_edit_was_called

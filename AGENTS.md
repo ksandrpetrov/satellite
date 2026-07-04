@@ -60,14 +60,21 @@ satellite/
     __init__.py
     record.py
     store.py
-  presentation/            # transport-agnostic HTML/Rich + calendar list presenters + delivery
-    html.py, rich.py, calendar_lists.py, delivery.py
-  formatters/              # thin re-export из presentation/ (для messages_ru)
+  presentation/            # transport-agnostic HTML/Rich; canonical, шимов больше нет
+    html.py              # legacy HTML: blockquote, tg-emoji, copy-кнопки, strip_*
+    rich.py              # Rich Message HTML (Bot API 10.1)
+    calendar_lists.py    # rich-списки /upcoming, /invitations, /manage
+    delivery.py          # deliver/edit rich + fallback; единственный домен→telegram_bot.api
   logging_setup.py
+  testing/               # хелперы для тестов (delivery_helpers)
   messages_ru/           # ВСЕ user-facing тексты (пакет: __init__ = фасад, подмодули по сценарию)
     __init__.py          # реэкспорт публичного API; импорты не меняются
-    buttons.py, calendar_ui.py, settings_ui.py, …  # см. refactor-log «messages_ru»
-    _core.py             # совместимость: реэкспорт подмодулей
+    buttons.py, identity.py, access.py, admin_messages.py
+    calendar_ui.py       # upcoming, create, sources, foreign
+    settings_ui.py       # хаб настроек, аналитика, подэкран «Календарь», ERR_*
+    digest_ui.py         # настройки дайджестов: daily + pending
+    meetings_ui.py       # /invitations + /manage (PARTSTAT UI)
+    plan_strings.py, duration.py, streaming_ui.py, tokens.py
 
   analytics/             # недельная аналитика
     service.py           # build_week_analytics (raw → отчёт → PNG + подпись)
@@ -102,6 +109,10 @@ satellite/
 
   telegram_bot/
     bot.py               # lifecycle, scheduler, WebAppServer
+    update_dispatcher.py # worker pool + per-chat locks для updates
+    startup_checks.py    # self-check шифрования и persistence на старте
+    commands.py          # setup_bot_identity, меню команд
+    visual.py            # TypingIndicator, message effects, menu button
     handlers/
       dispatch.py        # data-driven routing + access gating (см. _MESSAGE_ROUTES)
       routing.py         # recognize_message — таблица матчеров _RECOGNIZERS
@@ -109,9 +120,14 @@ satellite/
       action_guard.py    # ActionGuard — дедуп долгих действий (plan/upcoming/analytics/…)
       calendar_view.py   # общие хелперы списка календарей (sources/foreign/hub)
       delivery.py, context.py  # context.py: HandlerContext + role-based views
-      access.py, admin.py
-      settings_hub.py    # inline-хаб «Настройки»
+      access.py, access_notifications.py, admin.py
+      settings_hub.py    # inline-хаб «Настройки» (роутер CB_SETTINGS_* / CB_ANALYTICS_*)
+      settings.py        # фасад: re-export settings_bindings + settings_callbacks
+      settings_bindings.py   # BINDINGS: daily/pending дайджест как data-driven таблица
+      settings_callbacks.py  # экраны и колбэки настроек дайджестов
+      settings_actions.py    # действия хаба (weather toggle, …)
       calendar_setup.py  # connect / check / disconnect
+      calendar_actions.py # переиспользуемые calendar-действия (check, disconnect)
       calendar_list.py   # /upcoming
       calendar_sources.py # календари в плане/дайджесте
       calendar_foreign.py   # чужие (пошаренные) календари
@@ -119,16 +135,15 @@ satellite/
       calendar_manage.py    # /manage — тонкий адаптер над partstat_flow
       calendar_create.py    # /create FSM
       digest_state.py, calendar_state.py  # FSM-сторы (in-memory)
-      plan.py, settings.py, subscription.py, analytics.py
-    presenters/
-      calendar_lists.py  # HTML/Rich HTML списков (/upcoming, /invitations, /manage)
+      plan.py, subscription.py, analytics.py
+    presenters/            # ScreenBundle (rich + fallback) для экранов бота
+      bundle.py            # dataclass ScreenBundle
+      settings_screens.py  # бандлы хаба/дайджестов/аналитики
+      calendar_screens.py  # бандлы calendar sources / foreign
     api/                   # TelegramClient (client.py) + errors (errors.py); фасад __init__.py
     streaming/             # helpers.py + session.py (StreamingReply)
     streaming_delivery.py  # open_streaming_reply facade
-    html_format.py         # shim → presentation/html.py
-    rich_message.py        # shim → presentation/rich.py
-    message_delivery.py    # shim → presentation/delivery.py
-    presenters/calendar_lists.py  # shim → presentation/calendar_lists.py
+    message_editing.py
     offset_store.py, offset_tracker.py
     concurrency.py, instance_lock.py
 ```
@@ -137,20 +152,20 @@ satellite/
 
 | Хочу поменять | Куда смотреть |
 |---------------|---------------|
-| Текст любого сообщения пользователю | [`messages_ru/`](satellite/messages_ru/) (фасад `__init__.py`; сценарий — `buttons.py`, `settings_ui.py`, …), [`seagull/templates.py`](satellite/seagull/templates.py) |
+| Текст любого сообщения пользователю | [`messages_ru/`](satellite/messages_ru/) (фасад `__init__.py`; сценарий — `buttons.py`, `settings_ui.py`, `digest_ui.py`, `meetings_ui.py`, …), [`seagull/templates.py`](satellite/seagull/templates.py) |
 | Логику дайджеста (метрики) | [`calendar/stats.py`](satellite/calendar/stats.py) |
 | Финальный рендер | [`seagull/render.py`](satellite/seagull/render.py), [`seagull/rules.py`](satellite/seagull/rules.py) |
 | Команду / кнопку | [`recognize_message`](satellite/telegram_bot/handlers/routing.py) → запись в `_RECOGNIZERS`; маршрутизация — [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py) (`_MESSAGE_ROUTES`, `_CALLBACK_ROUTERS`) |
-| Хаб настроек / дайджест | [`handlers/settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py) (роутер всех `CB_SETTINGS_*` / `CB_ANALYTICS_*`), [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) (экраны «на сегодня» и «непринятых встреч») |
-| Дайджест непринятых встреч (расписание + автоотправка) | [`scheduler.py`](satellite/scheduler.py) `_deliver_pending`, [`invitations_view.py`](satellite/invitations_view.py) `load_pending_invitations_screen`; настройки — `pending_digest_*` в [`subscriptions.py`](satellite/subscriptions.py) (дни: legacy + 7-bit mask), UI — [`handlers/settings.py`](satellite/telegram_bot/handlers/settings.py) `CB_PENDING_DIGEST_*`, `mark_pending_digest_sent` |
+| Хаб настроек / дайджест | [`handlers/settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py) (роутер всех `CB_SETTINGS_*` / `CB_ANALYTICS_*`), [`handlers/settings_callbacks.py`](satellite/telegram_bot/handlers/settings_callbacks.py) + [`handlers/settings_bindings.py`](satellite/telegram_bot/handlers/settings_bindings.py) (экраны «на сегодня» и «непринятых встреч», таблица `BINDINGS`) |
+| Дайджест непринятых встреч (расписание + автоотправка) | [`scheduler.py`](satellite/scheduler.py) `_deliver_pending`, [`invitations_view.py`](satellite/invitations_view.py) `load_pending_invitations_screen`; настройки — `pending_digest_*` в [`subscriptions/`](satellite/subscriptions/) (дни: legacy + 7-bit mask), UI — [`messages_ru/digest_ui.py`](satellite/messages_ru/digest_ui.py) `CB_PENDING_DIGEST_*`, `mark_pending_digest_sent` |
 | Дни отправки дайджестов (маска, подпись) | [`digest_utils.py`](satellite/digest_utils.py) — `is_digest_day_allowed`, `digest_days_to_bitmask`, `format_digest_days_label`, `toggle_digest_days_bitmask` |
 | Чужие (пошаренные) календари | [`handlers/calendar_foreign.py`](satellite/telegram_bot/handlers/calendar_foreign.py) |
 | Список CalDAV-календарей в UI | [`handlers/calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py) — `fetch_calendars` (→ `CalendarListResult`) и `build_calendar_sources_screen` |
 | Какие календари в плане | [`handlers/calendar_sources.py`](satellite/telegram_bot/handlers/calendar_sources.py), поле `enabled_calendar_urls` в [`users/record.py`](satellite/users/record.py) |
 | URL Web App connect | [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `webapp_connect_url(ctx)` (персональный `/connect/<token>`); store — [`web/connect_token.py`](satellite/web/connect_token.py) |
 | Потоковый ответ (черновик + финал) | [`streaming_delivery.py`](satellite/telegram_bot/streaming_delivery.py), [`handlers/delivery.py`](satellite/telegram_bot/handlers/delivery.py) — `open_streaming_reply` (plan, upcoming, invitations, manage, analytics) |
-| Визуал Telegram (typing, effects, меню) | [`visual.py`](satellite/telegram_bot/visual.py) — `TypingIndicator`, `pick_plan_message_effect`, `set_default_menu_button_for_chat`; legacy HTML — [`html_format.py`](satellite/telegram_bot/html_format.py); Rich Messages — [`rich_message.py`](satellite/telegram_bot/rich_message.py) + [`message_delivery.py`](satellite/telegram_bot/message_delivery.py); профиль бота на старте — [`commands.py`](satellite/telegram_bot/commands.py) `setup_bot_identity` |
-| Расписание дайджеста на сегодня | [`scheduler.py`](satellite/scheduler.py) `_deliver_daily` + [`subscriptions.py`](satellite/subscriptions.py) (`digest_*`, `mark_digest_sent`) |
+| Визуал Telegram (typing, effects, меню) | [`visual.py`](satellite/telegram_bot/visual.py) — `TypingIndicator`, `pick_plan_message_effect`, `set_default_menu_button_for_chat`; legacy HTML — [`presentation/html.py`](satellite/presentation/html.py); Rich Messages — [`presentation/rich.py`](satellite/presentation/rich.py) + [`presentation/delivery.py`](satellite/presentation/delivery.py); профиль бота на старте — [`commands.py`](satellite/telegram_bot/commands.py) `setup_bot_identity` |
+| Расписание дайджеста на сегодня | [`scheduler.py`](satellite/scheduler.py) `_deliver_daily` + [`subscriptions/`](satellite/subscriptions/) (`digest_*`, `mark_digest_sent`) |
 | Доступ, заявки, календарь пользователя | [`users/store.py`](satellite/users/store.py) (UserStore) + [`users/record.py`](satellite/users/record.py) (UserRecord, статусы), шифрование — [`security/token_vault.py`](satellite/security/token_vault.py) |
 | Web App connect | handlers + HTTP в [`bot.py`](satellite/telegram_bot/bot.py); env — [`config.py`](satellite/config.py) |
 | Дату плана по команде (today/tomorrow/…) | [`digest_utils.py`](satellite/digest_utils.py) `resolve_target_date`; авто-дайджест — всегда today в [`scheduler.py`](satellite/scheduler.py) |
@@ -185,13 +200,14 @@ satellite/
    (для `pending_digest_days` — и 7-bit mask).
 6. **Тексты** — [`messages_ru/`](satellite/messages_ru/) / шаблоны seagull/weather.
 7. **Хендлеры не пробрасывают исключения** — safe text из `messages_ru`.
-8. **Атомарная запись JSON-store** — `subscriptions.py` и `users/store.py`: tmp + fsync + os.replace`.
+8. **Атомарная запись JSON-store** — `subscriptions/store.py` и `users/store.py`: tmp + fsync + `os.replace`.
 9. **`logs/`, `.env`, `venv/`** — не коммитим.
 10. **Команды и кнопки** — только [`recognize_message`](satellite/telegram_bot/handlers/routing.py); любая распознанная команда сбрасывает FSM (`digest_state`, `calendar_state`) в [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py).
-11. **Подписка на дайджест** — `DigestSettings.telegram_user_id` в [`subscriptions.py`](satellite/subscriptions.py); scheduler резолвит пользователя через `UserStore.get`, не через `username`.
+11. **Подписка на дайджест** — `DigestSettings.telegram_user_id` в [`subscriptions/record.py`](satellite/subscriptions/record.py); scheduler резолвит пользователя через `UserStore.get`, не через `username`.
 12. **Навигация настроек** — кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` обрабатывает только [`settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py); `settings.py` и `analytics.py` не импортируют друг друга и не имеют lazy-back-импортов в хаб.
 13. **Сбой `UserStore._save_locked`** — поднимает [`UserStorePersistenceError`](satellite/users/store.py); caller (handler / Web App) ловит на границе и показывает безопасный текст.
 14. **Перед коммитом** — `make check` (ruff lint + `ruff format --check` + mypy + py_compile + pytest). Стиль/форматирование — только [`ruff`](pyproject.toml) (lint + format); blackd/isort не используем. Поведение при падении тестов — см. раздел **«Тесты и регрессии»** ниже.
+15. **Слои импортов** — домен (`calendar/`, `seagull/`, `weather/`, `analytics/`, `messages_ru/`, `presentation/`, `scheduler.py`, `plan_service.py`, …) не импортирует `telegram_bot`; единственное исключение — `presentation/delivery.py → telegram_bot.api`. Закреплено в [`tests/test_import_layers.py`](tests/test_import_layers.py).
 
 ## Тесты и регрессии (для агентов)
 
@@ -241,7 +257,7 @@ satellite/
 - Прямые строки в хендлерах — все user-facing тексты в [`messages_ru/`](satellite/messages_ru/) (импорт через корневой фасад).
 - Свой `_webapp_url` в хендлерах — только [`delivery.webapp_connect_url`](satellite/telegram_bot/handlers/delivery.py).
 - Lazy-back-импорты `settings_hub` из `settings`/`analytics` для «Назад» — навигация только в хабе (см. инвариант 12).
-- Прямой `<blockquote>` / `<tg-emoji>` в хендлерах — canonical [`presentation/html.py`](satellite/presentation/html.py) (shim [`html_format.py`](satellite/telegram_bot/html_format.py)); Rich HTML — [`presentation/rich.py`](satellite/presentation/rich.py) / [`presentation/calendar_lists.py`](satellite/presentation/calendar_lists.py); доставка rich — [`presentation/delivery.py`](satellite/presentation/delivery.py); fallback при отказе Telegram — в [`api/client.py`](satellite/telegram_bot/api/client.py).
+- Прямой `<blockquote>` / `<tg-emoji>` в хендлерах — только [`presentation/html.py`](satellite/presentation/html.py); Rich HTML — [`presentation/rich.py`](satellite/presentation/rich.py) / [`presentation/calendar_lists.py`](satellite/presentation/calendar_lists.py); доставка rich — [`presentation/delivery.py`](satellite/presentation/delivery.py); fallback при отказе Telegram — в [`api/client.py`](satellite/telegram_bot/api/client.py). Шимы `telegram_bot/{html_format,rich_message,message_delivery}.py`, `telegram_bot/presenters/calendar_lists.py`, пакет `formatters/` и `messages_ru/_core.py` **удалены** — не воссоздавать.
 - Свой retry без `<tg-emoji>` в хендлерах — только `TelegramClient.send_message` / `edit_message_text`.
 - Дублирование PARTSTAT-логики в [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) / [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — общий флоу только в [`partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py).
 - Свой cooldown/дедуп долгих команд — только [`ActionGuard`](satellite/telegram_bot/handlers/action_guard.py) (не дублировать `_running` set в хендлерах).
@@ -252,6 +268,8 @@ satellite/
 - `do_create()` или подобные обёртки в хендлерах ради единственного `try/except` — снимать без потери поведения.
 - Импорт `from satellite.analytics_service import ...` — canonical путь теперь [`satellite.analytics.service`](satellite/analytics/service.py); shim удалён, обновите импорт.
 - Подгонять тест под код «чтобы pytest прошёл», не разобравшись в ожидаемом поведении — см. **«Тесты и регрессии»**; тесты для ловли багов, не для зелёного CI.
+- Lazy-import «на всякий случай» — импорты на top-level; допустим только при реальном цикле с комментарием, какой цикл разрывается (пример: `messages_ru/calendar_ui.py` → `calendar.selection`).
+- Дублировать daily/pending-ветки в настройках дайджестов — расширяй таблицу [`BINDINGS`](satellite/telegram_bot/handlers/settings_bindings.py), не пиши парные `if kind == …` в хендлерах.
 
 ## Не трогать без необходимости
 

@@ -21,6 +21,7 @@ from .buttons import (
 from .identity import BOT_INPUT_PLACEHOLDER
 
 UPCOMING_FETCH_STATUS = "🗓 Чайка обходит ближайшую неделю…"
+UPCOMING_BUSY_TEXT = "🗓 Уже собираю список — секунду."
 UPCOMING_EMPTY_HTML = (
     "🗓 На ближайшие дни встреч нет.\nНебо чистое — самое время для глубокой работы."
 )
@@ -157,6 +158,8 @@ def build_calendar_sources_keyboard(
     enabled_urls: set[str],
     url_tokens: list[str],
 ) -> dict:
+    # Lazy: реальный цикл calendar.events._collectors → messages_ru →
+    # calendar_ui → calendar.selection → providers → caldav_client → events.
     from ..calendar.selection import normalize_calendar_url
 
     rows: list[list[dict[str, str]]] = []
@@ -177,6 +180,7 @@ CB_FOREIGN_DAY_PREFIX = "foreign:d:"
 CB_FOREIGN_BACK = "foreign:back"
 CB_FOREIGN_CLOSE = "foreign:close"
 
+FOREIGN_CALENDARS_LOADING_TOAST = "Загружаю…"
 FOREIGN_CALENDARS_INTRO_HTML = (
     "👥 <b>Чужие календари</b>\n\n"
     "Календари коллег, которые открыты на твою почту в Mail.ru или Яндексе. "

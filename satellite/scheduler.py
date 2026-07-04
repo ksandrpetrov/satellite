@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, tzinfo
 from zoneinfo import ZoneInfo
@@ -170,6 +170,12 @@ class DigestScheduler:
         self._now_fn = now_fn or (lambda tz_: datetime.now(tz=tz_))
         self._thread: threading.Thread | None = None
         self._tz_cache: dict[str, ZoneInfo] = {}
+        # Общий пул на все тики: потоки спавнятся лениво по мере submit'ов,
+        # закрывается в stop().
+        self._pool = ThreadPoolExecutor(
+            max_workers=self._max_parallel_deliveries,
+            thread_name_prefix="satellite-scheduler",
+        )
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -192,70 +198,25 @@ class DigestScheduler:
         thread = self._thread
         if thread is not None and thread.is_alive():
             thread.join(timeout=self._tick_interval_sec + 2)
+        self._pool.shutdown(wait=True, cancel_futures=True)
 
     def tick(self) -> int:
         """Один логический шаг. Возвращает число успешно отправленных дайджестов."""
         subscriptions = self._subscriptions.list_active()
         if not subscriptions:
             return 0
-        daily_due = pending_due = 0
-        daily_sent = pending_sent = 0
-        daily_failed = pending_failed = 0
-        max_workers = min(self._max_parallel_deliveries, len(subscriptions))
-        if max_workers == 1:
-            results = True
-            futures_iter = None
-        else:
-            executor = ThreadPoolExecutor(
-                max_workers=max_workers,
-                thread_name_prefix="satellite-scheduler",
-            )
-            futures_iter = {executor.submit(self._maybe_deliver, sub): sub for sub in subscriptions}
-            results = None
-        try:
-            if results is not None:
-                for sub in subscriptions:
-                    if self._stop_event.is_set():
-                        break
-                    try:
-                        d_due, d_sent, d_fail, p_due, p_sent, p_fail = self._maybe_deliver(sub)
-                    except Exception:  # noqa: BLE001 - один пользователь не валит остальных
-                        log.exception(
-                            "Failed to deliver digest to chat_id=%s username=%s",
-                            sub.chat_id,
-                            sub.username,
-                        )
-                        continue
-                    daily_due += d_due
-                    daily_sent += d_sent
-                    daily_failed += d_fail
-                    pending_due += p_due
-                    pending_sent += p_sent
-                    pending_failed += p_fail
-            else:
-                assert futures_iter is not None
-                for future in as_completed(futures_iter):
-                    sub = futures_iter[future]
-                    if self._stop_event.is_set():
-                        break
-                    try:
-                        d_due, d_sent, d_fail, p_due, p_sent, p_fail = future.result()
-                    except Exception:  # noqa: BLE001 - один пользователь не валит остальных
-                        log.exception(
-                            "Failed to deliver digest to chat_id=%s username=%s",
-                            sub.chat_id,
-                            sub.username,
-                        )
-                        continue
-                    daily_due += d_due
-                    daily_sent += d_sent
-                    daily_failed += d_fail
-                    pending_due += p_due
-                    pending_sent += p_sent
-                    pending_failed += p_fail
-        finally:
-            if futures_iter is not None:
-                executor.shutdown(wait=True, cancel_futures=False)
+        daily_due = daily_sent = daily_failed = 0
+        pending_due = pending_sent = pending_failed = 0
+        for result in self._delivery_results(subscriptions):
+            if result is None:
+                continue
+            d_due, d_sent, d_fail, p_due, p_sent, p_fail = result
+            daily_due += d_due
+            daily_sent += d_sent
+            daily_failed += d_fail
+            pending_due += p_due
+            pending_sent += p_sent
+            pending_failed += p_fail
         if daily_due or pending_due or daily_failed or pending_failed:
             log.info(
                 "Digest scheduler tick: checked=%d daily_due=%d daily_sent=%d "
@@ -269,6 +230,32 @@ class DigestScheduler:
                 pending_failed,
             )
         return daily_sent + pending_sent
+
+    def _delivery_results(
+        self, subscriptions: list[DigestSettings]
+    ) -> Iterator[tuple[int, int, int, int, int, int] | None]:
+        """Результаты ``_maybe_deliver`` по всем подписчикам через общий пул.
+
+        ``None`` — доставка одному пользователю упала (уже залогировано);
+        фейл одного не валит остальных. При ``stop_event`` отменяем ещё не
+        начатые доставки и выходим.
+        """
+        futures = {self._pool.submit(self._maybe_deliver, sub): sub for sub in subscriptions}
+        for future in as_completed(futures):
+            if self._stop_event.is_set():
+                for pending_future in futures:
+                    pending_future.cancel()
+                return
+            sub = futures[future]
+            try:
+                yield future.result()
+            except Exception:  # noqa: BLE001 - один пользователь не валит остальных
+                log.exception(
+                    "Failed to deliver digest to chat_id=%s username=%s",
+                    sub.chat_id,
+                    sub.username,
+                )
+                yield None
 
     def _run(self) -> None:
         while not self._stop_event.is_set():

@@ -37,7 +37,6 @@ ignore = [
 # Re-export hub'ы: handlers/__init__ и пр. умышленно ре-экспортируют публичный API.
 "satellite/telegram_bot/handlers/__init__.py" = ["F401"]
 "satellite/messages_ru/__init__.py" = ["F401", "F403"]
-"satellite/messages_ru/_core.py" = ["E", "W"]
 "satellite/users/__init__.py" = ["F401"]
 "satellite/calendar/events/__init__.py" = ["F401"]
 "tests/**" = ["B", "SIM", "F841"]

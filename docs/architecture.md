@@ -86,9 +86,20 @@ Handlers принимают Telegram-события и не считают ка�
 - `satellite/invitations_view.py` — общий экран pending-приглашений для
   `/invitations` и шедулера (`load_pending_invitations_screen`).
 - `satellite/messages_ru/` — пакет с user-facing текстами и callback-константами.
-  `__init__.py` — фасад (re-export всего публичного API), реализация — в
-  `_core.py`. Старые импорты `from satellite.messages_ru import ...` работают
-  без изменений.
+  `__init__.py` — фасад (star-import всех подмодулей), поэтому импорты
+  `from satellite.messages_ru import ...` работают без изменений. Подмодули по
+  сценариям: `buttons`, `identity`, `access`, `admin_messages`, `calendar_ui`
+  (upcoming/create/sources/foreign), `settings_ui` (хаб, аналитика, подэкран
+  «Календарь», ERR_*), `digest_ui` (настройки daily + pending дайджестов),
+  `meetings_ui` (/invitations + /manage), `plan_strings`, `duration`,
+  `streaming_ui`, `tokens`.
+- `satellite/presentation/` — transport-agnostic формирование текста:
+  `html.py` (legacy HTML: blockquote, tg-emoji, copy-кнопки), `rich.py`
+  (Rich Message HTML, Bot API 10.1), `calendar_lists.py` (rich-списки
+  `/upcoming`, `/invitations`, `/manage`), `delivery.py` (deliver/edit rich с
+  fallback на legacy HTML). `delivery.py` — единственный модуль доменной части,
+  которому разрешён импорт `telegram_bot.api`; правило закреплено в
+  `tests/test_import_layers.py`.
 
 ## Entry Points
 
@@ -148,8 +159,12 @@ telegram_test_command.py
   - `admin.py` — `/pending`, approve/reject callbacks.
   - `settings_hub.py` — inline-хаб «Настройки» (дайджест, аналитика, календари,
     connect); кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` только здесь.
-  - `settings.py` — экраны дайджеста плана и непринятых (`CB_DIGEST_*`,
-    `CB_PENDING_DIGEST_*`, общий `DigestKindBindings`).
+  - `settings_bindings.py` — таблица `BINDINGS`: daily/pending дайджест как
+    data-driven `DigestKindBindings` (поля, колбэки, тексты, клавиатуры).
+  - `settings_callbacks.py` — экраны и колбэки настроек дайджестов
+    (`CB_DIGEST_*`, `CB_PENDING_DIGEST_*`) поверх `BINDINGS`.
+  - `settings.py` — тонкий фасад: re-export публичного API settings-модулей.
+  - `settings_actions.py` — действия хаба (weather toggle и т. п.).
   - `analytics.py` — недельная аналитика (PNG + подпись) из хаба;
     `ActionGuard` (45 с cooldown) — один прогон на `chat_id` + защита от
     двойного PNG при повторном callback.
@@ -173,16 +188,19 @@ telegram_test_command.py
     (streaming open списка).
   - `plan.py` — command → plan → streaming reply (`ActionGuard`, 30 с).
   - `subscription.py` — subscribe/unsubscribe.
-- `satellite/telegram_bot/api.py` — Bot API client, retries, token sanitizing,
-  fallback при отказе Telegram в `<tg-emoji>` / `<blockquote>`.
-- `satellite/telegram_bot/html_format.py` — HTML-обёртки (`blockquote`, custom emoji);
-  хендлеры не вставляют разметку напрямую.
+- `satellite/telegram_bot/api/` — пакет Bot API клиента: `client.py`
+  (`TelegramClient`: retries, token sanitizing, общий `_call_with_fallbacks` —
+  повтор без `message_effect_id` и без `<tg-emoji>`/entities при отказе
+  Telegram), `errors.py` (`TelegramError` + классификаторы отказов), фасад
+  `__init__.py`.
 - `satellite/telegram_bot/visual.py` — typing indicator, message effects, menu button.
 - `satellite/telegram_bot/streaming_delivery.py` — потоковый ответ (черновик → финал):
-  plan, `/upcoming`, `/invitations`, `/manage`, недельная аналитика.
-- `satellite/telegram_bot/presenters/calendar_lists.py` — HTML/Rich HTML presenter'ы
-  списков событий (`/upcoming`, `/invitations`, `/manage`); тексты и callback-константы
-  остаются в `messages_ru/`.
+  plan, `/upcoming`, `/invitations`, `/manage`, недельная аналитика; реализация —
+  в `streaming/` (`helpers.py` + `session.py`).
+- `satellite/telegram_bot/presenters/` — `bundle.py` (`ScreenBundle`: rich +
+  fallback + reply_markup), `settings_screens.py`, `calendar_screens.py`;
+  rich-списки событий живут в `presentation/calendar_lists.py`, тексты и
+  callback-константы — в `messages_ru/`.
 - `satellite/telegram_bot/message_editing.py` — `edit_callback_message`, fallback
   при неудачном edit (refresh PARTSTAT, хаб настроек).
 - `satellite/telegram_bot/handlers/digest_state.py` — in-memory state for digest
@@ -321,6 +339,11 @@ record:
 Each kind fires only when enabled, day allowed, `HH:MM` matches, not already
 sent today, and `has_calendar`. `last_*_sent_date` updates only after
 successful `sendMessage`. One failed user does not stop the rest of the tick.
+
+Доставки внутри тика идут через общий `ThreadPoolExecutor`
+(`max_parallel_deliveries`, по умолчанию 4): пул создаётся один раз в
+`__init__`, потоки спавнятся лениво, закрывается в `stop()`. При остановке
+ещё не начатые доставки отменяются, начатые дорабатывают.
 
 Per tick (daily):
 

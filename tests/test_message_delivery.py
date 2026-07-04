@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from satellite.presentation.delivery import deliver_rich_or_html, edit_rich_or_html
 from satellite.telegram_bot.api import TelegramError
-from satellite.telegram_bot.message_delivery import deliver_rich_or_html, edit_rich_or_html
 
 
 @pytest.fixture

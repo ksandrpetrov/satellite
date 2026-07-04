@@ -95,19 +95,19 @@ class DigestKindBindings:
     build_time_keyboard: Callable[[], dict]
 
 
-def _enabled(settings: DigestSettings, bindings: DigestKindBindings) -> bool:
+def enabled_value(settings: DigestSettings, bindings: DigestKindBindings) -> bool:
     return bool(getattr(settings, bindings.enabled_field))
 
 
-def _days(settings: DigestSettings, bindings: DigestKindBindings) -> str:
+def days_value(settings: DigestSettings, bindings: DigestKindBindings) -> str:
     return str(getattr(settings, bindings.days_field))
 
 
-def _time(settings: DigestSettings, bindings: DigestKindBindings) -> str:
+def time_value(settings: DigestSettings, bindings: DigestKindBindings) -> str:
     return str(getattr(settings, bindings.time_field))
 
 
-_BINDINGS: dict[DigestKind, DigestKindBindings] = {
+BINDINGS: dict[DigestKind, DigestKindBindings] = {
     DIGEST_KIND_DAILY: DigestKindBindings(
         kind=DIGEST_KIND_DAILY,
         enabled_field="digest_enabled",
@@ -169,11 +169,11 @@ _BINDINGS: dict[DigestKind, DigestKindBindings] = {
 }
 
 
-def _bindings(kind: DigestKind) -> DigestKindBindings:
-    return _BINDINGS[kind]
+def bindings_for(kind: DigestKind) -> DigestKindBindings:
+    return BINDINGS[kind]
 
 
-def _digest_settings_bundle(
+def build_settings_screen_bundle(
     settings: DigestSettings,
     bindings: DigestKindBindings,
     *,
@@ -183,21 +183,21 @@ def _digest_settings_bundle(
 ) -> ScreenBundle:
     if kind == DIGEST_KIND_DAILY:
         return digest_settings_bundle(
-            digest_enabled=_enabled(settings, bindings),
-            digest_days=_days(settings, bindings),
-            digest_time=_time(settings, bindings),
+            digest_enabled=enabled_value(settings, bindings),
+            digest_days=days_value(settings, bindings),
+            digest_time=time_value(settings, bindings),
             weather_in_plan_enabled=weather_in_plan_enabled,
             reply_markup=keyboard,
         )
     return pending_digest_settings_bundle(
-        digest_enabled=_enabled(settings, bindings),
-        digest_days=_days(settings, bindings),
-        digest_time=_time(settings, bindings),
+        digest_enabled=enabled_value(settings, bindings),
+        digest_days=days_value(settings, bindings),
+        digest_time=time_value(settings, bindings),
         reply_markup=keyboard,
     )
 
 
-def _digest_days_bundle(
+def build_days_screen_bundle(
     digest_days: str,
     bindings: DigestKindBindings,
     *,
@@ -209,11 +209,11 @@ def _digest_days_bundle(
     return pending_digest_days_bundle(digest_days=digest_days, reply_markup=keyboard)
 
 
-def _digest_time_bundle(digest_time: str, keyboard: dict) -> ScreenBundle:
+def build_time_screen_bundle(digest_time: str, keyboard: dict) -> ScreenBundle:
     return digest_time_bundle(digest_time=digest_time, reply_markup=keyboard)
 
 
-def _update_settings(
+def update_settings(
     ctx: HandlerContext,
     chat_id: int,
     username: str,

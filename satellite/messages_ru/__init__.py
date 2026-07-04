@@ -5,11 +5,18 @@
     from satellite.messages_ru import BUTTON_TODAY, build_settings_hub_keyboard
 
 Подмодули по сценариям: ``buttons``, ``identity``, ``access``,
-``admin_messages``, ``calendar_ui``, ``settings_ui``, ``plan_strings``,
-``duration``.
+``admin_messages``, ``calendar_ui``, ``settings_ui``, ``digest_ui``,
+``meetings_ui``, ``plan_strings``, ``duration``, ``streaming_ui``.
 """
 
-from . import _core as _core  # для отладки: satellite.messages_ru._core
-from ._core import *  # noqa: F401,F403
-
-__all__ = [name for name in dir(_core) if not name.startswith("_")]
+from .access import *  # noqa: F403
+from .admin_messages import *  # noqa: F403
+from .buttons import *  # noqa: F403
+from .calendar_ui import *  # noqa: F403
+from .digest_ui import *  # noqa: F403
+from .duration import *  # noqa: F403
+from .identity import *  # noqa: F403
+from .meetings_ui import *  # noqa: F403
+from .plan_strings import *  # noqa: F403
+from .settings_ui import *  # noqa: F403
+from .streaming_ui import *  # noqa: F403

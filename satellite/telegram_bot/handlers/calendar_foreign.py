@@ -16,7 +16,6 @@ from ...calendar.selection import (
     foreign_calendar_entries,
     sort_calendar_entries,
 )
-from ...formatters.html import build_copy_text_button, strip_bold_tags
 from ...messages_ru import (
     BUTTON_COPY_LIST,
     CALENDAR_NOT_CONNECTED_HTML,
@@ -37,6 +36,7 @@ from ...messages_ru import (
     foreign_calendars_day_result_text,
     foreign_calendars_pick_day_text,
 )
+from ...presentation.html import build_copy_text_button, strip_bold_tags
 from .access import ensure_calendar_connected
 from .calendar_view import CalendarListStatus, fetch_calendars, normalize_calendar_url
 from .context import HandlerContext, IncomingCallback, IncomingMessage

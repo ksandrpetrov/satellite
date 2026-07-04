@@ -166,7 +166,7 @@ Legacy-тексты старой клавиатуры тоже распозна�
 
 Под каждым событием — **Принять** / **Отклонить** / **Может быть**; ответ пишется
 в CalDAV через `set_attendee_partstat` (Mail.ru — `CalDAVClient.update_attendee_partstat`).
-Callback data: префикс `inv:` (`CB_INV_*` в [`messages_ru/_core.py`](../satellite/messages_ru/_core.py)).
+Callback data: префикс `inv:` (`CB_INV_*` в [`messages_ru/meetings_ui.py`](../satellite/messages_ru/meetings_ui.py)).
 
 Тот же экран открывается из хаба настроек → **📚 Календари** → **📨 Приглашения**
 (`CB_SETTINGS_INVITATIONS`). «⬅️ В календарь» возвращает в подменю календаря хаба.
@@ -215,8 +215,8 @@ Callback data: префикс `inv:` (`CB_INV_*` в [`messages_ru/_core.py`](../
 - **🔌 Подключить / 🔄 Переподключить** — Web App (`WEBAPP_BASE_URL`);
 - **✅ Проверить** / **🗑 Отключить** — только при `has_calendar`.
 
-Callback data хаба: `CB_SETTINGS_*` / `CB_ANALYTICS_*` в [`messages_ru/_core.py`](../satellite/messages_ru/_core.py). Экран дайджеста —
-`CB_DIGEST_*`.
+Callback data хаба: `CB_SETTINGS_*` / `CB_ANALYTICS_*` в [`messages_ru/settings_ui.py`](../satellite/messages_ru/settings_ui.py). Экран дайджеста —
+`CB_DIGEST_*` в [`messages_ru/digest_ui.py`](../satellite/messages_ru/digest_ui.py).
 
 Каждый callback получает `answerCallbackQuery` best-effort. Неизвестный callback
 логируется и безопасно игнорируется.
@@ -309,11 +309,11 @@ state (`handlers/digest_state`).
 ## Rich Messages (Bot API 10.1)
 
 Дайджест, списки событий и подпись к аналитике собираются как Rich HTML
-([`rich_message.py`](../satellite/telegram_bot/rich_message.py),
+([`presentation/rich.py`](../satellite/presentation/rich.py),
 [`render_rich.py`](../satellite/seagull/render_rich.py),
-[`calendar_lists.py`](../satellite/telegram_bot/presenters/calendar_lists.py)) и доставляются через
+[`presentation/calendar_lists.py`](../satellite/presentation/calendar_lists.py)) и доставляются через
 `sendRichMessage` с fallback на legacy `sendMessage` HTML
-([`message_delivery.py`](../satellite/telegram_bot/message_delivery.py)).
+([`presentation/delivery.py`](../satellite/presentation/delivery.py)).
 
 - Лимит rich-сообщения — до 32 768 символов (safety-cap 30 000 в рендерах).
 - Примитивы: заголовки, `<details>`, таблицы, `<time>`, якоря, `<tg-pullquote>`,

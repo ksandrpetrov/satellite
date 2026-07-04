@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from ..presentation.html import (
+    blockquote,
+    expandable_blockquote,
+    replace_first_char_with_tg_emoji,
+)
+
 BOT_INPUT_PLACEHOLDER = "Куда летим? Жми кнопку или напиши команду"
 
 BOT_NAME_RU = "Чайка 🪶"
@@ -19,8 +25,6 @@ BOT_DESCRIPTION_RU = (
 
 
 def _build_bot_welcome_html() -> str:
-    from ..formatters.html import blockquote, replace_first_char_with_tg_emoji
-
     tip = blockquote(
         "Подсказка: добавь в встречу эмоджи 🍕 и слово «обед» — чайка засчитает её "
         "обедом и подскажет окно."
@@ -41,8 +45,6 @@ def _build_bot_welcome_html() -> str:
 
 
 def _build_bot_help_html() -> str:
-    from ..formatters.html import expandable_blockquote, replace_first_char_with_tg_emoji
-
     commands_block = expandable_blockquote(
         "/today, /tomorrow, /aftertomorrow — план дня\n"
         "/upcoming — ближайшие события\n"

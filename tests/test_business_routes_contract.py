@@ -1,12 +1,12 @@
 """Контрактные тесты команд / callback'ов / Web routes.
 
 Цель — поймать рассинхрон между документацией (``docs/telegram-ux.md``,
-``messages_ru/_core.py``) и кодом маршрутизации:
+пакетом ``messages_ru``) и кодом маршрутизации:
 
 - каждый documented alias возвращает правильный ``RecognizedCommand``;
 - каждый класс из union ``RecognizedCommand`` обрабатывается dispatch'ем
   (через ``_MESSAGE_ROUTES`` или явный special-case в ``handle_message``);
-- каждый ``CB_*`` константа из ``messages_ru/_core.py`` имеет router в
+- каждая ``CB_*`` константа из фасада ``messages_ru`` имеет router в
   цепочке ``_CALLBACK_ROUTERS`` (с явным allowlist для констант, которые
   по дизайну не идут через callback — например, кнопки Web App);
 - каждый маршрут ``API_ROUTES`` без auth возвращает 401/400, не 500.
@@ -26,6 +26,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import satellite.messages_ru as messages_core
 from satellite.messages_ru import (
     BUTTON_CALENDAR_SOURCES,
     BUTTON_CHECK_CALENDAR,
@@ -44,7 +45,6 @@ from satellite.messages_ru import (
     BUTTON_UNSUBSCRIBE_LEGACY,
     BUTTON_UPCOMING,
 )
-from satellite.messages_ru import _core as messages_core
 from satellite.telegram_bot.commands import BOT_COMMANDS
 from satellite.telegram_bot.handlers.dispatch import (
     _CALLBACK_ROUTERS,
@@ -209,7 +209,7 @@ def test_bot_commands_list_matches_menu_spec() -> None:
 #   в суффиксе (тест добавляет sample suffix);
 # - settings_reconnect — мёртвая константа (reconnect живёт в `web_app: {url:}`).
 _CB_NOT_ROUTED_ALLOWLIST = {
-    "settings_reconnect",  # см. messages_ru/_core.py: web_app кнопка, не callback
+    "settings_reconnect",  # см. messages_ru/settings_ui.py: web_app кнопка, не callback
     # `cal_sources` объявлен исторически, но в текущих keyboard'ах не используется —
     # реальный entry-point — `CB_SETTINGS_CALENDARS`. Оставлен как allowlisted,
     # чтобы не плодить требование на «route to nowhere».
@@ -218,7 +218,7 @@ _CB_NOT_ROUTED_ALLOWLIST = {
 
 
 def _all_cb_constants() -> dict[str, str]:
-    """Собираем все ``CB_*`` константы из messages_ru/_core.py.
+    """Собираем все ``CB_*`` константы из фасада ``messages_ru``.
 
     Возвращаем ``{name: value}`` для exact-match и prefix-match (prefix
     распознаётся по суффиксу ``_PREFIX`` в имени).

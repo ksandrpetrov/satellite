@@ -12,8 +12,8 @@ from urllib.parse import quote
 
 from ...config import WebAppConfig
 from ...messages_ru import ERR_GENERIC_HANDLER_TEXT
+from ...presentation.delivery import deliver_rich_or_html, edit_rich_or_html
 from ..api import TelegramError
-from ..message_delivery import deliver_rich_or_html, edit_rich_or_html
 from ..presenters.bundle import ScreenBundle
 from ..streaming_delivery import StreamingReply
 from ..streaming_delivery import open_streaming_reply as _open_streaming_reply

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from satellite.telegram_bot.html_format import (
+from satellite.presentation.html import (
     blockquote,
     build_copy_text_button,
     expandable_blockquote,

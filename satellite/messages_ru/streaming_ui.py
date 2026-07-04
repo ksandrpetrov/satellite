@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..formatters.rich import escape_rich, thinking_block
+from ..presentation.rich import escape_rich, thinking_block
 
 DEFAULT_THINKING_TEXT = "Чайка думает…"
 

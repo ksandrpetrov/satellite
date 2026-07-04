@@ -20,8 +20,8 @@ from ...messages_ru import (
     ERR_GENERIC_HANDLER_TEXT,
     build_analytics_options_keyboard,
 )
+from ...presentation.delivery import deliver_rich_or_html
 from ..api import TelegramError
-from ..message_delivery import deliver_rich_or_html
 from ..presenters.settings_screens import analytics_options_bundle, analytics_workday_applied_bundle
 from ..visual import pick_analytics_effect, private_message_effect
 from .access import ensure_calendar_connected
