@@ -28,8 +28,8 @@ from .access import ensure_calendar_connected
 from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback
 from .delivery import (
-    edit_callback_bundle,
     open_streaming_reply,
+    respond_callback_nav,
     safe_answer_callback,
 )
 
@@ -55,8 +55,7 @@ def handle_open_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
     preset = record.analytics_workday if record else ANALYTICS_WORKDAY_10_19
     keyboard = build_analytics_options_keyboard(workday_preset=preset)
     bundle = analytics_options_bundle(workday_preset=preset, reply_markup=keyboard)
-    edit_callback_bundle(ctx, cb, bundle)
-    safe_answer_callback(ctx, cb)
+    respond_callback_nav(ctx, cb, bundle)
 
 
 def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
@@ -77,10 +76,11 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         stream = open_streaming_reply(
             ctx,
             cb.chat_id,
+            initial_text=ANALYTICS_FETCH_STATUS,
             draft_id=cb.update_id,
             chat_action="upload_photo",
+            rich=True,
         )
-        stream.push_status(ANALYTICS_FETCH_STATUS)
 
         def build() -> tuple[bytes, str, str]:
             today = datetime.now(tz=ctx.tz).date()
@@ -95,15 +95,15 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         try:
             png, caption, rich_caption = build()
         except CalendarNotConnectedError:
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False, typewriter=False)
             return
         except CalendarProviderError as exc:
             log.error("Analytics failed user_id=%s: %s", cb.user_id, exc.error_code)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False, typewriter=False)
             return
         except Exception:  # noqa: BLE001 - не оставляем «сводит неделю…» висеть в чате
             log.exception("Analytics build failed user_id=%s", cb.user_id)
-            stream.finish(ERR_GENERIC_HANDLER_TEXT, rich=False)
+            stream.finish(ERR_GENERIC_HANDLER_TEXT, rich=False, typewriter=False)
             return
 
         effect = private_message_effect(pick_analytics_effect(), cb.chat_id)
@@ -120,7 +120,7 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
                 cb.chat_id,
                 exc,
             )
-            stream.finish(ERR_GENERIC_HANDLER_TEXT, rich=False)
+            stream.finish(ERR_GENERIC_HANDLER_TEXT, rich=False, typewriter=False)
             return
         deliver_rich_or_html(
             ctx.telegram,
@@ -146,8 +146,7 @@ def handle_set_analytics_workday(ctx: HandlerContext, cb: IncomingCallback, pres
         return
     keyboard = build_analytics_options_keyboard(workday_preset=preset)
     bundle = analytics_workday_applied_bundle(workday_preset=preset, reply_markup=keyboard)
-    edit_callback_bundle(ctx, cb, bundle)
-    safe_answer_callback(ctx, cb, text=ANALYTICS_SAVED_TOAST)
+    respond_callback_nav(ctx, cb, bundle, toast=ANALYTICS_SAVED_TOAST)
 
 
 def route_analytics_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:

@@ -308,6 +308,32 @@ def test_handle_open_manage_events_empty_when_nothing_to_manage(monkeypatch):
     assert final_message_html(ctx.telegram) == MANAGE_EMPTY_HTML
 
 
+def test_manage_pick_uses_warm_snapshot_without_refetch(monkeypatch):
+    import satellite.telegram_bot.handlers.calendar_manage as cm
+
+    now = datetime(2026, 5, 21, 10, 0, tzinfo=TZ)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return now.astimezone(tz) if tz else now
+
+    monkeypatch.setattr(cm, "datetime", _FixedDatetime)
+
+    url = "https://e/standup"
+    ctx = _ctx(events=[_ev(summary="Standup", url=url, partstat="TENTATIVE")])
+    token = event_callback_token(url)
+
+    handle_callback_query(ctx, _cb(900, CB_MANAGE_REFRESH))
+    ctx.calendar_service.list_events_for_invitations.reset_mock()
+
+    handle_callback_query(ctx, _cb(901, f"{CB_MANAGE_PICK_PREFIX}{token}"))
+
+    ctx.calendar_service.list_events_for_invitations.assert_not_called()
+    text = callback_edit_html(ctx.telegram)
+    assert "Standup" in text
+
+
 def test_manage_pick_opens_detail_with_action_buttons(monkeypatch):
     """Тап по строке встречи → детальный экран с действиями."""
     import satellite.telegram_bot.handlers.calendar_manage as cm

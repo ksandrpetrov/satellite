@@ -77,14 +77,18 @@ def _reset_action_guards():
     """
     from satellite.calendar.event_token_cache import reset_event_token_cache
     from satellite.telegram_bot.handlers import analytics as _analytics
+    from satellite.telegram_bot.handlers import calendar_foreign as _foreign
     from satellite.telegram_bot.handlers import calendar_invitations as _invitations
     from satellite.telegram_bot.handlers import calendar_list as _upcoming
     from satellite.telegram_bot.handlers import calendar_manage as _manage
     from satellite.telegram_bot.handlers import partstat_flow as _partstat
     from satellite.telegram_bot.handlers import plan as _plan
     from satellite.telegram_bot.handlers import settings_hub as _settings_hub
+    from satellite.telegram_bot.handlers.calendar_view import clear_calendar_list_cache
 
     reset_event_token_cache()
+    clear_calendar_list_cache()
+    _foreign.clear_foreign_list_cache()
 
     for guard in (
         _analytics._analytics_run_guard,

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from threading import Lock
 
 from ...calendar.events import format_single_day_events_lines
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
@@ -30,7 +32,6 @@ from ...messages_ru import (
     FOREIGN_CALENDARS_INTRO_HTML,
     FOREIGN_CALENDARS_LOAD_FAIL_HTML,
     FOREIGN_CALENDARS_LOADING_TOAST,
-    FOREIGN_CALENDARS_REFRESH_FAIL_TEXT,
     build_foreign_calendars_keyboard,
     build_foreign_day_keyboard,
     foreign_calendars_day_result_text,
@@ -42,6 +43,36 @@ from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import ack_callback_with_loading, edit_callback_message, safe_answer_callback, send
 
 log = logging.getLogger(__name__)
+
+_FOREIGN_LIST_TTL_SEC = 60.0
+_foreign_list_cache: dict[int, tuple[tuple, float]] = {}
+_foreign_list_lock = Lock()
+
+
+def _put_foreign_list_cache(user_id: int, entries: tuple) -> None:
+    with _foreign_list_lock:
+        _foreign_list_cache[user_id] = (entries, time.monotonic())
+
+
+def _get_foreign_list_cache(user_id: int) -> list | None:
+    with _foreign_list_lock:
+        stored = _foreign_list_cache.get(user_id)
+    if stored is None:
+        return None
+    entries, cached_at = stored
+    if (time.monotonic() - cached_at) >= _FOREIGN_LIST_TTL_SEC:
+        with _foreign_list_lock:
+            _foreign_list_cache.pop(user_id, None)
+        return None
+    return list(entries)
+
+
+def clear_foreign_list_cache(user_id: int | None = None) -> None:
+    with _foreign_list_lock:
+        if user_id is None:
+            _foreign_list_cache.clear()
+        else:
+            _foreign_list_cache.pop(user_id, None)
 
 
 @dataclass(frozen=True)
@@ -68,6 +99,22 @@ def _foreign_calendars(ctx: HandlerContext, user_id: int) -> _ForeignResult:
         )
     )
     return _ForeignResult(status=CalendarListStatus.OK, entries=tuple(foreign))
+
+
+def _foreign_calendars_cached(
+    ctx: HandlerContext,
+    user_id: int,
+    *,
+    prefer_cache: bool = False,
+) -> _ForeignResult:
+    if prefer_cache:
+        cached = _get_foreign_list_cache(user_id)
+        if cached is not None:
+            return _ForeignResult(status=CalendarListStatus.OK, entries=tuple(cached))
+    result = _foreign_calendars(ctx, user_id)
+    if result.ok:
+        _put_foreign_list_cache(user_id, result.entries)
+    return result
 
 
 def _foreign_pairs(
@@ -122,8 +169,8 @@ def route_foreign_calendars_callback(ctx: HandlerContext, cb: IncomingCallback) 
 
 
 def _handle_close(ctx: HandlerContext, cb: IncomingCallback) -> None:
-    edit_callback_message(ctx, cb, FOREIGN_CALENDARS_CLOSED_TEXT, reply_markup=None)
     safe_answer_callback(ctx, cb)
+    edit_callback_message(ctx, cb, FOREIGN_CALENDARS_CLOSED_TEXT, reply_markup=None)
     log.info("Closed foreign calendars: user_id=%s", cb.user_id)
 
 
@@ -137,7 +184,7 @@ def _handle_back(ctx: HandlerContext, cb: IncomingCallback) -> None:
         status_html=FOREIGN_CALENDARS_FETCH_STATUS,
         toast=FOREIGN_CALENDARS_LOADING_TOAST,
     )
-    result = _foreign_calendars(ctx, cb.user_id)
+    result = _foreign_calendars_cached(ctx, cb.user_id)
     if not result.ok:
         edit_callback_message(ctx, cb, FOREIGN_CALENDARS_LOAD_FAIL_HTML, reply_markup=None)
         return
@@ -161,7 +208,7 @@ def _handle_pick(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
         status_html=FOREIGN_CALENDARS_FETCH_STATUS,
         toast=FOREIGN_CALENDARS_LOADING_TOAST,
     )
-    result = _foreign_calendars(ctx, cb.user_id)
+    result = _foreign_calendars_cached(ctx, cb.user_id)
     if not result.ok:
         edit_callback_message(ctx, cb, FOREIGN_CALENDARS_LOAD_FAIL_HTML, reply_markup=None)
         return
@@ -181,9 +228,15 @@ def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
     if user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
-    result = _foreign_calendars(ctx, user_id)
+    ack_callback_with_loading(
+        ctx,
+        cb,
+        status_html=FOREIGN_CALENDARS_FETCH_STATUS,
+        toast=FOREIGN_CALENDARS_LOADING_TOAST,
+    )
+    result = _foreign_calendars_cached(ctx, user_id, prefer_cache=True)
     if not result.ok:
-        safe_answer_callback(ctx, cb, text=FOREIGN_CALENDARS_REFRESH_FAIL_TEXT)
+        edit_callback_message(ctx, cb, FOREIGN_CALENDARS_LOAD_FAIL_HTML, reply_markup=None)
         return
     foreign = list(result.entries)
     payload = data[len(CB_FOREIGN_DAY_PREFIX) :]
@@ -201,8 +254,6 @@ def _handle_day(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
     calendar_url = normalize_calendar_url(entry.url)
     today = datetime.now(tz=ctx.tz).date()
     target_date = today + timedelta(days=day_offset)
-    edit_callback_message(ctx, cb, FOREIGN_CALENDARS_FETCH_STATUS, reply_markup=None)
-    safe_answer_callback(ctx, cb, text=FOREIGN_CALENDARS_LOADING_TOAST)
 
     def build() -> str:
         events = ctx.calendar_service.list_events(

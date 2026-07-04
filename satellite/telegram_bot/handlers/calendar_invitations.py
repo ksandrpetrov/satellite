@@ -27,6 +27,7 @@ from ...messages_ru import (
     CB_INV_REFRESH,
     CB_INV_RESPOND_PREFIX,
     ERR_CALDAV_UNAVAILABLE_TEXT,
+    INVITATIONS_BUSY_TEXT,
     INVITATIONS_CLOSED_TEXT,
     INVITATIONS_FETCH_STATUS,
     INVITATIONS_RESPOND_ACCEPTED,
@@ -44,6 +45,7 @@ from .delivery import (
     edit_callback_rich_or_html,
     open_streaming_reply,
     safe_answer_callback,
+    send,
 )
 from .partstat_flow import (
     PartstatFlow,
@@ -87,21 +89,27 @@ def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
         return
     if not _invitations_open_guard.try_acquire(msg.chat_id, _INVITATIONS_OPEN_ACTION):
         log.info("Invitations open skipped (duplicate within cooldown): user_id=%s", msg.user_id)
+        send(ctx, msg.chat_id, INVITATIONS_BUSY_TEXT)
         return
     sent = False
     try:
-        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id, rich=True)
-        stream.push_status(INVITATIONS_FETCH_STATUS)
+        stream = open_streaming_reply(
+            ctx,
+            msg.chat_id,
+            initial_text=INVITATIONS_FETCH_STATUS,
+            draft_id=msg.update_id,
+            rich=True,
+        )
 
         try:
             rich_text, fallback_text, keyboard = _load_screen(ctx, msg.user_id)
         except CalendarNotConnectedError:
             log.error("Invitations list failed user_id=%s: not connected", msg.user_id)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False, typewriter=False)
             return
         except CalendarProviderError as exc:
             log.error("Invitations list failed user_id=%s: %s", msg.user_id, exc.error_code)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False, typewriter=False)
             return
         stream.finish(
             rich_text,

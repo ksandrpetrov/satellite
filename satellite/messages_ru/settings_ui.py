@@ -36,8 +36,12 @@ CB_ANALYTICS_WORKDAY_10 = "analytics:wd:10-19"
 CB_ANALYTICS_BACK = "analytics:back"
 
 CALENDAR_DISCONNECT_TOAST = "Отключено"
+CALENDAR_DISCONNECT_LOADING_HTML = "⏳ Отключаю календарь…"
 ANALYTICS_SAVED_TOAST = "Сохранено"
 ANALYTICS_BUSY_TOAST = "Уже строю отчёт — подожди немного"
+UPCOMING_BUSY_TEXT = "🗓 Уже собираю список — секунду."
+INVITATIONS_BUSY_TEXT = "📨 Уже собираю приглашения — секунду."
+MANAGE_BUSY_TEXT = "🛠 Уже собираю встречи — секунду."
 FOREIGN_CALENDARS_LOADING_TOAST = "Загружаю…"
 
 BUTTON_ANALYTICS = "📊 Аналитика недели"

@@ -174,6 +174,21 @@ def test_disconnect_first_click_shows_confirmation_only(tmp_path: Path):
     assert BUTTON_DISCONNECT_CALENDAR_CANCEL in labels
 
 
+def test_disconnect_confirm_acks_before_disconnect(tmp_path: Path):
+    ctx = _ctx(tmp_path)
+    manager = MagicMock()
+    manager.attach_mock(ctx.telegram.answer_callback_query, "ack")
+    manager.attach_mock(ctx.calendar_service.disconnect, "disconnect")
+
+    handle_callback_query(ctx, _cb(900, CB_SETTINGS_DISCONNECT_CONFIRM))
+
+    call_names = [call[0] for call in manager.mock_calls]
+    assert "ack" in call_names
+    assert "disconnect" in call_names
+    assert call_names.index("ack") < call_names.index("disconnect")
+    ctx.calendar_service.disconnect.assert_called_once_with(1)
+
+
 def test_disconnect_confirm_actually_disconnects(tmp_path: Path):
     """Нажатие «⚠️ Да, отключить» — реально зовём calendar_service.disconnect."""
     ctx = _ctx(tmp_path)

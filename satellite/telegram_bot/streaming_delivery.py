@@ -381,7 +381,6 @@ class StreamingReply:
         if session._try_start_draft(draft_start):
             session._last_pushed = draft_start
             session._last_draft_at = time.monotonic()
-            session._start_typing(chat_action)
             return session
         # legacy-ветка: нужно непустое loading-сообщение, иначе sendMessage упадёт.
         legacy_text = clipped or "⏳"

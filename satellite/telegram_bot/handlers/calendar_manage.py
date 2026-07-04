@@ -41,6 +41,7 @@ from ...messages_ru import (
     CB_MANAGE_REFRESH,
     CB_MANAGE_RESPOND_PREFIX,
     ERR_CALDAV_UNAVAILABLE_TEXT,
+    MANAGE_BUSY_TEXT,
     MANAGE_CLOSED_TEXT,
     MANAGE_EMPTY_HTML,
     MANAGE_FETCH_STATUS,
@@ -68,6 +69,7 @@ from .delivery import (
     edit_callback_rich_or_html,
     open_streaming_reply,
     safe_answer_callback,
+    send,
 )
 from .partstat_flow import PartstatFlow, find_event_by_token, respond_partstat
 
@@ -171,21 +173,27 @@ def handle_open_manage_events(ctx: HandlerContext, msg: IncomingMessage) -> None
         return
     if not _manage_open_guard.try_acquire(msg.chat_id, _MANAGE_OPEN_ACTION):
         log.info("Manage open skipped (duplicate within cooldown): user_id=%s", msg.user_id)
+        send(ctx, msg.chat_id, MANAGE_BUSY_TEXT)
         return
     sent = False
     try:
-        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id, rich=True)
-        stream.push_status(MANAGE_FETCH_STATUS)
+        stream = open_streaming_reply(
+            ctx,
+            msg.chat_id,
+            initial_text=MANAGE_FETCH_STATUS,
+            draft_id=msg.update_id,
+            rich=True,
+        )
 
         try:
             rich_text, fallback_text, keyboard = _load_list_screen(ctx, msg.user_id)
         except CalendarNotConnectedError:
             log.error("Manage list failed user_id=%s: not connected", msg.user_id)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False, typewriter=False)
             return
         except CalendarProviderError as exc:
             log.error("Manage list failed user_id=%s: %s", msg.user_id, exc.error_code)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False)
+            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False, typewriter=False)
             return
         stream.finish(
             rich_text,
@@ -235,6 +243,20 @@ def _open_detail(ctx: HandlerContext, cb: IncomingCallback, token: str) -> None:
         safe_answer_callback(ctx, cb)
         return
     ack_callback_with_loading(ctx, cb, status_html=MANAGE_FETCH_STATUS)
+    cache = get_event_token_cache()
+    snapshot = cache.get_manage_snapshot(cb.user_id)
+    if snapshot is not None:
+        event = find_event_by_token(snapshot.events, token)
+        if event is not None:
+            rich_text, fallback_text, keyboard = _detail_screen_for(ctx, event, snapshot.login)
+            edit_callback_rich_or_html(
+                ctx,
+                cb,
+                rich_html=rich_text,
+                fallback_html=fallback_text,
+                reply_markup=keyboard,
+            )
+            return
     try:
         events, login, _ = _fetch_manageable(ctx, cb.user_id)
     except (CalendarNotConnectedError, CalendarProviderError):

@@ -272,6 +272,37 @@ def test_calendar_sources_request_recognized(raw: str):
     assert button_text_is_calendar_sources(raw) or is_calendar_sources_request(raw)
 
 
+def test_toggle_uses_calendar_list_cache_without_refetch(tmp_path: Path):
+    calendars = [
+        CalendarListEntry(name="Работа", url="https://cal/work"),
+        CalendarListEntry(name="Личное", url="https://cal/home"),
+    ]
+    ctx = _ctx(tmp_path, calendars=calendars)
+    users = ctx.users
+    users.set_enabled_calendar_urls(1, calendar_urls=["https://cal/work", "https://cal/home"])
+
+    from satellite.telegram_bot.handlers.calendar_view import fetch_calendars
+
+    fetch_calendars(ctx, 1)
+    ctx.calendar_service.list_calendars.reset_mock()
+
+    cb = IncomingCallback(
+        update_id=21,
+        callback_query_id="cb-cache",
+        chat_id=900,
+        message_id=55,
+        user_id=1,
+        username="alice",
+        data=f"{CB_CAL_TOGGLE_PREFIX}{calendar_callback_token('https://cal/home')}",
+    )
+    handle_callback_query(ctx, cb)
+
+    ctx.calendar_service.list_calendars.assert_not_called()
+    record = users.get(1)
+    assert record is not None
+    assert record.enabled_calendar_urls == ("https://cal/work",)
+
+
 def test_toggle_uses_url_token_when_list_order_changes(tmp_path: Path):
     """Регрессия: индекс в callback_data ломался при другом порядке CalDAV."""
     calendars = [

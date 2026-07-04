@@ -157,6 +157,40 @@ def edit_callback_message(
         log.info("Edit callback message ignored: %s", exc)
 
 
+def respond_callback_nav(
+    ctx: HandlerContext,
+    cb: IncomingCallback,
+    bundle: ScreenBundle,
+    *,
+    toast: str | None = None,
+    show_alert: bool = False,
+) -> None:
+    """Ack-first навигация по inline-экранам без тяжёлой работы."""
+    safe_answer_callback(ctx, cb, text=toast, show_alert=show_alert)
+    edit_callback_bundle(ctx, cb, bundle)
+
+
+def respond_callback_rich_nav(
+    ctx: HandlerContext,
+    cb: IncomingCallback,
+    *,
+    rich_html: str,
+    fallback_html: str,
+    reply_markup: dict | None,
+    toast: str | None = None,
+    show_alert: bool = False,
+) -> None:
+    """Ack-first навигация с rich HTML экраном."""
+    safe_answer_callback(ctx, cb, text=toast, show_alert=show_alert)
+    edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=rich_html,
+        fallback_html=fallback_html,
+        reply_markup=reply_markup,
+    )
+
+
 def ack_callback_with_loading(
     ctx: HandlerContext,
     cb: IncomingCallback,
@@ -165,14 +199,14 @@ def ack_callback_with_loading(
     toast: str | None = None,
     reply_markup: dict | None = None,
 ) -> None:
-    """Быстрый ответ на долгий callback: опционально loading в сообщении, затем ack.
+    """Быстрый ответ на долгий callback: ack, затем опционально loading в сообщении.
 
     Снимает спиннер кнопки до тяжёлой работы (CalDAV и т.п.), не нарушая
     инвариант «callback edit без fallback на send».
     """
+    safe_answer_callback(ctx, cb, text=toast)
     if status_html is not None:
         edit_callback_message(ctx, cb, status_html, reply_markup=reply_markup)
-    safe_answer_callback(ctx, cb, text=toast)
 
 
 def safe_answer_callback(

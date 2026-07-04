@@ -77,7 +77,13 @@ from ..presenters.settings_screens import (
 )
 from .access import effective_username, effective_username_from_callback
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from .delivery import edit_callback_bundle, edit_callback_rich_or_html, safe_answer_callback, send
+from .delivery import (
+    edit_callback_bundle,
+    respond_callback_nav,
+    respond_callback_rich_nav,
+    safe_answer_callback,
+    send,
+)
 from .digest_state import DIGEST_KIND_DAILY, DIGEST_KIND_PENDING, DigestKind
 from .settings_actions import toggle_weather_in_plan
 
@@ -334,8 +340,8 @@ def handle_callback_toggle(
         username,
         _enabled(updated, bindings),
     )
-    render_digest_settings_screen(ctx, cb, updated, kind=kind)
     safe_answer_callback(ctx, cb, text=notice)
+    render_digest_settings_screen(ctx, cb, updated, kind=kind)
 
 
 def show_digest_settings_screen(
@@ -350,8 +356,8 @@ def show_digest_settings_screen(
     username = effective_username_from_callback(cb)
     ctx.digest_state.clear(cb.chat_id)
     settings = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
-    render_digest_settings_screen(ctx, cb, settings, kind=kind)
     safe_answer_callback(ctx, cb)
+    render_digest_settings_screen(ctx, cb, settings, kind=kind)
 
 
 def show_pending_digest_settings_screen(ctx: HandlerContext, cb: IncomingCallback) -> None:
@@ -374,8 +380,7 @@ def show_digest_days_screen(
         kind=kind,
         keyboard=keyboard,
     )
-    edit_callback_bundle(ctx, cb, bundle)
-    safe_answer_callback(ctx, cb)
+    respond_callback_nav(ctx, cb, bundle)
 
 
 def handle_callback_set_days(
@@ -408,6 +413,7 @@ def handle_callback_set_days(
         _days(updated, bindings),
         changed,
     )
+    safe_answer_callback(ctx, cb)
     render_digest_settings_screen(ctx, cb, updated, kind=kind)
     if changed:
         confirmation = (
@@ -416,7 +422,6 @@ def handle_callback_set_days(
             else bindings.days_all_applied
         )
         send(ctx, cb.chat_id, confirmation)
-    safe_answer_callback(ctx, cb)
 
 
 def handle_pending_digest_day_toggle(
@@ -461,8 +466,7 @@ def handle_pending_digest_day_toggle(
         kind=DIGEST_KIND_PENDING,
         keyboard=keyboard,
     )
-    edit_callback_bundle(ctx, cb, bundle)
-    safe_answer_callback(ctx, cb)
+    respond_callback_nav(ctx, cb, bundle)
 
 
 def handle_callback_time(
@@ -477,8 +481,7 @@ def handle_callback_time(
     ctx.digest_state.set_waiting_for_time(cb.chat_id, cb.message_id, digest_kind=kind)
     keyboard = bindings.build_time_keyboard()
     bundle = _digest_time_bundle(_time(settings, bindings), keyboard)
-    edit_callback_bundle(ctx, cb, bundle)
-    safe_answer_callback(ctx, cb)
+    respond_callback_nav(ctx, cb, bundle)
 
 
 def handle_callback_close(
@@ -489,14 +492,13 @@ def handle_callback_close(
         safe_answer_callback(ctx, cb)
         return
     ctx.digest_state.clear(cb.chat_id)
-    edit_callback_rich_or_html(
+    respond_callback_rich_nav(
         ctx,
         cb,
         rich_html=bindings.settings_closed_text,
         fallback_html=bindings.settings_closed_text,
         reply_markup=None,
     )
-    safe_answer_callback(ctx, cb)
 
 
 def render_digest_settings_screen(
@@ -539,12 +541,12 @@ def handle_daily_weather_toggle(ctx: HandlerContext, cb: IncomingCallback) -> No
         return
     username = effective_username_from_callback(cb)
     settings = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
-    render_digest_settings_screen(ctx, cb, settings, kind=DIGEST_KIND_DAILY)
     safe_answer_callback(
         ctx,
         cb,
         text=weather_in_plan_toggle_notice_text(enabled=new_enabled),
     )
+    render_digest_settings_screen(ctx, cb, settings, kind=DIGEST_KIND_DAILY)
 
 
 # --- callback routing -------------------------------------------------------

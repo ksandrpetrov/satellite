@@ -129,7 +129,7 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
         safe_answer_callback(ctx, cb)
         return
     ack_callback_with_loading(ctx, cb, status_html=CALENDAR_SOURCES_FETCH_STATUS)
-    result = fetch_calendars(ctx, cb.user_id)
+    result = fetch_calendars(ctx, cb.user_id, prefer_cache=True)
     if not result.ok:
         edit_callback_rich_or_html(
             ctx,

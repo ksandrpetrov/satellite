@@ -25,7 +25,7 @@ from ...calendar.constants import ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_1
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...messages_ru import (
     CALENDAR_CHECK_LOADING_TOAST,
-    CALENDAR_DISCONNECT_TOAST,
+    CALENDAR_DISCONNECT_LOADING_HTML,
     CALENDAR_DISCONNECTED_HTML,
     CALENDAR_NOT_CONNECTED_HTML,
     CALENDAR_SOURCES_FETCH_STATUS,
@@ -79,8 +79,9 @@ from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
     ack_callback_with_loading,
     edit_callback_bundle,
-    edit_callback_rich_or_html,
     open_streaming_reply,
+    respond_callback_nav,
+    respond_callback_rich_nav,
     safe_answer_callback,
     send,
     send_rich_or_html,
@@ -237,11 +238,11 @@ def show_settings_hub_screen(
         return
     ctx.digest_state.clear(cb.chat_id)
     bundle = _hub_bundle(ctx, cb.user_id, cb.chat_id)
+    if ack:
+        safe_answer_callback(ctx, cb)
     edit_callback_bundle(ctx, cb, bundle)
     if cb.message_id is not None:
         _track_hub_message(cb.chat_id, cb.message_id)
-    if ack:
-        safe_answer_callback(ctx, cb)
 
 
 # --- подэкран «Календарь» -------------------------------------------------
@@ -258,8 +259,7 @@ def show_settings_calendar_menu(ctx: HandlerContext, cb: IncomingCallback) -> No
         return
     keyboard = build_settings_calendar_menu_keyboard(webapp_url=webapp_connect_url(ctx, cb.user_id))
     bundle = settings_calendar_menu_bundle(reply_markup=keyboard)
-    edit_callback_bundle(ctx, cb, bundle)
-    safe_answer_callback(ctx, cb)
+    respond_callback_nav(ctx, cb, bundle)
 
 
 def show_settings_disconnect_confirm(ctx: HandlerContext, cb: IncomingCallback) -> None:
@@ -273,8 +273,7 @@ def show_settings_disconnect_confirm(ctx: HandlerContext, cb: IncomingCallback) 
     bundle = settings_disconnect_confirm_bundle(
         reply_markup=build_settings_disconnect_confirm_keyboard(),
     )
-    edit_callback_bundle(ctx, cb, bundle)
-    safe_answer_callback(ctx, cb)
+    respond_callback_nav(ctx, cb, bundle)
 
 
 # --- роутинг callback ------------------------------------------------------
@@ -328,14 +327,13 @@ def _route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> b
         if cb.chat_id is not None:
             ctx.digest_state.clear(cb.chat_id)
             _untrack_hub_message(cb.chat_id)
-        edit_callback_rich_or_html(
+        respond_callback_rich_nav(
             ctx,
             cb,
             rich_html=SETTINGS_HUB_CLOSED_TEXT,
             fallback_html=SETTINGS_HUB_CLOSED_TEXT,
             reply_markup=None,
         )
-        safe_answer_callback(ctx, cb)
         return True
     if data == CB_SETTINGS_CALENDARS:
         _open_calendar_sources_from_callback(ctx, cb)
@@ -424,10 +422,9 @@ def _disconnect_calendar_from_callback(ctx: HandlerContext, cb: IncomingCallback
     if cb.user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
+    ack_callback_with_loading(ctx, cb, status_html=CALENDAR_DISCONNECT_LOADING_HTML)
     result_text = disconnect_calendar_action(ctx, user_id=cb.user_id, chat_id=cb.chat_id)
     send(ctx, cb.chat_id, result_text)
     if result_text == CALENDAR_DISCONNECTED_HTML:
         show_settings_hub_screen(ctx, cb, ack=False)
-        safe_answer_callback(ctx, cb, text=CALENDAR_DISCONNECT_TOAST)
         return
-    safe_answer_callback(ctx, cb)

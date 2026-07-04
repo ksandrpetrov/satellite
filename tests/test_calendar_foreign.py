@@ -150,6 +150,64 @@ def test_foreign_calendars_callback_flow(users: UserStore) -> None:
     assert "Встреча" in edit_text
 
 
+def test_foreign_day_acks_before_caldav(users: UserStore) -> None:
+    from satellite.telegram_bot.handlers import (
+        HandlerContext,
+        IncomingCallback,
+        handle_callback_query,
+    )
+
+    user_id = 101
+    users.upsert_from_telegram(
+        telegram_user_id=user_id,
+        chat_id=user_id,
+        username="petrov",
+        display_name="Александр Петров",
+        default_status=USER_STATUS_APPROVED,
+    )
+    users.set_calendar_connection(
+        user_id,
+        provider="mailru",
+        encrypted_credentials="enc",
+        primary_calendar_url="https://cal/primary",
+    )
+    users.mark_calendar_status(user_id, status=CALENDAR_CONNECTED)
+
+    ctx = MagicMock(spec=HandlerContext)
+    ctx.users = users
+    ctx.tz = TZ
+    ctx.calendar_service = MagicMock()
+    ctx.calendar_service.list_calendars.return_value = [
+        CalendarListEntry(name="Мой", url="https://cal/primary"),
+        CalendarListEntry(name="Александра Качина", url="https://cal/shared"),
+    ]
+    ctx.telegram = MagicMock()
+    ctx.telegram.edit_message_text = MagicMock()
+    ctx.telegram.answer_callback_query = MagicMock()
+    ctx.digest_state = MagicMock()
+    ctx.digest_state.claim_callback.return_value = True
+
+    manager = MagicMock()
+    manager.attach_mock(ctx.telegram.answer_callback_query, "ack")
+    manager.attach_mock(ctx.calendar_service.list_calendars, "list")
+
+    handle_callback_query(
+        ctx,
+        IncomingCallback(
+            update_id=3,
+            callback_query_id="cb3",
+            chat_id=user_id,
+            message_id=5,
+            user_id=user_id,
+            username="petrov",
+            data=f"{CB_FOREIGN_DAY_PREFIX}{calendar_callback_token('https://cal/shared')}:0",
+        ),
+    )
+
+    call_names = [call[0] for call in manager.mock_calls]
+    assert call_names.index("ack") < call_names.index("list")
+
+
 def test_foreign_back_acks_before_caldav(users: UserStore) -> None:
     from satellite.messages_ru import CB_FOREIGN_BACK
     from satellite.telegram_bot.handlers import (
