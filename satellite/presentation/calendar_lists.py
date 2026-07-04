@@ -34,7 +34,6 @@ from .rich import (
 
 UPCOMING_DAY_EXPANDABLE_MIN_LINES = 2
 _INVITATIONS_DETAILS_MIN = 5
-_MANAGE_DETAILS_MIN = 5
 
 
 def upcoming_events_day_sections(
@@ -272,9 +271,8 @@ def manage_list_rich_html(
             return
         body = unordered_list(day_items)
         summary = bold(_day_header_rich(day_header))
-        open_default = len(day_items) < _MANAGE_DETAILS_MIN
         if len(day_items) >= 2:
-            blocks.append(details_block(summary, body, open=open_default))
+            blocks.append(details_block(summary, body, open=True))
         else:
             blocks.append(paragraph(summary))
             blocks.append(body)
