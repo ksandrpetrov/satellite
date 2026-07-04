@@ -34,6 +34,7 @@ from ...messages_ru import (
     CB_ANALYTICS_RUN,
     CB_ANALYTICS_WORKDAY_9,
     CB_ANALYTICS_WORKDAY_10,
+    CB_INV_BACK,
     CB_PENDING_DIGEST_SETTINGS,
     CB_SETTINGS_ANALYTICS,
     CB_SETTINGS_BACK,
@@ -296,6 +297,9 @@ def route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bo
 
 def _route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
     data = (cb.data or "").strip()
+    if data == CB_INV_BACK:
+        show_settings_calendar_menu(ctx, cb)
+        return True
     if data == CB_SETTINGS_DIGEST:
         show_digest_settings_screen(ctx, cb)
         return True

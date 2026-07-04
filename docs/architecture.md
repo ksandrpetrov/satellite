@@ -47,6 +47,9 @@ entrypoints  (telegram_test_command.py)
   renderers  (seagull/, weather/, analytics/render_card)
                 |
                 v
+  presentation/  — HTML/Rich, calendar_lists, deliver_rich_or_html
+                |
+                v
   visual_cards/base.py  — единственная палитра/шрифты/логотип для всех PNG
 ```
 

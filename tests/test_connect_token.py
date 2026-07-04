@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import time
 
 from satellite.web.connect_token import ConnectTokenStore
 
@@ -15,9 +14,14 @@ def test_issue_and_resolve() -> None:
 
 
 def test_expired_token_returns_none() -> None:
-    store = ConnectTokenStore(ttl_sec=1)
+    now = {"t": 1000.0}
+
+    def _now() -> float:
+        return now["t"]
+
+    store = ConnectTokenStore(ttl_sec=1, now_fn=_now)
     token = store.issue(7)
-    time.sleep(1.1)
+    now["t"] += 1.1
     assert store.resolve(token) is None
 
 
@@ -38,10 +42,15 @@ def test_corrupt_file_recovery(tmp_path) -> None:
 
 
 def test_expired_purged_on_save(tmp_path) -> None:
+    now = {"t": 2000.0}
+
+    def _now() -> float:
+        return now["t"]
+
     path = tmp_path / "connect-tokens.json"
-    store = ConnectTokenStore(ttl_sec=1, storage_path=path)
+    store = ConnectTokenStore(ttl_sec=1, storage_path=path, now_fn=_now)
     old = store.issue(1)
-    time.sleep(1.1)
+    now["t"] += 1.1
     store.issue(2)
     assert store.resolve(old) is None
     raw = json.loads(path.read_text(encoding="utf-8"))

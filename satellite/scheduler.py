@@ -31,6 +31,7 @@ from .config import DigestConfig, PlanConfig, WeatherConfig
 from .digest_utils import DIGEST_MODE_TODAY, is_digest_day_allowed, resolve_target_date
 from .invitations_view import load_pending_invitations_screen
 from .plan_service import PlanBuilder
+from .presentation.delivery import deliver_rich_or_html
 from .subscriptions import (
     DigestSettings,
     SubscriptionStore,
@@ -395,8 +396,6 @@ class DigestScheduler:
             )
             return False
 
-        from .telegram_bot.message_delivery import deliver_rich_or_html
-
         effect = (
             pick_plan_message_effect(plan_bundle.fallback_html)
             if is_private_chat(sub.chat_id)
@@ -461,8 +460,6 @@ class DigestScheduler:
                 sub.username,
             )
             return None
-
-        from .telegram_bot.message_delivery import deliver_rich_or_html
 
         try:
             deliver_rich_or_html(

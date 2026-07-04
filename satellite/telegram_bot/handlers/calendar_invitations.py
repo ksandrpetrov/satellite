@@ -22,7 +22,6 @@ from ...invitations_view import (
     screen_from_pending,
 )
 from ...messages_ru import (
-    CB_INV_BACK,
     CB_INV_CLOSE,
     CB_INV_REFRESH,
     CB_INV_RESPOND_PREFIX,
@@ -247,11 +246,6 @@ def route_invitations_callback(ctx: HandlerContext, cb: IncomingCallback) -> boo
     if data == CB_INV_CLOSE:
         edit_callback_message(ctx, cb, INVITATIONS_CLOSED_TEXT, reply_markup=None)
         safe_answer_callback(ctx, cb)
-        return True
-    if data == CB_INV_BACK:
-        from .settings_hub import show_settings_calendar_menu
-
-        show_settings_calendar_menu(ctx, cb)
         return True
     if data == CB_INV_REFRESH:
         _edit_invitations_screen(ctx, cb, show_loading=True)

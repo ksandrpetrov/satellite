@@ -10,7 +10,7 @@ from ..calendar.stats import DayCalendarStats, NormalizedEvent
 from ..messages_ru import (
     format_duration_ru,
 )
-from ..telegram_bot.rich_message import (
+from ..presentation.rich import (
     anchor,
     anchor_link,
     blockquote,

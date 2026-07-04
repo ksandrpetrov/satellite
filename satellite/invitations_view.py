@@ -18,6 +18,7 @@ from .messages_ru import (
     build_invitations_keyboard,
     invitations_list_html,
 )
+from .presentation.calendar_lists import invitations_list_rich_html
 
 INVITATION_HORIZON_DAYS = 60
 INVITATION_LOOKBACK_DAYS = 14
@@ -99,8 +100,6 @@ def screen_from_pending(
         for idx, ev in enumerate(pending)
     ]
     text = invitations_list_html(body_lines=body, truncated=truncated)
-    from .telegram_bot.presenters.calendar_lists import invitations_list_rich_html
-
     rich_text = invitations_list_rich_html(
         body_events=pending,
         tz=tz,

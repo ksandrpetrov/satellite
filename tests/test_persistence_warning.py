@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from satellite.telegram_bot.bot import warn_if_users_lost
+from satellite.telegram_bot.startup_checks import warn_if_users_lost
 
 
 def _make_backup(logs_dir: Path, name: str) -> None:

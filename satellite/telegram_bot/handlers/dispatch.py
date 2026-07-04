@@ -17,6 +17,7 @@ from ...messages_ru import (
     CB_ANALYTICS_RUN,
     CB_ANALYTICS_WORKDAY_9,
     CB_ANALYTICS_WORKDAY_10,
+    CB_INV_BACK,
     CB_SETTINGS_ANALYTICS,
     CB_SETTINGS_BACK,
     CB_SETTINGS_CALENDAR_MENU,
@@ -275,9 +276,9 @@ CallbackRouter = Callable[[HandlerContext, IncomingCallback], bool]
 _CALLBACK_ROUTERS: list[CallbackRouter] = [
     route_admin_callback,
     route_create_callback,
-    route_invitations_callback,
     route_manage_events_callback,
     route_settings_hub_callback,
+    route_invitations_callback,
     route_settings_callback,
     route_calendar_sources_callback,
     route_foreign_calendars_callback,
@@ -300,6 +301,7 @@ _SETTINGS_CALLBACK_OWNERS: dict[str, str] = {
     CB_ANALYTICS_WORKDAY_9: "settings_hub",
     CB_ANALYTICS_WORKDAY_10: "settings_hub",
     CB_ANALYTICS_BACK: "settings_hub",
+    CB_INV_BACK: "settings_hub",
 }
 
 

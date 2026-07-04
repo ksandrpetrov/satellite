@@ -56,7 +56,13 @@ satellite/
   visual_cards/
     base.py              # палитра, шрифты, примитивы PNG (аналитика)
   scheduler.py           # DigestScheduler
-  subscriptions.py       # SubscriptionStore → logs/subscriptions.json
+  subscriptions/           # пакет: фасад + record (DigestSettings) + store (SubscriptionStore)
+    __init__.py
+    record.py
+    store.py
+  presentation/            # transport-agnostic HTML/Rich + calendar list presenters + delivery
+    html.py, rich.py, calendar_lists.py, delivery.py
+  formatters/              # thin re-export из presentation/ (для messages_ru)
   logging_setup.py
   messages_ru/           # ВСЕ user-facing тексты (пакет: __init__ = фасад, подмодули по сценарию)
     __init__.py          # реэкспорт публичного API; импорты не меняются
@@ -71,7 +77,10 @@ satellite/
     providers/             # Mail.ru + Yandex, registry
     user_calendar_service.py  # единый фасад для handlers/plan/scheduler/Web App
     operation_log.py       # audit CalDAV-операций
-    caldav_client.py       # Mail.ru CalDAV (per-user login/password)
+    caldav_client.py       # CalDAVService facade (discovery, CRUD)
+    caldav_shared.py       # types, constants, helpers
+    caldav_fetch_mixin.py  # range search / REPORT
+    caldav_partstat_mixin.py  # PARTSTAT refresh + set_attendee_partstat
     events/                # пакет: facade __init__ + _types + _time + _partstat + _filters + _collectors
     stats.py, selection.py, time_utils.py, ical_parser.py, constants.py
 
@@ -113,7 +122,13 @@ satellite/
       plan.py, settings.py, subscription.py, analytics.py
     presenters/
       calendar_lists.py  # HTML/Rich HTML списков (/upcoming, /invitations, /manage)
-    api.py, message_editing.py, streaming_delivery.py, visual.py, commands.py
+    api/                   # TelegramClient (client.py) + errors (errors.py); фасад __init__.py
+    streaming/             # helpers.py + session.py (StreamingReply)
+    streaming_delivery.py  # open_streaming_reply facade
+    html_format.py         # shim → presentation/html.py
+    rich_message.py        # shim → presentation/rich.py
+    message_delivery.py    # shim → presentation/delivery.py
+    presenters/calendar_lists.py  # shim → presentation/calendar_lists.py
     offset_store.py, offset_tracker.py
     concurrency.py, instance_lock.py
 ```
@@ -152,7 +167,7 @@ satellite/
 | Дедуп повторных команд/кнопок (два PNG, два плана…) | [`handlers/action_guard.py`](satellite/telegram_bot/handlers/action_guard.py) — `try_acquire` / `release`; синглтоны сбрасывает `tests/conftest.py::_reset_action_guards` |
 | Ответ на встречу (PARTSTAT) | [`handlers/partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py) — общий флоу; [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) и [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — тонкие адаптеры |
 | PNG недельной аналитики | [`analytics/render_card.py`](satellite/analytics/render_card.py), примитивы — [`visual_cards/base.py`](satellite/visual_cards/base.py) |
-| JSON-store мутацию (users / subscriptions) | [`users/store.py`](satellite/users/store.py) (`_update_locked`, `UserRecord.{to,from}_json`) и [`subscriptions.py`](satellite/subscriptions.py) (`_upsert_locked`, `DigestSettings.{to,from}_json`); прямой `replace()` не использовать |
+| JSON-store мутацию (users / subscriptions) | [`users/store.py`](satellite/users/store.py) и [`subscriptions/store.py`](satellite/subscriptions/store.py) (`_upsert_locked`, `DigestSettings.{to,from}_json`); прямой `replace()` не использовать |
 | Контекст хендлера (роли) | [`handlers/context.py`](satellite/telegram_bot/handlers/context.py) — `HandlerContext` + view-свойства `.messaging` / `.identity` / `.calendar` / `.scheduling`; для access — `ensure_calendar_*` принимает `chat_id` / `user_id` явно, без `IncomingMessage`-фейков |
 | Диагностика CalDAV с сервера | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) — см. [troubleshooting.md](docs/troubleshooting.md) |
 
@@ -226,7 +241,7 @@ satellite/
 - Прямые строки в хендлерах — все user-facing тексты в [`messages_ru/`](satellite/messages_ru/) (импорт через корневой фасад).
 - Свой `_webapp_url` в хендлерах — только [`delivery.webapp_connect_url`](satellite/telegram_bot/handlers/delivery.py).
 - Lazy-back-импорты `settings_hub` из `settings`/`analytics` для «Назад» — навигация только в хабе (см. инвариант 12).
-- Прямой `<blockquote>` / `<tg-emoji>` в хендлерах — только [`html_format.py`](satellite/telegram_bot/html_format.py); Rich HTML (`<details>`, `<table>`, `<h*>`) — только [`rich_message.py`](satellite/telegram_bot/rich_message.py) / сценарные [`render_rich.py`](satellite/seagull/render_rich.py), [`calendar_lists.py`](satellite/telegram_bot/presenters/calendar_lists.py); доставка rich — [`message_delivery.py`](satellite/telegram_bot/message_delivery.py); fallback при отказе Telegram — в [`api.py`](satellite/telegram_bot/api.py), не дублировать в сценариях.
+- Прямой `<blockquote>` / `<tg-emoji>` в хендлерах — canonical [`presentation/html.py`](satellite/presentation/html.py) (shim [`html_format.py`](satellite/telegram_bot/html_format.py)); Rich HTML — [`presentation/rich.py`](satellite/presentation/rich.py) / [`presentation/calendar_lists.py`](satellite/presentation/calendar_lists.py); доставка rich — [`presentation/delivery.py`](satellite/presentation/delivery.py); fallback при отказе Telegram — в [`api/client.py`](satellite/telegram_bot/api/client.py).
 - Свой retry без `<tg-emoji>` в хендлерах — только `TelegramClient.send_message` / `edit_message_text`.
 - Дублирование PARTSTAT-логики в [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) / [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — общий флоу только в [`partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py).
 - Свой cooldown/дедуп долгих команд — только [`ActionGuard`](satellite/telegram_bot/handlers/action_guard.py) (не дублировать `_running` set в хендлерах).

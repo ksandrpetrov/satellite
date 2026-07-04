@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..calendar.period_stats import AnalyticsReport
 from ..messages_ru import format_duration_ru
-from ..telegram_bot.rich_message import (
+from ..presentation.rich import (
     bold,
     escape_rich,
     footnote_def,

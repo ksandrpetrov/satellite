@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..telegram_bot.html_format import (
+from ..presentation.html import (
     DISABLED_LINK_PREVIEW,
     blockquote,
     build_copy_text_button,

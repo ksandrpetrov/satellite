@@ -9,6 +9,7 @@ import secrets
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -22,9 +23,11 @@ class ConnectTokenStore:
         *,
         ttl_sec: int = DEFAULT_TTL_SEC,
         storage_path: Path | None = None,
+        now_fn: Callable[[], float] | None = None,
     ) -> None:
         self._ttl = ttl_sec
         self._storage_path = storage_path
+        self._now_fn = now_fn or time.time
         self._lock = threading.Lock()
         self._tokens: dict[str, tuple[int, float]] = {}
         if storage_path is not None:
@@ -34,7 +37,7 @@ class ConnectTokenStore:
         token = secrets.token_urlsafe(32)
         with self._lock:
             self._purge_locked()
-            self._tokens[token] = (telegram_user_id, time.time())
+            self._tokens[token] = (telegram_user_id, self._now_fn())
             self._save_locked()
         return token
 
@@ -48,14 +51,14 @@ class ConnectTokenStore:
             if entry is None:
                 return None
             user_id, issued_at = entry
-            if time.time() - issued_at > self._ttl:
+            if self._now_fn() - issued_at > self._ttl:
                 del self._tokens[raw]
                 self._save_locked()
                 return None
             return user_id
 
     def _purge_locked(self) -> None:
-        cutoff = time.time() - self._ttl
+        cutoff = self._now_fn() - self._ttl
         expired = [t for t, (_, ts) in self._tokens.items() if ts < cutoff]
         for t in expired:
             del self._tokens[t]

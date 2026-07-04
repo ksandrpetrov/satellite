@@ -304,5 +304,24 @@ pytest оставался зелёным.
 
 ---
 
+## Фазы 12–15: архитектурный аудит (2026-07-04)
+
+12. **Стабильность** — `tests/test_update_dispatcher.py`, `tests/test_startup_checks.py`;
+    `ConnectTokenStore.now_fn` для детерминированных TTL-тестов; canonical import
+    `warn_if_users_lost` из `startup_checks`.
+13. **Слой presentation/** — canonical HTML/Rich/calendar_lists/delivery;
+    `formatters/` re-export; убраны lazy-imports domain→telegram_bot;
+    `CB_INV_BACK` только в `settings_hub`; `subscriptions/` пакет (как `users/`);
+    `tests/test_import_layers.py`.
+14. **Handlers/transport split** — `settings_bindings.py` + `settings_callbacks.py`;
+    `telegram_bot/api/` (client + errors); `telegram_bot/streaming/` (helpers + session);
+    `streaming_delivery.py` — facade.
+15. **CalDAV split** — `caldav_shared.py`, `caldav_fetch_mixin.py`,
+    `caldav_partstat_mixin.py`; `caldav_client.py` — facade ~390 строк + mixins.
+
+Behaviour-preserving: `make check` зелёный (954 теста).
+
+---
+
 **Далее:** [architecture.md](architecture.md) · [AGENTS.md](../AGENTS.md) ·
 [test-coverage-audit.md](test-coverage-audit.md)

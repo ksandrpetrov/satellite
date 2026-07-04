@@ -1,13 +1,22 @@
-"""Neutral Rich HTML formatting facade for draft/status text."""
+"""Transport-agnostic Telegram HTML/Rich presentation helpers."""
 
-from __future__ import annotations
-
-from ..presentation.rich import (
+from .delivery import deliver_rich_or_html, edit_rich_or_html
+from .html import (
+    DISABLED_LINK_PREVIEW,
+    blockquote,
+    build_copy_text_button,
+    expandable_blockquote,
+    link_preview_above,
+    replace_first_char_with_tg_emoji,
+    strip_expandable_blockquote,
+    strip_tg_emoji_tags,
+    tg_emoji,
+)
+from .rich import (
     RICH_MESSAGE_CHAR_LIMIT,
     RICH_MESSAGE_SAFETY_CAP,
     anchor,
     anchor_link,
-    blockquote,
     bold,
     code,
     datetime_link,
@@ -38,34 +47,44 @@ from ..presentation.rich import (
 )
 
 __all__ = [
+    "DISABLED_LINK_PREVIEW",
     "RICH_MESSAGE_CHAR_LIMIT",
     "RICH_MESSAGE_SAFETY_CAP",
     "anchor",
     "anchor_link",
     "blockquote",
     "bold",
+    "build_copy_text_button",
     "code",
     "datetime_link",
+    "deliver_rich_or_html",
     "details_block",
     "divider",
+    "edit_rich_or_html",
     "escape_rich",
+    "expandable_blockquote",
     "footnote_def",
     "footnote_ref",
     "input_rich_message",
     "italic",
     "join_blocks",
+    "link_preview_above",
     "mark",
     "ordered_list",
     "paragraph",
     "pull_quote",
     "reference",
+    "replace_first_char_with_tg_emoji",
     "rich_blocks_for_streaming",
     "section_heading",
     "spoiler",
     "strikethrough",
+    "strip_expandable_blockquote",
+    "strip_tg_emoji_tags",
     "subscript",
     "superscript",
     "table",
+    "tg_emoji",
     "thinking_block",
     "truncate_rich_html",
     "underline",
