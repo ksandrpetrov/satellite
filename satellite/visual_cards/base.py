@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -32,8 +31,6 @@ COLOR_TREND_FLAT = (134, 134, 139)
 COLOR_SPARK_FILL = (0, 122, 255)
 COLOR_SHADOW = (0, 0, 0, 18)
 COLOR_PILL_BG = (240, 240, 245)
-
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def pil():
@@ -118,11 +115,6 @@ def meetings_label(count: int) -> str:
     else:
         word = "встреч"
     return f"{count} {word}"
-
-
-def strip_markup(text: str) -> str:
-    plain = _HTML_TAG_RE.sub("", text)
-    return plain.replace("&nbsp;", " ").strip()
 
 
 def rounded_rect(
@@ -235,41 +227,3 @@ def draw_stat_row(
         draw.text((left, y), sub, fill=COLOR_MUTED, font=font_sub)
         y += font_sub.size + 6
     return y
-
-
-def wrap_text_lines(
-    draw: ImageDraw.ImageDraw,
-    text: str,
-    font,
-    max_width: int,
-    *,
-    max_lines: int = 3,
-) -> list[str]:
-    words = text.split()
-    if not words:
-        return []
-    lines: list[str] = []
-    current = words[0]
-    for word in words[1:]:
-        trial = f"{current} {word}"
-        if text_width(draw, trial, font) <= max_width:
-            current = trial
-        else:
-            lines.append(current)
-            current = word
-            if len(lines) >= max_lines:
-                break
-    if len(lines) < max_lines:
-        lines.append(current)
-    if len(lines) > max_lines:
-        lines = lines[:max_lines]
-        lines[-1] = lines[-1][: max(1, len(lines[-1]) - 1)] + "…"
-    return lines
-
-
-def png_bytes(img) -> bytes:
-    import io
-
-    buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
-    return buf.getvalue()

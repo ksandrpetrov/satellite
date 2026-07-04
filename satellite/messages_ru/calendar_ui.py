@@ -147,11 +147,6 @@ def calendar_sources_screen_text(*, lines: list[str]) -> str:
     )
 
 
-def calendar_sources_toggle_notice(*, enabled: bool, name: str) -> str:
-    state = "в плане" if enabled else "выключен"
-    return f"«{name}» {state}"
-
-
 def build_calendar_sources_keyboard(
     *,
     calendars: list[tuple[str, str]],

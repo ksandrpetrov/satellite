@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from ...calendar.constants import ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_19
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
@@ -186,11 +187,6 @@ def _hub_bundle(ctx: HandlerContext, user_id: int, chat_id: int):
     )
 
 
-def _hub_text_and_keyboard(ctx: HandlerContext, user_id: int, chat_id: int):
-    bundle = _hub_bundle(ctx, user_id, chat_id)
-    return bundle.fallback_html, bundle.reply_markup
-
-
 # --- главный экран --------------------------------------------------------
 
 
@@ -297,64 +293,11 @@ def route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bo
 
 def _route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
     data = (cb.data or "").strip()
-    if data == CB_INV_BACK:
-        show_settings_calendar_menu(ctx, cb)
-        return True
-    if data == CB_SETTINGS_DIGEST:
-        show_digest_settings_screen(ctx, cb)
-        return True
-    if data == CB_PENDING_DIGEST_SETTINGS:
-        show_pending_digest_settings_screen(ctx, cb)
-        return True
-    if data == CB_SETTINGS_ANALYTICS:
-        handle_open_analytics(ctx, cb)
-        return True
-    if data == CB_ANALYTICS_RUN:
-        handle_run_analytics(ctx, cb)
-        return True
-    if data == CB_ANALYTICS_WORKDAY_9:
-        handle_set_analytics_workday(ctx, cb, ANALYTICS_WORKDAY_9_18)
-        return True
-    if data == CB_ANALYTICS_WORKDAY_10:
-        handle_set_analytics_workday(ctx, cb, ANALYTICS_WORKDAY_10_19)
-        return True
-    if data == CB_SETTINGS_WEATHER_TOGGLE:
-        _toggle_weather_in_plan(ctx, cb)
-        return True
-    if data in (CB_SETTINGS_BACK, CB_ANALYTICS_BACK):
-        show_settings_hub_screen(ctx, cb)
-        return True
-    if data == CB_SETTINGS_CALENDAR_MENU:
-        show_settings_calendar_menu(ctx, cb)
-        return True
-    if data == CB_SETTINGS_CLOSE:
-        if cb.chat_id is not None:
-            ctx.digest_state.clear(cb.chat_id)
-            _untrack_hub_message(cb.chat_id)
-        respond_callback_rich_nav(
-            ctx,
-            cb,
-            rich_html=SETTINGS_HUB_CLOSED_TEXT,
-            fallback_html=SETTINGS_HUB_CLOSED_TEXT,
-            reply_markup=None,
-        )
-        return True
-    if data == CB_SETTINGS_CALENDARS:
-        _open_calendar_sources_from_callback(ctx, cb)
-        return True
-    if data == CB_SETTINGS_INVITATIONS:
-        open_invitations_from_settings(ctx, cb)
-        return True
-    if data == CB_SETTINGS_CHECK:
-        _check_calendar_from_callback(ctx, cb)
-        return True
-    if data == CB_SETTINGS_DISCONNECT:
-        show_settings_disconnect_confirm(ctx, cb)
-        return True
-    if data == CB_SETTINGS_DISCONNECT_CONFIRM:
-        _disconnect_calendar_from_callback(ctx, cb)
-        return True
-    return False
+    handler = _SETTINGS_HUB_ROUTES.get(data)
+    if handler is None:
+        return False
+    handler(ctx, cb)
+    return True
 
 
 def _toggle_weather_in_plan(ctx: HandlerContext, cb: IncomingCallback) -> None:
@@ -432,3 +375,45 @@ def _disconnect_calendar_from_callback(ctx: HandlerContext, cb: IncomingCallback
     if result_text == CALENDAR_DISCONNECTED_HTML:
         show_settings_hub_screen(ctx, cb, ack=False)
         return
+
+
+def _close_settings_hub(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    if cb.chat_id is not None:
+        ctx.digest_state.clear(cb.chat_id)
+        _untrack_hub_message(cb.chat_id)
+    respond_callback_rich_nav(
+        ctx,
+        cb,
+        rich_html=SETTINGS_HUB_CLOSED_TEXT,
+        fallback_html=SETTINGS_HUB_CLOSED_TEXT,
+        reply_markup=None,
+    )
+
+
+def _analytics_workday_9(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    handle_set_analytics_workday(ctx, cb, ANALYTICS_WORKDAY_9_18)
+
+
+def _analytics_workday_10(ctx: HandlerContext, cb: IncomingCallback) -> None:
+    handle_set_analytics_workday(ctx, cb, ANALYTICS_WORKDAY_10_19)
+
+
+_SETTINGS_HUB_ROUTES: dict[str, Callable[[HandlerContext, IncomingCallback], None]] = {
+    CB_INV_BACK: show_settings_calendar_menu,
+    CB_SETTINGS_DIGEST: show_digest_settings_screen,
+    CB_PENDING_DIGEST_SETTINGS: show_pending_digest_settings_screen,
+    CB_SETTINGS_ANALYTICS: handle_open_analytics,
+    CB_ANALYTICS_RUN: handle_run_analytics,
+    CB_ANALYTICS_WORKDAY_9: _analytics_workday_9,
+    CB_ANALYTICS_WORKDAY_10: _analytics_workday_10,
+    CB_SETTINGS_WEATHER_TOGGLE: _toggle_weather_in_plan,
+    CB_SETTINGS_BACK: show_settings_hub_screen,
+    CB_ANALYTICS_BACK: show_settings_hub_screen,
+    CB_SETTINGS_CALENDAR_MENU: show_settings_calendar_menu,
+    CB_SETTINGS_CLOSE: _close_settings_hub,
+    CB_SETTINGS_CALENDARS: _open_calendar_sources_from_callback,
+    CB_SETTINGS_INVITATIONS: open_invitations_from_settings,
+    CB_SETTINGS_CHECK: _check_calendar_from_callback,
+    CB_SETTINGS_DISCONNECT: show_settings_disconnect_confirm,
+    CB_SETTINGS_DISCONNECT_CONFIRM: _disconnect_calendar_from_callback,
+}

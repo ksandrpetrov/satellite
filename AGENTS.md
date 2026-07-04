@@ -43,10 +43,11 @@ satellite/
   services.py            # run_bot
   backup.py              # снапшоты users.json / subscriptions.json при старте
   config.py              # load_settings; SecurityConfig, AdminConfig, WebAppConfig
+  json_store.py          # JsonStoreBase — общая атомарная persistence для JSON-сторов
   users/                 # пакет: фасад + record (UserRecord) + store (UserStore) + admin (parse_admin_ids)
     __init__.py          # re-export публичного API (UserStore, UserRecord, USER_STATUS_*, …)
     record.py            # UserRecord (dataclass) + enum-константы + helpers парсинга
-    store.py             # UserStore + UserStorePersistenceError (атомарная запись users.json)
+    store.py             # UserStore + UserStorePersistenceError (наследует JsonStoreBase)
     admin.py             # parse_admin_ids / admin_id_set (env → tuple[int])
   security/
     token_vault.py       # Fernet encrypt/decrypt ProviderCredentials
@@ -59,7 +60,7 @@ satellite/
   subscriptions/           # пакет: фасад + record (DigestSettings) + store (SubscriptionStore)
     __init__.py
     record.py
-    store.py
+    store.py             # SubscriptionStore (наследует JsonStoreBase)
   presentation/            # transport-agnostic HTML/Rich; canonical, шимов больше нет
     html.py              # legacy HTML: blockquote, tg-emoji, copy-кнопки, strip_*
     rich.py              # Rich Message HTML (Bot API 10.1)
@@ -88,13 +89,14 @@ satellite/
     caldav_shared.py       # types, constants, helpers
     caldav_fetch_mixin.py  # range search / REPORT
     caldav_partstat_mixin.py  # PARTSTAT refresh + set_attendee_partstat
+    conference_url.py    # извлечение ссылок на видеоконференции из CalDAV-события
     events/                # пакет: facade __init__ + _types + _time + _partstat + _filters + _collectors
     stats.py, selection.py, time_utils.py, ical_parser.py, constants.py
 
   web/                   # пакет: тонкий router + per-endpoint модули
     server.py            # WebAppServer (lifecycle), делегирует роутинг
     routing.py           # таблица (method, path) → handler
-    responses.py         # json_response / png_response / AbortRequest
+    responses.py         # json_response / AbortRequest
     parsing.py           # read_json, extract_init_data, *_token, parse_*
     auth.py              # validated_user (initData или connect-token + UserStore)
     connect_token.py     # ConnectTokenStore — краткоживущие токены Web App
@@ -105,6 +107,7 @@ satellite/
     static/connect.html
 
   seagull/               # digest, rules, render, templates
+    conference.py        # подписи кнопок «Подключиться» (Meet/Zoom/Teams/…)
   weather/               # client, analyzer, templates, models
 
   telegram_bot/
@@ -177,12 +180,13 @@ satellite/
 | Ввод времени (дайджест, /create) | [`time_utils.py`](satellite/calendar/time_utils.py); подсказки — [`messages_ru/`](satellite/messages_ru/) |
 | Нумерация встреч (дайджест, /upcoming) | [`event_index_marker`](satellite/calendar/events/_filters.py) (импорт через фасад `satellite.calendar.events`) |
 | Web App REST API | [`web/api/calendar.py`](satellite/web/api/calendar.py); регистрация маршрута — [`web/routing.py`](satellite/web/routing.py); сам сервер — [`web/server.py`](satellite/web/server.py) |
+| Ссылки на видеозвонки в плане/дайджесте | [`calendar/conference_url.py`](satellite/calendar/conference_url.py) (извлечение URL), [`seagull/conference.py`](satellite/seagull/conference.py) (подписи кнопок), рендер — [`seagull/render.py`](satellite/seagull/render.py) / [`seagull/render_rich.py`](satellite/seagull/render_rich.py) |
 | Сборку текста плана | [`plan_service.py`](satellite/plan_service.py) — callers передают calendar identity |
 | Недельную аналитику (PNG + подпись) | [`analytics/service.py`](satellite/analytics/service.py), [`calendar/period_stats.py`](satellite/calendar/period_stats.py), [`calendar/event_kinds.py`](satellite/calendar/event_kinds.py), [`handlers/analytics.py`](satellite/telegram_bot/handlers/analytics.py) (`ActionGuard`, cooldown 45 с) |
 | Дедуп повторных команд/кнопок (два PNG, два плана…) | [`handlers/action_guard.py`](satellite/telegram_bot/handlers/action_guard.py) — `try_acquire` / `release`; синглтоны сбрасывает `tests/conftest.py::_reset_action_guards` |
 | Ответ на встречу (PARTSTAT) | [`handlers/partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py) — общий флоу; [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) и [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — тонкие адаптеры |
 | PNG недельной аналитики | [`analytics/render_card.py`](satellite/analytics/render_card.py), примитивы — [`visual_cards/base.py`](satellite/visual_cards/base.py) |
-| JSON-store мутацию (users / subscriptions) | [`users/store.py`](satellite/users/store.py) и [`subscriptions/store.py`](satellite/subscriptions/store.py) (`_upsert_locked`, `DigestSettings.{to,from}_json`); прямой `replace()` не использовать |
+| JSON-store мутацию (users / subscriptions) | [`json_store.py`](satellite/json_store.py) (`JsonStoreBase`), [`users/store.py`](satellite/users/store.py) и [`subscriptions/store.py`](satellite/subscriptions/store.py) (`_upsert_locked`, `DigestSettings.{to,from}_json`); прямой `replace()` не использовать |
 | Контекст хендлера (роли) | [`handlers/context.py`](satellite/telegram_bot/handlers/context.py) — `HandlerContext` + view-свойства `.messaging` / `.identity` / `.calendar` / `.scheduling`; для access — `ensure_calendar_*` принимает `chat_id` / `user_id` явно, без `IncomingMessage`-фейков |
 | Диагностика CalDAV с сервера | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) — см. [troubleshooting.md](docs/troubleshooting.md) |
 
@@ -200,7 +204,7 @@ satellite/
    (для `pending_digest_days` — и 7-bit mask).
 6. **Тексты** — [`messages_ru/`](satellite/messages_ru/) / шаблоны seagull/weather.
 7. **Хендлеры не пробрасывают исключения** — safe text из `messages_ru`.
-8. **Атомарная запись JSON-store** — `subscriptions/store.py` и `users/store.py`: tmp + fsync + `os.replace`.
+8. **Атомарная запись JSON-store** — общая логика в [`json_store.py`](satellite/json_store.py) (`JsonStoreBase`: tmp + fsync + `os.replace`); `UserStore` и `SubscriptionStore` наследуют её.
 9. **`logs/`, `.env`, `venv/`** — не коммитим.
 10. **Команды и кнопки** — только [`recognize_message`](satellite/telegram_bot/handlers/routing.py); любая распознанная команда сбрасывает FSM (`digest_state`, `calendar_state`) в [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py).
 11. **Подписка на дайджест** — `DigestSettings.telegram_user_id` в [`subscriptions/record.py`](satellite/subscriptions/record.py); scheduler резолвит пользователя через `UserStore.get`, не через `username`.

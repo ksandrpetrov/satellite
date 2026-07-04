@@ -308,11 +308,6 @@ def is_foreign_calendars_request(text: str | None) -> bool:
     )
 
 
-def is_command_like_message(text: str) -> bool:
-    """Команды (`/td`, кнопки) трактуем как «выход из state», не как ввод времени."""
-    return recognize_message(text) is not None
-
-
 def _display_name(from_user: dict) -> str | None:
     parts = [
         str(from_user.get("first_name") or "").strip(),

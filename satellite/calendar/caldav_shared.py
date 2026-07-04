@@ -55,22 +55,9 @@ def _new_http_session() -> requests.Session:
     return session
 
 
-def _normalize_url(url: str) -> str:
-    return discovery_helpers.normalize_url(url)
-
-
 def login_variants_for_caldav(login: str) -> list[str]:
     """Варианты логина для Basic Auth (Mail.ru / корпоративные @vk.team и др.)."""
     return discovery_helpers.login_variants_for_caldav(login)
-
-
-def _attendee_matches_login_variants(attendee: Any, login_variants: Sequence[str]) -> bool:
-    """True, если ``login_variants`` встречается в сериализованном ATTENDEE.
-
-    ``str(vCalAddress)`` отдаёт только mailto без PARTSTAT — сравниваем через
-    ``_attendee_to_str``, как в ``ical_parser`` / ``events.user_partstat``.
-    """
-    return partstat_helpers.attendee_matches_login_variants(attendee, login_variants)
 
 
 def _bump_vevent_dtstamp(component: Any) -> None:
@@ -109,10 +96,6 @@ def _add_vevent_attendee(component: Any, login: str, partstat: str) -> None:
 def build_candidate_urls(caldav_url: str | None, login: str) -> list[str]:
     """Возвращает порядок эндпоинтов для попыток discovery (наиболее вероятные сверху)."""
     return discovery_helpers.build_candidate_urls(caldav_url, login)
-
-
-def _normalize_calendar_name(name: str | None) -> str:
-    return (name or "").strip().casefold()
 
 
 def calendar_matches(cal_name: str | None, target: str | None) -> bool:

@@ -10,17 +10,13 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-import tempfile
-import threading
 from collections.abc import Callable, Iterable
 from dataclasses import replace
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ..json_store import JsonStoreBase
 from .record import (
     ACCESS_REQUEST_APPROVED,
     ACCESS_REQUEST_PENDING,
@@ -50,18 +46,18 @@ class UserStorePersistenceError(RuntimeError):
     """
 
 
-class UserStore:
+class UserStore(JsonStoreBase):
     """Thread-safe JSON-store пользователей.
 
     См. модульный docstring выше.
     """
 
+    _PERSISTENCE_ERROR = UserStorePersistenceError
+    _STORE_LABEL = "users"
+
     def __init__(self, path: str | Path) -> None:
-        self._path = Path(path)
-        self._lock = threading.Lock()
-        self._write_lock = threading.Lock()
+        super().__init__(path)
         self._items: dict[int, UserRecord] = self._load()
-        self._version = 0
 
     # --- queries ---------------------------------------------------------
 
@@ -378,22 +374,8 @@ class UserStore:
             self._save_locked()
         return updated
 
-    @staticmethod
-    def _now_iso() -> str:
-        return datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
-
     def _load(self) -> dict[int, UserRecord]:
-        try:
-            with self._path.open("r", encoding="utf-8") as file:
-                raw = json.load(file)
-        except FileNotFoundError:
-            return {}
-        except (json.JSONDecodeError, OSError) as exc:
-            log.warning("Failed to load users from %s: %s", self._path, exc)
-            return {}
-        if not isinstance(raw, dict):
-            log.warning("Users file %s is malformed (not an object)", self._path)
-            return {}
+        raw = self._load_json_root()
         items: dict[int, UserRecord] = {}
         for key, value in raw.items():
             try:
@@ -408,42 +390,5 @@ class UserStore:
                 log.warning("Skipping malformed user record %r", key, exc_info=True)
         return items
 
-    def _snapshot_locked(self) -> tuple[dict[str, Any], int]:
-        self._version += 1
-        payload = {str(rec.telegram_user_id): rec.to_json() for rec in self._items.values()}
-        return payload, self._version
-
-    def _save_locked(self) -> None:
-        with self._lock:
-            payload, version = self._snapshot_locked()
-        self._save_snapshot(payload, version)
-
-    def _save_snapshot(self, payload: dict[str, Any], version: int) -> None:
-        try:
-            with self._write_lock:
-                with self._lock:
-                    if version < self._version:
-                        return
-                self._path.parent.mkdir(parents=True, exist_ok=True)
-                fd, tmp_path = tempfile.mkstemp(
-                    prefix=self._path.name + ".",
-                    suffix=".tmp",
-                    dir=self._path.parent,
-                )
-                try:
-                    with os.fdopen(fd, "w", encoding="utf-8") as file:
-                        json.dump(payload, file, ensure_ascii=False, indent=2)
-                        file.flush()
-                        os.fsync(file.fileno())
-                    os.replace(tmp_path, self._path)
-                except Exception:
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
-                    raise
-        except OSError as exc:
-            log.error("Failed to persist users to %s: %s", self._path, exc)
-            raise UserStorePersistenceError(
-                f"Failed to persist users to {self._path}: {exc}"
-            ) from exc
+    def _build_snapshot_payload(self) -> dict[str, Any]:
+        return {str(rec.telegram_user_id): rec.to_json() for rec in self._items.values()}

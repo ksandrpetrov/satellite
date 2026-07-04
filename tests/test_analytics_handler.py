@@ -21,12 +21,12 @@ from satellite.calendar.providers.base import (
 )
 from satellite.messages_ru import (
     ANALYTICS_BUSY_TOAST,
+    CB_ANALYTICS_RUN,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_GENERIC_HANDLER_TEXT,
 )
 from satellite.telegram_bot.api import TelegramError
 from satellite.telegram_bot.handlers import IncomingCallback, handle_callback_query
-from satellite.telegram_bot.handlers.analytics import CB_ANALYTICS_RUN
 from satellite.testing.delivery_helpers import final_message_html
 from satellite.users import CALENDAR_CONNECTED, USER_STATUS_APPROVED, UserStore
 

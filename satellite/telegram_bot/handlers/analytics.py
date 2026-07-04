@@ -6,16 +6,13 @@ import logging
 from datetime import datetime
 
 from ...analytics.service import build_week_analytics
-from ...calendar.constants import ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_19
+from ...calendar.constants import ANALYTICS_WORKDAY_10_19
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...messages_ru import (
     ANALYTICS_BUSY_TOAST,
     ANALYTICS_FETCH_STATUS,
     ANALYTICS_SAVED_TOAST,
     CB_ANALYTICS_BACK,  # noqa: F401 — re-exported для settings_hub
-    CB_ANALYTICS_RUN,
-    CB_ANALYTICS_WORKDAY_9,
-    CB_ANALYTICS_WORKDAY_10,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_GENERIC_HANDLER_TEXT,
     build_analytics_options_keyboard,
@@ -147,17 +144,3 @@ def handle_set_analytics_workday(ctx: HandlerContext, cb: IncomingCallback, pres
     keyboard = build_analytics_options_keyboard(workday_preset=preset)
     bundle = analytics_workday_applied_bundle(workday_preset=preset, reply_markup=keyboard)
     respond_callback_nav(ctx, cb, bundle, toast=ANALYTICS_SAVED_TOAST)
-
-
-def route_analytics_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
-    data = (cb.data or "").strip()
-    if data == CB_ANALYTICS_RUN:
-        handle_run_analytics(ctx, cb)
-        return True
-    if data == CB_ANALYTICS_WORKDAY_9:
-        handle_set_analytics_workday(ctx, cb, ANALYTICS_WORKDAY_9_18)
-        return True
-    if data == CB_ANALYTICS_WORKDAY_10:
-        handle_set_analytics_workday(ctx, cb, ANALYTICS_WORKDAY_10_19)
-        return True
-    return False

@@ -6,7 +6,7 @@ import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, tzinfo
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .caldav_shared import (
     _RANGE_SEARCH_MAX_WORKERS,
@@ -21,8 +21,38 @@ from .caldav_shared import (
 from .events import day_bounds
 from .ical_parser import parse_calendar_events
 
+if TYPE_CHECKING:
+    from .caldav_shared import EnrichStats, Event, _DiscoveryResult
+
 
 class CalDAVFetchMixin:
+    _login: str
+    _partstat_refresh_limit: int
+
+    def _ensure_discovery(self) -> _DiscoveryResult:
+        raise NotImplementedError
+
+    def _enrich_events_partstat(
+        self,
+        events: list[Event],
+        *,
+        tz: tzinfo,
+        prioritize_from: date | None = None,
+        invitation_verify: bool = False,
+        moment: datetime | None = None,
+        lookback_days: int = 14,
+    ) -> EnrichStats:
+        raise NotImplementedError
+
+    def _partstat_refresh_budget_left(self, started_at: float) -> bool:
+        raise NotImplementedError
+
+    def _has_user_partstat(self, events: Sequence[Event]) -> bool:
+        raise NotImplementedError
+
+    def _refresh_attendees_via_get(self, event_url: str) -> tuple[list[str], str | None] | None:
+        raise NotImplementedError
+
     def fetch_events_in_range(
         self,
         start_date: date,

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import date, datetime, timedelta, tzinfo
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import requests
 from caldav.lib.error import DAVError
@@ -44,8 +45,33 @@ from .events._collectors import event_relevant_for_invitations
 from .events._partstat import user_partstat
 from .events._time import event_ends_after
 
+if TYPE_CHECKING:
+    from .caldav_shared import _DiscoveryResult
+
 
 class CalDAVPartstatMixin:
+    _login: str
+    _app_password: str
+    _partstat_refresh_limit: int
+    _partstat_refresh_timeout_sec: float
+    _partstat_refresh_budget_sec: float
+    _partstat_update_timeout_sec: float
+    _cache: _DiscoveryResult | None
+    _partstat_cache: dict[str, tuple[list[str], str | None] | None]
+    _partstat_cache_lock: threading.Lock
+
+    def _http_get(self, url: str, **kwargs: Any) -> requests.Response:
+        raise NotImplementedError
+
+    def _http_put(self, url: str, **kwargs: Any) -> requests.Response:
+        raise NotImplementedError
+
+    def _http_head(self, url: str, **kwargs: Any) -> requests.Response:
+        raise NotImplementedError
+
+    def _auth_username(self) -> str:
+        raise NotImplementedError
+
     def _report_suggests_invitation_partstat_get(self, ev: Event) -> bool:
         """Есть повод догрузить PARTSTAT: пустые ATTENDEE, открытый статус или наш mailto."""
         attendees = ev.get("attendees") or []

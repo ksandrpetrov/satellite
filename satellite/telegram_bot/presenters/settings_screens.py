@@ -10,7 +10,6 @@ from ...messages_ru.digest_ui import (
     digest_time_screen_text,
     pending_digest_days_screen_text,
     pending_digest_settings_screen_text,
-    pending_digest_time_screen_text,
 )
 from ...messages_ru.settings_ui import (
     ANALYTICS_WORKDAY_APPLIED_TEXT,
@@ -209,21 +208,6 @@ def pending_digest_days_bundle(
             paragraph(f"Сейчас: {bold(days_label)}."),
             paragraph("Отметь дни недели — можно один или несколько."),
             paragraph("Снять последнюю галочку нельзя: нужен хотя бы один день."),
-        ]
-    )
-    return ScreenBundle(rich_html=rich, fallback_html=fallback, reply_markup=reply_markup)
-
-
-def pending_digest_time_bundle(
-    *, digest_time: str, reply_markup: dict | None = None
-) -> ScreenBundle:
-    fallback = pending_digest_time_screen_text(digest_time)
-    rich = join_blocks(
-        [
-            section_heading("🕘 Время отправки", level=3),
-            paragraph(f"Сейчас: {bold(f'{digest_time} МСК')}."),
-            paragraph("Напиши новое время одной строкой:"),
-            paragraph("<i>09:30</i> · <i>9 30</i> · <i>8:00</i> · <i>18:25</i>"),
         ]
     )
     return ScreenBundle(rich_html=rich, fallback_html=fallback, reply_markup=reply_markup)

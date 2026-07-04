@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-import tempfile
-import threading
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from ..calendar.time_utils import normalize_hhmm_input
+from ..json_store import JsonStoreBase
 from .record import (
     ALLOWED_DIGEST_DAYS,
     DigestSettings,
@@ -27,18 +24,18 @@ class SubscriptionStorePersistenceError(RuntimeError):
     """Не удалось записать ``subscriptions.json`` на диск."""
 
 
-class SubscriptionStore:
+class SubscriptionStore(JsonStoreBase):
     """JSON-файл `{str(chat_id): { ...fields... }}`.
 
     Все мутации атомарны (tmp + os.replace) и потокобезопасны.
     """
 
+    _PERSISTENCE_ERROR = SubscriptionStorePersistenceError
+    _STORE_LABEL = "subscriptions"
+
     def __init__(self, path: str | Path) -> None:
-        self._path = Path(path)
-        self._lock = threading.Lock()
-        self._write_lock = threading.Lock()
+        super().__init__(path)
         self._items: dict[int, DigestSettings] = self._load()
-        self._version = 0
 
     # --- подписка (back-compat) ------------------------------------------
 
@@ -290,24 +287,8 @@ class SubscriptionStore:
             self._save_locked()
         return updated
 
-    @staticmethod
-    def _now_iso() -> str:
-        return datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
-
     def _load(self) -> dict[int, DigestSettings]:
-        try:
-            with self._path.open("r", encoding="utf-8") as file:
-                raw = json.load(file)
-        except FileNotFoundError:
-            return {}
-        except (json.JSONDecodeError, OSError) as exc:
-            log.warning("Failed to load subscriptions from %s: %s", self._path, exc)
-            return {}
-
-        if not isinstance(raw, dict):
-            log.warning("Subscriptions file %s is malformed (not an object)", self._path)
-            return {}
-
+        raw = self._load_json_root()
         items: dict[int, DigestSettings] = {}
         for chat_key, value in raw.items():
             try:
@@ -321,42 +302,5 @@ class SubscriptionStore:
                 items[chat_id] = record
         return items
 
-    def _snapshot_locked(self) -> tuple[dict[str, Any], int]:
-        self._version += 1
-        payload = {str(chat_id): rec.to_json() for chat_id, rec in self._items.items()}
-        return payload, self._version
-
-    def _save_locked(self) -> None:
-        with self._lock:
-            payload, version = self._snapshot_locked()
-        self._save_snapshot(payload, version)
-
-    def _save_snapshot(self, payload: dict[str, Any], version: int) -> None:
-        try:
-            with self._write_lock:
-                with self._lock:
-                    if version < self._version:
-                        return
-                self._path.parent.mkdir(parents=True, exist_ok=True)
-                fd, tmp_path = tempfile.mkstemp(
-                    prefix=self._path.name + ".",
-                    suffix=".tmp",
-                    dir=self._path.parent,
-                )
-                try:
-                    with os.fdopen(fd, "w", encoding="utf-8") as file:
-                        json.dump(payload, file, ensure_ascii=False, indent=2)
-                        file.flush()
-                        os.fsync(file.fileno())
-                    os.replace(tmp_path, self._path)
-                except Exception:
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
-                    raise
-        except OSError as exc:
-            log.error("Failed to persist subscriptions to %s: %s", self._path, exc)
-            raise SubscriptionStorePersistenceError(
-                f"Failed to persist subscriptions to {self._path}: {exc}"
-            ) from exc
+    def _build_snapshot_payload(self) -> dict[str, Any]:
+        return {str(chat_id): rec.to_json() for chat_id, rec in self._items.items()}

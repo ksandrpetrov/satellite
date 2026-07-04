@@ -36,8 +36,6 @@ _TG_EMOJI_TAG_RE = re.compile(
     re.IGNORECASE,
 )
 
-DISABLED_LINK_PREVIEW: dict[str, bool] = {"is_disabled": True}
-
 
 def external_link(label: str, url: str) -> str:
     """Внешняя ссылка для legacy ``parse_mode=HTML``."""
@@ -94,17 +92,6 @@ def strip_expandable_blockquote(html_text: str) -> str:
     return html_text.replace('<blockquote expandable="true">', "<blockquote>").replace(
         "<blockquote expandable>", "<blockquote>"
     )
-
-
-def link_preview_above(url: str, *, large: bool = True) -> dict[str, object]:
-    """``link_preview_options`` с превью над текстом (Bot API 7.0+)."""
-    opts: dict[str, object] = {
-        "url": url,
-        "show_above_text": True,
-    }
-    if large:
-        opts["prefer_large_media"] = True
-    return opts
 
 
 def replace_first_char_with_tg_emoji(text: str, unicode_char: str) -> str:

@@ -57,13 +57,6 @@ files = ["satellite"]
 # где-то нужно подавить ложный позитив — точечный `# type: ignore[<code>]`
 # с комментарием «почему».
 
-[[tool.mypy.overrides]]
-module = [
-    "satellite.calendar.caldav_fetch_mixin",
-    "satellite.calendar.caldav_partstat_mixin",
-]
-disable_error_code = ["attr-defined"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

@@ -99,28 +99,12 @@ def italic(text: str) -> str:
     return f"<i>{text}</i>"
 
 
-def underline(text: str) -> str:
-    return f"<u>{text}</u>"
-
-
-def strikethrough(text: str) -> str:
-    return f"<s>{text}</s>"
-
-
 def spoiler(text: str) -> str:
     return f"<spoiler>{text}</spoiler>"
 
 
 def mark(text: str) -> str:
     return f"<mark>{text}</mark>"
-
-
-def subscript(text: str) -> str:
-    return f"<sub>{text}</sub>"
-
-
-def superscript(text: str) -> str:
-    return f"<sup>{text}</sup>"
 
 
 def code(text: str) -> str:
