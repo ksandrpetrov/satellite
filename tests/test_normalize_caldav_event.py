@@ -147,3 +147,50 @@ def test_partstat_ignored_without_login():
 def test_zero_duration_event_returns_none():
     same = datetime(2026, 5, 11, 10, 0, tzinfo=TZ)
     assert normalize_caldav_event(_ev(same, same), date(2026, 5, 11), TZ) is None
+
+
+def test_conference_url_from_url_field():
+    ne = normalize_caldav_event(
+        _ev(
+            datetime(2026, 5, 11, 10, 0, tzinfo=TZ),
+            datetime(2026, 5, 11, 11, 0, tzinfo=TZ),
+            url="https://meet.google.com/abc-defg-hij",
+        ),
+        date(2026, 5, 11),
+        TZ,
+    )
+    assert isinstance(ne, NormalizedEvent)
+    assert ne.conference_url == "https://meet.google.com/abc-defg-hij"
+    assert ne.location == "A1"
+
+
+def test_location_as_meet_url_shows_online():
+    meet = "https://meet.google.com/abc-defg-hij"
+    ne = normalize_caldav_event(
+        _ev(
+            datetime(2026, 5, 11, 10, 0, tzinfo=TZ),
+            datetime(2026, 5, 11, 11, 0, tzinfo=TZ),
+            location=meet,
+        ),
+        date(2026, 5, 11),
+        TZ,
+    )
+    assert isinstance(ne, NormalizedEvent)
+    assert ne.conference_url == meet
+    assert ne.location == "онлайн"
+
+
+def test_conference_url_from_description():
+    ne = normalize_caldav_event(
+        _ev(
+            datetime(2026, 5, 11, 10, 0, tzinfo=TZ),
+            datetime(2026, 5, 11, 11, 0, tzinfo=TZ),
+            location="A1",
+            description="Ссылка: https://zoom.us/j/123456789",
+        ),
+        date(2026, 5, 11),
+        TZ,
+    )
+    assert isinstance(ne, NormalizedEvent)
+    assert ne.conference_url == "https://zoom.us/j/123456789"
+    assert ne.location == "A1"

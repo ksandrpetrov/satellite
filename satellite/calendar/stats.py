@@ -10,6 +10,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, tzinfo
 
+from .conference_url import display_room_location, extract_conference_url
 from .events import event_datetime_bounds, is_cancelled_event, user_partstat
 from .time_utils import (
     Interval,
@@ -77,6 +78,7 @@ class NormalizedEvent:
     start_minutes: int
     end_minutes: int
     location: str | None = None
+    conference_url: str | None = None
     is_cancelled: bool = False
     is_pending: bool = False
     is_tentative: bool = False
@@ -168,11 +170,14 @@ def normalize_caldav_event(
         return None
 
     pending, tentative = _partstat_flags(event, login)
+    raw_location = _event_location(event)
+    conference_url = extract_conference_url(event)
     return NormalizedEvent(
         title=_event_title(event),
         start_minutes=start_min,
         end_minutes=end_min,
-        location=_event_location(event),
+        location=display_room_location(raw_location, conference_url),
+        conference_url=conference_url,
         is_cancelled=is_cancelled_event(event),
         is_pending=pending,
         is_tentative=tentative,

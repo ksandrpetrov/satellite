@@ -19,8 +19,10 @@ from ..presentation.rich import (
     details_block,
     divider,
     escape_rich,
+    external_link,
     footnote_def,
     footnote_ref,
+    italic,
     join_blocks,
     paragraph,
     pull_quote,
@@ -29,6 +31,7 @@ from ..presentation.rich import (
     truncate_rich_html,
 )
 from . import templates as t
+from .conference import conference_join_label
 from .render import (
     PENDING_MARK,
     TENTATIVE_MARK,
@@ -83,6 +86,9 @@ def _render_event_rich(
     time_html = datetime_link(time_label, _event_start_unix(plan_date, ev.start_minutes, tz))
     lines = paragraph(f"{marker} {bold(time_html)} — {title}")
     lines += paragraph(escape_rich(t.ROOM_LINE.format(location=location_raw)))
+    if ev.conference_url:
+        join_label = escape_rich(conference_join_label(ev.conference_url))
+        lines += paragraph(italic(f"📹 {external_link(join_label, ev.conference_url)}"))
     return lines
 
 

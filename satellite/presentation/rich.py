@@ -86,6 +86,11 @@ def anchor_link(text: str, name: str) -> str:
     return f'<a href="#{escape_rich(name)}">{text}</a>'
 
 
+def external_link(label: str, url: str) -> str:
+    """Внешняя ссылка для rich message."""
+    return f'<a href="{escape(url, quote=True)}">{label}</a>'
+
+
 def bold(text: str) -> str:
     return f"<b>{text}</b>"
 

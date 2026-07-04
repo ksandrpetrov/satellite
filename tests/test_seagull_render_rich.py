@@ -65,3 +65,25 @@ def test_rich_digest_main_quote_has_no_author_cite():
     html = render_daily_digest_rich(stats, texts, tz=ZoneInfo("Europe/Moscow"))
     assert "Чайка напрягла крылья" in html
     assert "<cite>Чайка</cite>" not in html
+
+
+def test_rich_event_with_conference_url_renders_join_link():
+    meet = "https://meet.google.com/abc-defg-hij"
+    stats = calculate_day_stats(
+        [
+            make_event(
+                "Weekly sync",
+                "11:00",
+                "12:00",
+                location="A1",
+                conference_url=meet,
+            )
+        ],
+        date_label="Сегодня",
+        plan_date=date(2026, 6, 12),
+    )
+    texts = build_seagull_texts(stats)
+    html = render_daily_digest_rich(stats, texts, tz=ZoneInfo("Europe/Moscow"))
+    assert '<a href="https://meet.google.com/abc-defg-hij">Войти в Google Meet</a>' in html
+    assert "<i>📹" in html
+    assert "Переговорная: A1" in html

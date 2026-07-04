@@ -13,6 +13,7 @@ Telegram показывал их свёрнутыми с кнопкой «Пок
 from __future__ import annotations
 
 import re
+from html import escape
 
 # Custom emoji document id'ы для ``<tg-emoji emoji-id="…">``.
 #
@@ -36,6 +37,11 @@ _TG_EMOJI_TAG_RE = re.compile(
 )
 
 DISABLED_LINK_PREVIEW: dict[str, bool] = {"is_disabled": True}
+
+
+def external_link(label: str, url: str) -> str:
+    """Внешняя ссылка для legacy ``parse_mode=HTML``."""
+    return f'<a href="{escape(url, quote=True)}">{escape(label)}</a>'
 
 
 def blockquote(text: str) -> str:

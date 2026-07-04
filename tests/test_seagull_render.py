@@ -170,6 +170,48 @@ def test_event_with_location_renders_room_line():
     assert "Переговорная: A1" in text
 
 
+def test_event_with_conference_url_renders_join_link():
+    meet = "https://meet.google.com/abc-defg-hij"
+    stats = calculate_day_stats(
+        [
+            make_event(
+                "Weekly sync",
+                "11:00",
+                "12:00",
+                location="A1",
+                conference_url=meet,
+            )
+        ],
+        date_label="Сегодня",
+        plan_date=date(2026, 5, 11),
+    )
+    text = render_daily_digest(stats, build_seagull_texts(stats))
+    assert 'href="https://meet.google.com/abc-defg-hij"' in text
+    assert "Войти в Google Meet" in text
+    assert "📹" in text
+    assert "Переговорная: A1" in text
+
+
+def test_online_location_does_not_duplicate_raw_url():
+    meet = "https://meet.google.com/abc-defg-hij"
+    stats = calculate_day_stats(
+        [
+            make_event(
+                "Standup",
+                "10:00",
+                "10:30",
+                location="онлайн",
+                conference_url=meet,
+            )
+        ],
+        date_label="Сегодня",
+        plan_date=date(2026, 5, 11),
+    )
+    text = render_daily_digest(stats, build_seagull_texts(stats))
+    assert "Переговорная: онлайн" in text
+    assert meet not in text.replace(f'href="{meet}"', "")
+
+
 def test_event_title_is_html_escaped_by_default():
     text = _render([_ev("<b>boom</b>", "10:00", "10:30")], plan_date=date(2026, 5, 11))
     assert "&lt;b&gt;boom&lt;/b&gt;" in text

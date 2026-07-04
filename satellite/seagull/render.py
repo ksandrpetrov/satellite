@@ -15,9 +15,14 @@ from ..messages_ru import (
     format_duration_ru,
 )
 from ..messages_ru.tokens import PENDING_MARK, TENTATIVE_MARK
-from ..presentation.html import expandable_blockquote, replace_first_char_with_tg_emoji
+from ..presentation.html import (
+    expandable_blockquote,
+    external_link,
+    replace_first_char_with_tg_emoji,
+)
 from ..presentation.rich import bold
 from . import templates as t
+from .conference import conference_join_label
 from .rules import SeagullTexts
 
 _SCHEDULE_EXPANDABLE_MIN_MEETINGS = 4
@@ -183,7 +188,12 @@ def _render_event(index: int, ev: NormalizedEvent, *, escape_html: bool) -> list
     title = escape(title_raw) if escape_html else title_raw
     location = escape(location_raw) if escape_html else location_raw
     time_range = f"{ev.start_hhmm}–{ev.end_hhmm}"
-    return [
+    lines = [
         f"{marker} {bold(time_range)} — {title}",
         t.ROOM_LINE.format(location=location),
     ]
+    if ev.conference_url:
+        join_label = conference_join_label(ev.conference_url)
+        link = external_link(join_label, ev.conference_url)
+        lines.append(f"<i>📹 {link}</i>")
+    return lines

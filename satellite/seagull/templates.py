@@ -80,5 +80,14 @@ SCHEDULE_TITLE_WITH_COUNT = "{title} — {count} встреч"
 
 ROOM_LINE = "Переговорная: {location}"
 ROOM_NONE = "без переговорной"
+ROOM_ONLINE = "онлайн"
+
+CONFERENCE_JOIN_MEET = "Войти в Google Meet"
+CONFERENCE_JOIN_ZOOM = "Войти в Zoom"
+CONFERENCE_JOIN_TEAMS = "Войти в Microsoft Teams"
+CONFERENCE_JOIN_VK_TEAMS = "Войти в VK Teams"
+CONFERENCE_JOIN_JITSI = "Войти в Jitsi"
+CONFERENCE_JOIN_WEBEX = "Войти в Webex"
+CONFERENCE_JOIN_GENERIC = "Войти в видеозвонок"
 
 EVENT_NO_TITLE = "(без названия)"
