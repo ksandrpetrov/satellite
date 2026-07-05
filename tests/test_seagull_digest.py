@@ -69,7 +69,7 @@ def test_digest_renders_caldav_events_with_summary_field():
     assert "Первая встреча: 10:00" in text
     assert "Последняя встреча до 10:30" in text
     assert "Дейли" in text
-    assert "Переговорная: A1" in text
+    assert "🛖 A1" in text
     assert "👨\u200d💻 Занято: 30 мин" in text
 
 

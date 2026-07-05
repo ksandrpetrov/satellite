@@ -86,4 +86,4 @@ def test_rich_event_with_conference_url_renders_join_link():
     html = render_daily_digest_rich(stats, texts, tz=ZoneInfo("Europe/Moscow"))
     assert '<a href="https://meet.google.com/abc-defg-hij">Войти в Google Meet</a>' in html
     assert "<i>📹" in html
-    assert "Переговорная: A1" in html
+    assert "🛖 A1" in html

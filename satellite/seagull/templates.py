@@ -78,7 +78,7 @@ RICH_STATS_ROW_BUSY = "👨‍💻 Занято"
 RICH_STATS_ROW_FREE = "🧘 Свободно"
 SCHEDULE_TITLE_WITH_COUNT = "{title} — {count} встреч"
 
-ROOM_LINE = "Переговорная: {location}"
+ROOM_LINE = "🛖 {location}"
 ROOM_NONE = "без переговорной"
 ROOM_ONLINE = "онлайн"
 

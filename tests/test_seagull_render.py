@@ -162,12 +162,12 @@ def test_two_events_have_blank_line_between_blocks():
         ],
         plan_date=date(2026, 5, 11),
     )
-    assert "Переговорная: без переговорной\n\n2️⃣" in text
+    assert "🛖 без переговорной\n\n2️⃣" in text
 
 
 def test_event_with_location_renders_room_line():
     text = _render([_ev("Daily", "10:00", "10:30", location="A1")], plan_date=date(2026, 5, 11))
-    assert "Переговорная: A1" in text
+    assert "🛖 A1" in text
 
 
 def test_event_with_conference_url_renders_join_link():
@@ -189,7 +189,7 @@ def test_event_with_conference_url_renders_join_link():
     assert 'href="https://meet.google.com/abc-defg-hij"' in text
     assert "Войти в Google Meet" in text
     assert "📹" in text
-    assert "Переговорная: A1" in text
+    assert "🛖 A1" in text
 
 
 def test_online_location_does_not_duplicate_raw_url():
@@ -208,7 +208,7 @@ def test_online_location_does_not_duplicate_raw_url():
         plan_date=date(2026, 5, 11),
     )
     text = render_daily_digest(stats, build_seagull_texts(stats))
-    assert "Переговорная: онлайн" in text
+    assert "🛖 онлайн" in text
     assert meet not in text.replace(f'href="{meet}"', "")
 
 
