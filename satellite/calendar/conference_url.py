@@ -15,7 +15,26 @@ _URL_RE = re.compile(
 )
 _HREF_RE = re.compile(r"""href=["'](https?://[^"']+)["']""", re.IGNORECASE)
 
-# Подстрока в host → ключ провайдера (порядок = приоритет при выборе из description).
+# Прямая ссылка на вход в видеозвонок (не permalink календаря и не произвольный URL).
+_CALL_URL_RE = re.compile(
+    r"https?://(?:www\.)?(?:"
+    r"vk\.com/call/join|"
+    r"meet\.google\.com|"
+    r"zoom\.us/j|"
+    r"[^/]+\.zoom\.us/j|"
+    r"teams\.microsoft\.com/l/meetup-join|"
+    r"call\.whatsapp\.com/(?:video|voice)|"
+    r"join\.skype\.com|"
+    r"telemost\.yandex\.ru/j|"
+    r"discord\.gg|"
+    r"discord\.com/invite|"
+    r"meet\.jit\.si|"
+    r"whereby\.com"
+    r")/?[^\s<>()\"]*",
+    re.IGNORECASE,
+)
+
+# Подстрока in host → ключ провайдера (порядок = приоритет при выборе из description).
 _PROVIDER_HOSTS: tuple[tuple[str, str], ...] = (
     ("meet.google.com", "meet"),
     ("zoom.us", "zoom"),
@@ -58,6 +77,14 @@ def _normalize_url(raw: str) -> str | None:
     if cleaned and _is_safe_http_url(cleaned):
         return cleaned
     return None
+
+
+def is_conference_call_url(url: str) -> bool:
+    """True, если URL — прямая ссылка на вход в известный видеозвонок."""
+    normalized = _normalize_url(url)
+    if not normalized:
+        return False
+    return _CALL_URL_RE.fullmatch(normalized) is not None
 
 
 def _urls_in_text(text: str) -> list[str]:
@@ -115,6 +142,8 @@ def _append_candidate(
 ) -> None:
     if not url or url in candidates:
         return
+    if not is_conference_call_url(url):
+        return
     if skip_calendar_permalinks and _is_calendar_event_permalink(url):
         return
     candidates.append(url)
@@ -164,6 +193,6 @@ def display_room_location(
     if not loc:
         return None
     loc_url = _normalize_url(loc)
-    if loc_url:
+    if loc_url and is_conference_call_url(loc_url):
         return _ONLINE_LABEL
     return loc

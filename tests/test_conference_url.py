@@ -6,6 +6,7 @@ from satellite.calendar.conference_url import (
     conference_provider,
     display_room_location,
     extract_conference_url,
+    is_conference_call_url,
 )
 from satellite.seagull.conference import conference_join_label
 from satellite.seagull.templates import ROOM_ONLINE
@@ -85,6 +86,36 @@ def test_no_url_returns_none():
     assert extract_conference_url({"location": "Room A1"}) is None
 
 
+def test_rejects_non_conference_url_in_url_field():
+    event = {"url": "https://example.com/agenda"}
+    assert extract_conference_url(event) is None
+
+
+def test_rejects_non_conference_url_in_location():
+    event = {"location": "https://example.com/meeting-room"}
+    assert extract_conference_url(event) is None
+
+
+def test_is_conference_call_url_accepts_known_providers():
+    assert is_conference_call_url("https://meet.google.com/abc-defg-hij")
+    assert is_conference_call_url("https://zoom.us/j/123456789")
+    assert is_conference_call_url("https://us06web.zoom.us/j/123")
+    assert is_conference_call_url("https://teams.microsoft.com/l/meetup-join/abc123")
+    assert is_conference_call_url("https://telemost.yandex.ru/j/1234567890")
+    assert is_conference_call_url("https://vk.com/call/join/abc")
+    assert is_conference_call_url("https://call.whatsapp.com/video/abc")
+    assert is_conference_call_url("https://join.skype.com/abc")
+    assert is_conference_call_url("https://discord.gg/abc")
+    assert is_conference_call_url("https://meet.jit.si/room")
+    assert is_conference_call_url("https://whereby.com/room")
+
+
+def test_is_conference_call_url_rejects_generic_urls():
+    assert not is_conference_call_url("https://example.com/call")
+    assert not is_conference_call_url("https://calendar.yandex.ru/event/?event_id=123")
+    assert not is_conference_call_url("javascript:alert(1)")
+
+
 def test_display_room_location_physical_room():
     assert display_room_location("A1", "https://meet.google.com/x") == "A1"
 
@@ -96,6 +127,10 @@ def test_display_room_location_url_becomes_online():
 
 def test_display_room_location_url_without_conference_still_online():
     assert display_room_location("https://zoom.us/j/1", None) == ROOM_ONLINE
+
+
+def test_display_room_location_generic_url_not_online():
+    assert display_room_location("https://example.com/agenda", None) == "https://example.com/agenda"
 
 
 def test_conference_provider_labels():
