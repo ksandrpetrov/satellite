@@ -19,6 +19,7 @@ from ...subscriptions import (
     DigestSettings,
     SubscriptionStorePersistenceError,
 )
+from ...users import UserStorePersistenceError
 from .access import effective_username, effective_username_from_callback
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
@@ -260,6 +261,8 @@ def handle_callback_time(
         return
     username = effective_username_from_callback(cb)
     settings = ctx.subscriptions.get_or_create(cb.chat_id, username, telegram_user_id=cb.user_id)
+    if cb.chat_id is not None:
+        ctx.calendar_state.clear(cb.chat_id)
     ctx.digest_state.set_waiting_for_time(cb.chat_id, cb.message_id, digest_kind=kind)
     keyboard = bindings.build_time_keyboard()
     bundle = build_time_screen_bundle(time_value(settings, bindings), keyboard)
@@ -319,7 +322,11 @@ def handle_daily_weather_toggle(ctx: HandlerContext, cb: IncomingCallback) -> No
     if cb.chat_id is None or cb.user_id is None:
         safe_answer_callback(ctx, cb)
         return
-    new_enabled = toggle_weather_in_plan(ctx, cb.user_id)
+    try:
+        new_enabled = toggle_weather_in_plan(ctx, cb.user_id)
+    except UserStorePersistenceError:
+        safe_answer_callback(ctx, cb, text=ERR_SETTINGS_SAVE_FAILED_TEXT)
+        return
     if new_enabled is None:
         safe_answer_callback(ctx, cb)
         return

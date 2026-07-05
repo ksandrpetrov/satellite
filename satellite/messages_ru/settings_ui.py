@@ -22,6 +22,8 @@ CB_SETTINGS_ANALYTICS = "settings_analytics"
 CB_SETTINGS_CALENDAR_MENU = "settings_calendar_menu"
 CB_SETTINGS_CALENDARS = "settings_calendars"
 CB_SETTINGS_INVITATIONS = "settings_invitations"
+# «⬅️ В календарь» с экрана приглашений, открытого из хаба настроек
+CB_SETTINGS_CALENDAR_BACK = "settings_cal_back"
 CB_SETTINGS_CHECK = "settings_check"
 CB_SETTINGS_RECONNECT = "settings_reconnect"
 # Двухшаговое отключение календаря: сначала подтверждение, потом сам disconnect
@@ -49,6 +51,47 @@ BUTTON_ANALYTICS = "📊 Аналитика недели"
 BUTTON_CALENDAR_MENU = "📅 Календарь"
 
 
+def settings_hub_status_bits(
+    *,
+    digest_enabled: bool | None = None,
+    pending_digest_enabled: bool | None = None,
+    weather_in_plan_enabled: bool | None = None,
+    has_calendar: bool = True,
+) -> list[str]:
+    bits: list[str] = []
+    if digest_enabled is not None:
+        bits.append(
+            "🔔 Дайджест на сегодня включён"
+            if digest_enabled
+            else "🔕 Дайджест на сегодня выключен"
+        )
+    if pending_digest_enabled is not None:
+        bits.append(
+            "📨 Дайджест непринятых включён"
+            if pending_digest_enabled
+            else "📨 Дайджест непринятых выключен"
+        )
+    if weather_in_plan_enabled is not None:
+        bits.append(
+            "🌤 Погода в плане включена"
+            if weather_in_plan_enabled
+            else "🔕 Погода в плане выключена"
+        )
+    if has_calendar:
+        bits.append("📅 Календарь подключён")
+    else:
+        bits.append("🔌 Календарь не подключён")
+    return bits
+
+
+SETTINGS_HUB_TITLE = "⚙️ <b>Настройки Чайки</b>"
+SETTINGS_HUB_TITLE_PLAIN = "⚙️ Настройки Чайки"
+SETTINGS_HUB_INTRO = (
+    "Здесь живут дайджесты, погода в плане, аналитика и календарь. Выбери, что настроить."
+)
+SETTINGS_CALENDAR_MENU_BODY = "Управление подключением, приглашения и выбор календарей для плана."
+
+
 def settings_hub_text(
     *,
     digest_enabled: bool | None = None,
@@ -56,34 +99,14 @@ def settings_hub_text(
     weather_in_plan_enabled: bool | None = None,
     has_calendar: bool = True,
 ) -> str:
-    status_bits: list[str] = []
-    if digest_enabled is not None:
-        status_bits.append(
-            "🔔 Дайджест на сегодня включён"
-            if digest_enabled
-            else "🔕 Дайджест на сегодня выключен"
-        )
-    if pending_digest_enabled is not None:
-        status_bits.append(
-            "📨 Дайджест непринятых включён"
-            if pending_digest_enabled
-            else "📨 Дайджест непринятых выключен"
-        )
-    if weather_in_plan_enabled is not None:
-        status_bits.append(
-            "🌤 Погода в плане включена"
-            if weather_in_plan_enabled
-            else "🔕 Погода в плане выключена"
-        )
-    if has_calendar:
-        status_bits.append("📅 Календарь подключён")
-    else:
-        status_bits.append("🔌 Календарь не подключён")
-    summary = blockquote(" · ".join(status_bits)) if status_bits else ""
-    base = (
-        "⚙️ <b>Настройки Чайки</b>\n\n"
-        "Здесь живут дайджесты, погода в плане, аналитика и календарь. Выбери, что настроить."
+    status_bits = settings_hub_status_bits(
+        digest_enabled=digest_enabled,
+        pending_digest_enabled=pending_digest_enabled,
+        weather_in_plan_enabled=weather_in_plan_enabled,
+        has_calendar=has_calendar,
     )
+    summary = blockquote(" · ".join(status_bits)) if status_bits else ""
+    base = f"{SETTINGS_HUB_TITLE}\n\n{SETTINGS_HUB_INTRO}"
     if summary:
         return f"{base}\n\n{summary}"
     return base
@@ -186,9 +209,7 @@ def build_settings_hub_keyboard(
 
 # --- подэкран «Календарь» ---------------------------------------------------
 
-SETTINGS_CALENDAR_MENU_TEXT = (
-    "📅 <b>Календарь</b>\n\nУправление подключением, приглашения и выбор календарей для плана."
-)
+SETTINGS_CALENDAR_MENU_TEXT = f"📅 <b>Календарь</b>\n\n{SETTINGS_CALENDAR_MENU_BODY}"
 
 SETTINGS_DISCONNECT_CONFIRM_TEXT = (
     "🪶 Точно отключить календарь?\n\n"

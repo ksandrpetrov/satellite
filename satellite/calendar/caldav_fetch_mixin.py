@@ -13,13 +13,13 @@ from .caldav_shared import (
     CalDAVError,
     CalendarHandle,
     Event,
-    _normalize_calendar_url,
     _redact_url,
     calendar_matches,
     log,
 )
 from .events import day_bounds
 from .ical_parser import parse_calendar_events
+from .url_utils import normalize_calendar_url as _normalize_calendar_url
 
 if TYPE_CHECKING:
     from .caldav_shared import EnrichStats, Event, _DiscoveryResult

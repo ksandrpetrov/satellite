@@ -32,13 +32,14 @@ from ...messages_ru import (
     CALENDAR_SOURCES_FETCH_STATUS,
     CALENDAR_SOURCES_LOAD_FAIL_HTML,
     CALENDAR_SOURCES_SINGLE_HTML,
+    CB_ANALYTICS_BACK,
     CB_ANALYTICS_RUN,
     CB_ANALYTICS_WORKDAY_9,
     CB_ANALYTICS_WORKDAY_10,
-    CB_INV_BACK,
     CB_PENDING_DIGEST_SETTINGS,
     CB_SETTINGS_ANALYTICS,
     CB_SETTINGS_BACK,
+    CB_SETTINGS_CALENDAR_BACK,
     CB_SETTINGS_CALENDAR_MENU,
     CB_SETTINGS_CALENDARS,
     CB_SETTINGS_CHECK,
@@ -50,13 +51,15 @@ from ...messages_ru import (
     CB_SETTINGS_WEATHER_TOGGLE,
     ERR_SETTINGS_SAVE_FAILED_TEXT,
     SETTINGS_HUB_CLOSED_TEXT,
+    SETTINGS_OPEN_THINKING,
     build_settings_calendar_menu_keyboard,
     build_settings_disconnect_confirm_keyboard,
     build_settings_hub_keyboard,
+    rich_thinking_status,
     weather_in_plan_toggle_notice_text,
 )
-from ...messages_ru.streaming_ui import SETTINGS_OPEN_THINKING, rich_thinking_status
 from ...subscriptions import SubscriptionStorePersistenceError
+from ...users import UserStorePersistenceError
 from ..api import TelegramError
 from ..presenters.calendar_screens import calendar_sources_bundle
 from ..presenters.settings_screens import (
@@ -65,7 +68,6 @@ from ..presenters.settings_screens import (
     settings_hub_bundle,
 )
 from .analytics import (
-    CB_ANALYTICS_BACK,
     handle_open_analytics,
     handle_run_analytics,
     handle_set_analytics_workday,
@@ -194,6 +196,7 @@ def handle_open_settings_hub(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if msg.chat_id is None or msg.user_id is None:
         return
     ctx.digest_state.clear(msg.chat_id)
+    ctx.calendar_state.clear(msg.chat_id)
     if _close_tracked_hub_message(ctx, msg.chat_id):
         log.info("Closed settings hub via reply: chat_id=%s user_id=%s", msg.chat_id, msg.user_id)
         return
@@ -234,6 +237,7 @@ def show_settings_hub_screen(
             safe_answer_callback(ctx, cb)
         return
     ctx.digest_state.clear(cb.chat_id)
+    ctx.calendar_state.clear(cb.chat_id)
     bundle = _hub_bundle(ctx, cb.user_id, cb.chat_id)
     if ack:
         safe_answer_callback(ctx, cb)
@@ -289,6 +293,15 @@ def route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bo
         safe_answer_callback(ctx, cb)
         send(ctx, cb.chat_id, ERR_SETTINGS_SAVE_FAILED_TEXT)
         return True
+    except UserStorePersistenceError:
+        log.exception(
+            "Failed to persist user state in settings hub: chat_id=%s user_id=%s data=%r",
+            cb.chat_id,
+            cb.user_id,
+            cb.data,
+        )
+        safe_answer_callback(ctx, cb, text=ERR_SETTINGS_SAVE_FAILED_TEXT)
+        return True
 
 
 def _route_settings_hub_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
@@ -304,7 +317,11 @@ def _toggle_weather_in_plan(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
-    new_enabled = toggle_weather_in_plan(ctx, cb.user_id)
+    try:
+        new_enabled = toggle_weather_in_plan(ctx, cb.user_id)
+    except UserStorePersistenceError:
+        safe_answer_callback(ctx, cb, text=ERR_SETTINGS_SAVE_FAILED_TEXT)
+        return
     if new_enabled is None:
         safe_answer_callback(ctx, cb)
         return
@@ -380,6 +397,7 @@ def _disconnect_calendar_from_callback(ctx: HandlerContext, cb: IncomingCallback
 def _close_settings_hub(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.chat_id is not None:
         ctx.digest_state.clear(cb.chat_id)
+        ctx.calendar_state.clear(cb.chat_id)
         _untrack_hub_message(cb.chat_id)
     respond_callback_rich_nav(
         ctx,
@@ -399,7 +417,7 @@ def _analytics_workday_10(ctx: HandlerContext, cb: IncomingCallback) -> None:
 
 
 _SETTINGS_HUB_ROUTES: dict[str, Callable[[HandlerContext, IncomingCallback], None]] = {
-    CB_INV_BACK: show_settings_calendar_menu,
+    CB_SETTINGS_CALENDAR_BACK: show_settings_calendar_menu,
     CB_SETTINGS_DIGEST: show_digest_settings_screen,
     CB_PENDING_DIGEST_SETTINGS: show_pending_digest_settings_screen,
     CB_SETTINGS_ANALYTICS: handle_open_analytics,
@@ -417,3 +435,5 @@ _SETTINGS_HUB_ROUTES: dict[str, Callable[[HandlerContext, IncomingCallback], Non
     CB_SETTINGS_DISCONNECT: show_settings_disconnect_confirm,
     CB_SETTINGS_DISCONNECT_CONFIRM: _disconnect_calendar_from_callback,
 }
+
+SETTINGS_HUB_ROUTE_KEYS = frozenset(_SETTINGS_HUB_ROUTES)

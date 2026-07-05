@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from ..presentation.html import expandable_blockquote
 from .buttons import styled_button
+from .settings_ui import CB_SETTINGS_CALENDAR_BACK
 
 # --- приглашения (PARTSTAT) --------------------------------------------------
 
 CB_INV_CLOSE = "inv:close"
-CB_INV_BACK = "inv:back"
 CB_INV_REFRESH = "inv:refresh"
 CB_INV_RESPOND_PREFIX = "inv:r:"
 
@@ -25,14 +25,19 @@ INVITATIONS_INTRO_HTML = (
 INVITATIONS_RESPOND_ACCEPTED = "Принято"
 INVITATIONS_RESPOND_DECLINED = "Отклонено"
 INVITATIONS_RESPOND_TENTATIVE = "Может быть"
-INVITATIONS_RESPOND_FAIL_TEXT = "Не удалось обновить ответ. Попробуйте позже."
+INVITATIONS_RESPOND_FAIL_TEXT = "Не удалось обновить ответ. Попробуй позже."
 INVITATIONS_CLOSED_TEXT = "📨 Чайка свернула список приглашений."
 
 
 def build_invitations_keyboard(
     events: list[tuple[str, str]],
+    *,
+    from_settings_hub: bool = False,
 ) -> dict:
-    """Inline-клавиатура: по строке кнопок на каждое событие (token, label index)."""
+    """Inline-клавиатура: по строке кнопок на каждое событие (token, label index).
+
+    ``from_settings_hub=True`` — «⬅️ В календарь» + «Закрыть»; иначе только «Закрыть».
+    """
     rows: list[list[dict[str, str]]] = []
     for token, label in events:
         rows.append(
@@ -55,12 +60,15 @@ def build_invitations_keyboard(
             ]
         )
     rows.append([{"text": "🔄 Обновить", "callback_data": CB_INV_REFRESH}])
-    rows.append(
-        [
-            {"text": "⬅️ В календарь", "callback_data": CB_INV_BACK},
-            {"text": "⬅️ Закрыть", "callback_data": CB_INV_CLOSE},
-        ]
-    )
+    if from_settings_hub:
+        rows.append(
+            [
+                {"text": "⬅️ В календарь", "callback_data": CB_SETTINGS_CALENDAR_BACK},
+                {"text": "⬅️ Закрыть", "callback_data": CB_INV_CLOSE},
+            ]
+        )
+    else:
+        rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_INV_CLOSE}])
     return {"inline_keyboard": rows}
 
 
@@ -98,7 +106,7 @@ MANAGE_EMPTY_HTML = (
 )
 MANAGE_CLOSED_TEXT = "🛠 Чайка свернула список встреч."
 MANAGE_NOT_FOUND_TEXT = "Встреча не нашлась — обновите список."
-MANAGE_RESPOND_FAIL_TEXT = "Не удалось обновить статус. Попробуйте позже."
+MANAGE_RESPOND_FAIL_TEXT = "Не удалось обновить статус. Попробуй позже."
 MANAGE_RESPOND_ACCEPTED = "✅ Принято"
 MANAGE_RESPOND_DECLINED = "❌ Отклонено"
 MANAGE_RESPOND_TENTATIVE = "🤔 Может быть"

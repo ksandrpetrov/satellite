@@ -22,6 +22,9 @@ from .identity import BOT_INPUT_PLACEHOLDER
 
 UPCOMING_FETCH_STATUS = "🗓 Чайка обходит ближайшую неделю…"
 UPCOMING_BUSY_TEXT = "🗓 Уже собираю список — секунду."
+UPCOMING_EVENTS_HEADING = "🗓 Ближайшие события"
+UPCOMING_EVENTS_HEADING_PLAIN = "Ближайшие события"
+UPCOMING_EVENTS_HEADING_HTML = f"🗓 <b>{UPCOMING_EVENTS_HEADING_PLAIN}</b>"
 UPCOMING_EMPTY_HTML = (
     "🗓 На ближайшие дни встреч нет.\nНебо чистое — самое время для глубокой работы."
 )
@@ -119,7 +122,6 @@ def build_create_duration_keyboard() -> dict:
 
 # --- выбор календарей для плана --------------------------------------------
 
-CB_CAL_SOURCES = "cal_sources"
 CB_CAL_TOGGLE_PREFIX = "cal:t:"
 CB_CAL_CLOSE = "cal:close"
 
@@ -134,16 +136,20 @@ CALENDAR_SOURCES_UNAVAILABLE_TEXT = "Календари не отвечают"
 CALENDAR_SOURCES_UPDATE_FAIL_TEXT = "Не удалось обновить список"
 CALENDAR_SOURCES_FETCH_STATUS = "📚 Чайка собирает календари…"
 CALENDAR_SOURCES_CLOSED_TEXT = "📚 Закрыли список календарей. Возвращайся, когда понадобится."
+CALENDAR_SOURCES_INTRO = (
+    "Чайка учитывает встречи только из отмеченных календарей. "
+    "Это касается плана дня, утреннего дайджеста и «Ближайших»."
+)
+CALENDAR_SOURCES_FOOTER = "Тапни строку, чтобы включить или выключить."
 
 
 def calendar_sources_screen_text(*, lines: list[str]) -> str:
     body = "\n".join(lines) if lines else "—"
     return (
         "📚 <b>Календари в плане</b>\n\n"
-        "Чайка учитывает встречи только из отмеченных календарей. "
-        "Это касается плана дня, утреннего дайджеста и «Ближайших».\n\n"
+        f"{CALENDAR_SOURCES_INTRO}\n\n"
         f"{body}\n\n"
-        "<i>Тапни строку, чтобы включить или выключить.</i>"
+        f"<i>{CALENDAR_SOURCES_FOOTER}</i>"
     )
 
 

@@ -24,7 +24,12 @@ from satellite.messages_ru import (
 from satellite.telegram_bot.handlers import handle_callback_query, handle_message
 from satellite.users import USER_STATUS_APPROVED
 
-from .conftest import final_message_html, make_callback, make_msg
+from .conftest import (
+    final_message_html,
+    final_reply_markup,
+    make_callback,
+    make_msg,
+)
 
 TZ = ZoneInfo("Europe/Moscow")
 LOGIN = "me@mail.ru"
@@ -316,3 +321,79 @@ def test_invitations_refresh_callback(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ctx.telegram.edit_message_rich.called or ctx.telegram.edit_message_text.called
     call_names = [call[0] for call in manager.mock_calls]
     assert call_names.index("ack") < call_names.index("list")
+
+
+def _reply_markup(ctx: MagicMock) -> dict | None:
+    if ctx.telegram.edit_message_rich.called:
+        return ctx.telegram.edit_message_rich.call_args.kwargs.get("reply_markup")
+    if ctx.telegram.edit_message_text.called:
+        return ctx.telegram.edit_message_text.call_args.kwargs.get("reply_markup")
+    return final_reply_markup(ctx.telegram)
+
+
+def _keyboard_callback_data(ctx: MagicMock) -> set[str]:
+    markup = _reply_markup(ctx)
+    if not markup:
+        return set()
+    rows = markup.get("inline_keyboard") or []
+    return {btn["callback_data"] for row in rows for btn in row if "callback_data" in btn}
+
+
+def test_invitations_command_keyboard_has_single_close_button(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 5, 22, 10, 0, tzinfo=TZ)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return now.astimezone(tz) if tz else now
+
+    monkeypatch.setattr("satellite.invitations_view.datetime", _FixedDatetime)
+
+    from satellite.messages_ru import CB_INV_CLOSE, CB_SETTINGS_CALENDAR_BACK
+
+    ctx = _ctx(events=[_ev()])
+    handle_message(
+        ctx, make_msg(text="/invitations", chat_id=CHAT_ID, user_id=USER_ID, update_id=3)
+    )
+    callbacks = _keyboard_callback_data(ctx)
+    assert CB_INV_CLOSE in callbacks
+    assert CB_SETTINGS_CALENDAR_BACK not in callbacks
+    close_rows = [
+        row
+        for row in (_reply_markup(ctx) or {}).get("inline_keyboard", [])
+        if any(btn.get("callback_data") == CB_INV_CLOSE for btn in row)
+    ]
+    assert len(close_rows) == 1
+    assert len(close_rows[0]) == 1
+
+
+def test_invitations_from_settings_refresh_keeps_calendar_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 5, 22, 10, 0, tzinfo=TZ)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return now.astimezone(tz) if tz else now
+
+    monkeypatch.setattr("satellite.invitations_view.datetime", _FixedDatetime)
+
+    from satellite.messages_ru import CB_SETTINGS_CALENDAR_BACK
+
+    ctx = _ctx(events=[_ev()])
+    handle_callback_query(
+        ctx,
+        make_callback(
+            data=CB_SETTINGS_INVITATIONS, chat_id=CHAT_ID, user_id=USER_ID, message_id=50
+        ),
+    )
+    handle_callback_query(
+        ctx, make_callback(data=CB_INV_REFRESH, chat_id=CHAT_ID, user_id=USER_ID, message_id=50)
+    )
+    markup = _reply_markup(ctx)
+    assert markup is not None
+    callbacks = _keyboard_callback_data(ctx)
+    assert CB_SETTINGS_CALENDAR_BACK in callbacks

@@ -3,53 +3,24 @@
 from __future__ import annotations
 
 from ...digest_utils import format_digest_days_label
-from ...messages_ru.digest_ui import (
+from ...messages_ru import (
+    ANALYTICS_WORKDAY_APPLIED_TEXT,
     DIGEST_DAYS_LABEL,
+    SETTINGS_CALENDAR_MENU_BODY,
+    SETTINGS_DISCONNECT_CONFIRM_TEXT,
+    SETTINGS_HUB_INTRO,
+    SETTINGS_HUB_TITLE_PLAIN,
+    analytics_options_screen_text,
     digest_days_screen_text,
     digest_settings_screen_text,
     digest_time_screen_text,
     pending_digest_days_screen_text,
     pending_digest_settings_screen_text,
-)
-from ...messages_ru.settings_ui import (
-    ANALYTICS_WORKDAY_APPLIED_TEXT,
-    SETTINGS_CALENDAR_MENU_TEXT,
-    SETTINGS_DISCONNECT_CONFIRM_TEXT,
-    analytics_options_screen_text,
+    settings_hub_status_bits,
     settings_hub_text,
 )
 from ...presentation.rich import blockquote, bold, join_blocks, paragraph, section_heading
 from .bundle import ScreenBundle
-
-
-def _status_bits(
-    *,
-    digest_enabled: bool | None,
-    pending_digest_enabled: bool | None,
-    weather_in_plan_enabled: bool | None,
-    has_calendar: bool,
-) -> list[str]:
-    bits: list[str] = []
-    if digest_enabled is not None:
-        bits.append(
-            "🔔 Дайджест на сегодня включён"
-            if digest_enabled
-            else "🔕 Дайджест на сегодня выключен"
-        )
-    if pending_digest_enabled is not None:
-        bits.append(
-            "📨 Дайджест непринятых включён"
-            if pending_digest_enabled
-            else "📨 Дайджест непринятых выключен"
-        )
-    if weather_in_plan_enabled is not None:
-        bits.append(
-            "🌤 Погода в плане включена"
-            if weather_in_plan_enabled
-            else "🔕 Погода в плане выключена"
-        )
-    bits.append("📅 Календарь подключён" if has_calendar else "🔌 Календарь не подключён")
-    return bits
 
 
 def settings_hub_bundle(
@@ -66,17 +37,15 @@ def settings_hub_bundle(
         weather_in_plan_enabled=weather_in_plan_enabled,
         has_calendar=has_calendar,
     )
-    bits = _status_bits(
+    bits = settings_hub_status_bits(
         digest_enabled=digest_enabled,
         pending_digest_enabled=pending_digest_enabled,
         weather_in_plan_enabled=weather_in_plan_enabled,
         has_calendar=has_calendar,
     )
     blocks = [
-        section_heading("⚙️ Настройки Чайки", level=3),
-        paragraph(
-            "Здесь живут дайджесты, погода в плане, аналитика и календарь. Выбери, что настроить."
-        ),
+        section_heading(SETTINGS_HUB_TITLE_PLAIN, level=3),
+        paragraph(SETTINGS_HUB_INTRO),
     ]
     if bits:
         blocks.append(blockquote(" · ".join(bits)))
@@ -88,11 +57,13 @@ def settings_hub_bundle(
 
 
 def settings_calendar_menu_bundle(*, reply_markup: dict | None = None) -> ScreenBundle:
+    from ...messages_ru import SETTINGS_CALENDAR_MENU_TEXT
+
     fallback = SETTINGS_CALENDAR_MENU_TEXT
     rich = join_blocks(
         [
             section_heading("📅 Календарь", level=3),
-            paragraph("Управление подключением, приглашения и выбор календарей для плана."),
+            paragraph(SETTINGS_CALENDAR_MENU_BODY),
         ]
     )
     return ScreenBundle(rich_html=rich, fallback_html=fallback, reply_markup=reply_markup)

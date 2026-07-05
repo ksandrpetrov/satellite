@@ -12,12 +12,13 @@ from ...messages_ru import (
     ANALYTICS_BUSY_TOAST,
     ANALYTICS_FETCH_STATUS,
     ANALYTICS_SAVED_TOAST,
-    CB_ANALYTICS_BACK,  # noqa: F401 — re-exported для settings_hub
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_GENERIC_HANDLER_TEXT,
+    ERR_SETTINGS_SAVE_FAILED_TEXT,
     build_analytics_options_keyboard,
 )
 from ...presentation.delivery import deliver_rich_or_html
+from ...users import UserStorePersistenceError
 from ..api import TelegramError
 from ..presenters.settings_screens import analytics_options_bundle, analytics_workday_applied_bundle
 from ..visual import pick_analytics_effect, private_message_effect
@@ -140,6 +141,10 @@ def handle_set_analytics_workday(ctx: HandlerContext, cb: IncomingCallback, pres
         ctx.users.set_analytics_workday(cb.user_id, preset=preset)
     except (KeyError, ValueError):
         safe_answer_callback(ctx, cb)
+        return
+    except UserStorePersistenceError:
+        log.exception("Failed to persist analytics workday user_id=%s", cb.user_id)
+        safe_answer_callback(ctx, cb, text=ERR_SETTINGS_SAVE_FAILED_TEXT)
         return
     keyboard = build_analytics_options_keyboard(workday_preset=preset)
     bundle = analytics_workday_applied_bundle(workday_preset=preset, reply_markup=keyboard)

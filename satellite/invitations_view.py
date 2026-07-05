@@ -90,10 +90,11 @@ def screen_from_pending(
     *,
     reference_date: date,
     truncated: bool,
+    from_settings_hub: bool = False,
 ) -> tuple[str, str, dict]:
     if not pending:
         empty = INVITATIONS_EMPTY_HTML
-        return empty, empty, build_invitations_keyboard([])
+        return empty, empty, build_invitations_keyboard([], from_settings_hub=from_settings_hub)
     body = format_invitation_list_lines(pending, tz, reference_date)
     keyboard_rows = [
         (event_callback_token(str(ev.get("url") or "")), str(idx + 1))
@@ -106,7 +107,14 @@ def screen_from_pending(
         reference_date=reference_date,
         truncated=truncated,
     )
-    return text, rich_text, build_invitations_keyboard(keyboard_rows)
+    return (
+        text,
+        rich_text,
+        build_invitations_keyboard(
+            keyboard_rows,
+            from_settings_hub=from_settings_hub,
+        ),
+    )
 
 
 def load_pending_invitations_screen(
@@ -115,6 +123,7 @@ def load_pending_invitations_screen(
     *,
     tz: tzinfo,
     now: datetime | None = None,
+    from_settings_hub: bool = False,
 ) -> InvitationsScreen:
     """Загружает CalDAV, фильтрует pending и собирает текст + inline-клавиатуру."""
     events, login, moment = fetch_invitation_events(
@@ -130,6 +139,7 @@ def load_pending_invitations_screen(
         tz,
         reference_date=today,
         truncated=truncated,
+        from_settings_hub=from_settings_hub,
     )
     get_event_token_cache().register_invitations_screen(
         user_id,
@@ -138,6 +148,7 @@ def load_pending_invitations_screen(
         login=login,
         moment=moment,
         truncated=truncated,
+        from_settings_hub=from_settings_hub,
     )
     return InvitationsScreen(
         pending=pending,

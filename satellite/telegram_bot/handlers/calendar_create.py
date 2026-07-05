@@ -59,6 +59,7 @@ log = logging.getLogger(__name__)
 def start_create_event(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_connected(ctx, msg) or msg.chat_id is None:
         return
+    ctx.digest_state.clear(msg.chat_id)
     ctx.calendar_state.set(
         msg.chat_id,
         CalendarFlowState(state=STATE_CREATE_TITLE),

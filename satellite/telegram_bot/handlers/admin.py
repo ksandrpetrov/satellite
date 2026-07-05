@@ -10,8 +10,10 @@ from ...messages_ru import (
     ADMIN_TOAST_USER_NOT_FOUND,
     CB_ADMIN_APPROVE_PREFIX,
     CB_ADMIN_REJECT_PREFIX,
+    ERR_USERS_SAVE_FAILED_TEXT,
     admin_pending_list_html,
 )
+from ...users import UserStorePersistenceError
 from ..visual import set_default_menu_button_for_chat
 from .access_notifications import notify_user_access_decision
 from .context import HandlerContext, IncomingCallback, IncomingMessage
@@ -69,6 +71,10 @@ def _handle_approve(ctx: HandlerContext, cb: IncomingCallback, target_id: int) -
     except KeyError:
         send(ctx, cb.chat_id, ADMIN_TOAST_USER_NOT_FOUND)
         return
+    except UserStorePersistenceError:
+        log.exception("Admin approve persist failed target_id=%s", target_id)
+        send(ctx, cb.chat_id, ERR_USERS_SAVE_FAILED_TEXT)
+        return
     webapp_url = webapp_connect_url(ctx, target_id)
     if record.chat_id is not None:
         set_default_menu_button_for_chat(ctx.telegram, record.chat_id)
@@ -87,6 +93,10 @@ def _handle_reject(ctx: HandlerContext, cb: IncomingCallback, target_id: int) ->
         record = ctx.users.reject(target_id, admin_telegram_id=cb.user_id)
     except KeyError:
         send(ctx, cb.chat_id, ADMIN_TOAST_USER_NOT_FOUND)
+        return
+    except UserStorePersistenceError:
+        log.exception("Admin reject persist failed target_id=%s", target_id)
+        send(ctx, cb.chat_id, ERR_USERS_SAVE_FAILED_TEXT)
         return
     if record.chat_id is not None:
         notify_user_access_decision(ctx, chat_id=record.chat_id, approved=False, webapp_url="")

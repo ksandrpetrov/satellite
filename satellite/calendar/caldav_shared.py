@@ -130,10 +130,6 @@ class CalDAVError(RuntimeError):
     """Поднимается, если ни один candidate URL не ответил успешно."""
 
 
-def _normalize_calendar_url(url: str) -> str:
-    return (url or "").strip().rstrip("/")
-
-
 def _extract_attendees_status(payload: bytes | str) -> tuple[list[str], str | None] | None:
     """(attendees, status) из ICS полного ресурса (GET или calendar-multiget)."""
     parsed = parse_calendar_events(payload, calendar_name="")

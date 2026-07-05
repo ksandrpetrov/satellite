@@ -9,12 +9,13 @@ from ..calendar.events import event_index_marker, pizza_meal_kind
 from ..calendar.stats import DayCalendarStats, NormalizedEvent
 from ..calendar.time_utils import format_hhmm, merge_intervals
 from ..messages_ru import (
+    PENDING_MARK,
     PLAN_STATS_BREAKFAST,
     PLAN_STATS_DINNER,
     PLAN_STATS_LUNCH,
+    TENTATIVE_MARK,
     format_duration_ru,
 )
-from ..messages_ru.tokens import PENDING_MARK, TENTATIVE_MARK
 from ..presentation.html import (
     expandable_blockquote,
     external_link,

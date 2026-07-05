@@ -63,10 +63,14 @@ def test_settings_hub_entry_callbacks_route(ctx: MagicMock, callback_data: str) 
 def test_digest_back_returns_to_hub(ctx: MagicMock) -> None:
     handle_callback_query(
         ctx,
-        make_callback(data=CB_DIGEST_BACK, chat_id=CHAT_ID, user_id=USER_ID),
+        make_callback(data=CB_SETTINGS_DIGEST, chat_id=CHAT_ID, user_id=USER_ID),
+    )
+    handle_callback_query(
+        ctx,
+        make_callback(data=CB_SETTINGS_BACK, chat_id=CHAT_ID, user_id=USER_ID),
     )
     text = callback_edit_html(ctx.telegram)
-    assert SETTINGS_HUB_TEXT.split()[0] in text or "Настройки" in text
+    assert "⚙️" in text and "Настройки Чайки" in text
     ctx.telegram.answer_callback_query.assert_called()
 
 

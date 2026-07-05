@@ -67,20 +67,21 @@ from .delivery import (
     ack_callback_with_loading,
     edit_callback_message,
     edit_callback_rich_or_html,
-    open_streaming_reply,
     safe_answer_callback,
-    send,
 )
 from .partstat_flow import PartstatFlow, find_event_by_token, respond_partstat
+from .streaming_caldav import StreamingCaldavResult, run_streaming_caldav_message
 
 log = logging.getLogger(__name__)
 
 _HORIZON_DAYS = 7
 _MAX_EVENTS = 12
 _MANAGE_OPEN_ACTION = "manage:open"
+_MANAGE_REFRESH_ACTION = "manage:refresh"
 
-# Двойной /manage пока CalDAV ещё идёт — два одинаковых экрана.
+# Двойной /manage или refresh пока CalDAV ещё идёт — два одинаковых экрана.
 _manage_open_guard = ActionGuard(cooldown_sec=10.0)
+_manage_refresh_guard = ActionGuard(cooldown_sec=10.0)
 
 
 def _fetch_manageable(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
@@ -169,37 +170,27 @@ def _detail_screen_for(ctx: HandlerContext, event, login: str) -> tuple[str, str
 
 
 def handle_open_manage_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
-    if not ensure_calendar_connected(ctx, msg) or msg.chat_id is None or msg.user_id is None:
+    if not ensure_calendar_connected(ctx, msg):
         return
-    if not _manage_open_guard.try_acquire(msg.chat_id, _MANAGE_OPEN_ACTION):
-        log.info("Manage open skipped (duplicate within cooldown): user_id=%s", msg.user_id)
-        send(ctx, msg.chat_id, MANAGE_BUSY_TEXT)
-        return
-    sent = False
-    try:
-        stream = open_streaming_reply(ctx, msg.chat_id, draft_id=msg.update_id, rich=True)
-        stream.push_status(MANAGE_FETCH_STATUS)
 
-        try:
-            rich_text, fallback_text, keyboard = _load_list_screen(ctx, msg.user_id)
-        except CalendarNotConnectedError:
-            log.error("Manage list failed user_id=%s: not connected", msg.user_id)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False, typewriter=False)
-            return
-        except CalendarProviderError as exc:
-            log.error("Manage list failed user_id=%s: %s", msg.user_id, exc.error_code)
-            stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False, typewriter=False)
-            return
-        stream.finish(
-            rich_text,
+    def fetch(_ctx: HandlerContext, user_id: int) -> StreamingCaldavResult:
+        rich_text, fallback_text, keyboard = _load_list_screen(_ctx, user_id)
+        return StreamingCaldavResult(
+            rich_html=rich_text,
             fallback_html=fallback_text,
-            rich=True,
             reply_markup=keyboard,
         )
-        sent = True
-        log.info("Opened manage events: user_id=%s", msg.user_id)
-    finally:
-        _manage_open_guard.release(msg.chat_id, _MANAGE_OPEN_ACTION, sent=sent)
+
+    run_streaming_caldav_message(
+        ctx,
+        msg,
+        guard=_manage_open_guard,
+        action_key=_MANAGE_OPEN_ACTION,
+        busy_text=MANAGE_BUSY_TEXT,
+        status_text=MANAGE_FETCH_STATUS,
+        fetch_fn=fetch,
+        log_label="Manage events",
+    )
 
 
 def _refresh_list(
@@ -381,7 +372,17 @@ def route_manage_events_callback(ctx: HandlerContext, cb: IncomingCallback) -> b
         safe_answer_callback(ctx, cb)
         return True
     if data in (CB_MANAGE_BACK, CB_MANAGE_REFRESH):
-        _refresh_list(ctx, cb, show_loading=True)
+        if cb.chat_id is None:
+            return True
+        if not _manage_refresh_guard.try_acquire(cb.chat_id, _MANAGE_REFRESH_ACTION):
+            safe_answer_callback(ctx, cb, text=MANAGE_BUSY_TEXT)
+            return True
+        sent = False
+        try:
+            _refresh_list(ctx, cb, show_loading=True)
+            sent = True
+        finally:
+            _manage_refresh_guard.release(cb.chat_id, _MANAGE_REFRESH_ACTION, sent=sent)
         return True
     if data.startswith(CB_MANAGE_PICK_PREFIX):
         token = data[len(CB_MANAGE_PICK_PREFIX) :]

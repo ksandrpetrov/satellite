@@ -13,7 +13,6 @@ from satellite.presentation.rich import (
     mark,
     ordered_list,
     pull_quote,
-    reference,
     rich_blocks_for_streaming,
     section_heading,
     table,
@@ -101,10 +100,6 @@ def test_thinking_block_draft_only_tag() -> None:
 def test_footnote_helpers() -> None:
     assert footnote_ref("n1") == '<a href="#n1">[n1]</a>'
     assert 'name="n1"' in footnote_def("n1", "body")
-
-
-def test_reference_tag() -> None:
-    assert reference("sched", "text") == '<tg-reference name="sched">text</tg-reference>'
 
 
 def test_rich_blocks_for_streaming_splits_blockquote() -> None:

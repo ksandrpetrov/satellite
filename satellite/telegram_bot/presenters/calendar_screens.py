@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from ...calendar.providers.base import CalendarListEntry
 from ...calendar.selection import normalize_calendar_url
-from ...messages_ru.calendar_ui import calendar_sources_screen_text
-from ...messages_ru.tokens import MARK_DISABLED, MARK_ENABLED
+from ...messages_ru import (
+    CALENDAR_SOURCES_FOOTER,
+    CALENDAR_SOURCES_INTRO,
+    MARK_DISABLED,
+    MARK_ENABLED,
+    calendar_sources_screen_text,
+)
 from ...presentation.rich import bold, join_blocks, paragraph, section_heading, unordered_list
 from .bundle import ScreenBundle
 
@@ -37,12 +42,9 @@ def calendar_sources_bundle(
     rich = join_blocks(
         [
             section_heading("📚 Календари в плане", level=3),
-            paragraph(
-                "Чайка учитывает встречи только из отмеченных календарей. "
-                "Это касается плана дня, утреннего дайджеста и «Ближайших»."
-            ),
+            paragraph(CALENDAR_SOURCES_INTRO),
             unordered_list(items),
-            paragraph("<i>Тапни строку, чтобы включить или выключить.</i>"),
+            paragraph(f"<i>{CALENDAR_SOURCES_FOOTER}</i>"),
         ]
     )
     return ScreenBundle(rich_html=rich, fallback_html=fallback, reply_markup=reply_markup)

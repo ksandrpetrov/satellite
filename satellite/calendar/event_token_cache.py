@@ -34,6 +34,7 @@ class InvitationsScreenSnapshot:
     login: str
     moment: datetime
     truncated: bool
+    from_settings_hub: bool = False
 
 
 @dataclass(frozen=True)
@@ -112,6 +113,7 @@ class EventTokenCache:
         login: str,
         moment: datetime,
         truncated: bool,
+        from_settings_hub: bool = False,
     ) -> None:
         now = time.monotonic()
         self._invitations[user_id] = (
@@ -120,6 +122,7 @@ class EventTokenCache:
                 login=login,
                 moment=moment,
                 truncated=truncated,
+                from_settings_hub=from_settings_hub,
             ),
             now,
         )
@@ -198,6 +201,7 @@ class EventTokenCache:
             login=snapshot.login,
             moment=snapshot.moment,
             truncated=snapshot.truncated and len(pending) >= len(snapshot.pending),
+            from_settings_hub=snapshot.from_settings_hub,
         )
         self._invitations[user_id] = (updated, cached_at)
         return updated

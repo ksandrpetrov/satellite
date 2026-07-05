@@ -14,8 +14,10 @@ from ...messages_ru import (
     CALENDAR_SOURCES_SINGLE_HTML,
     CB_CAL_CLOSE,
     CB_CAL_TOGGLE_PREFIX,
+    ERR_SETTINGS_SAVE_FAILED_TEXT,
     build_calendar_sources_keyboard,
 )
+from ...users import UserStorePersistenceError
 from ..presenters.calendar_screens import calendar_sources_bundle
 from .calendar_view import (
     CalendarSourcesScreenStatus,
@@ -163,7 +165,12 @@ def _handle_toggle(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None
         current.add(target_url)
         enabled_now = True
 
-    updated = ctx.users.set_enabled_calendar_urls(cb.user_id, calendar_urls=sorted(current))
+    try:
+        updated = ctx.users.set_enabled_calendar_urls(cb.user_id, calendar_urls=sorted(current))
+    except UserStorePersistenceError:
+        log.exception("Failed to persist enabled calendars user_id=%s", cb.user_id)
+        send(ctx, cb.chat_id, ERR_SETTINGS_SAVE_FAILED_TEXT)
+        return
     enabled_urls = enabled_url_set(updated)
     bundle, _keyboard = _sources_bundle(calendars, enabled_urls)
     edit_callback_bundle(ctx, cb, bundle)

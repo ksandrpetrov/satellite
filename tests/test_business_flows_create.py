@@ -233,10 +233,10 @@ def test_recognized_command_clears_create_fsm(store: UserStore) -> None:
     assert ctx.calendar_state.get(CHAT_ID) is None
 
 
-def test_digest_state_takes_precedence_over_create_text(
+def test_create_state_takes_precedence_over_digest_text(
     store: UserStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Если ждём время дайджеста — текст уходит в digest, не в create FSM."""
+    """Активный create FSM перехватывает текст раньше ожидания времени дайджеста."""
     ctx = _create_ctx(store)
     ctx.digest_state.is_waiting_for_time = MagicMock(return_value=True)
     ctx.calendar_state.set(
@@ -249,4 +249,5 @@ def test_digest_state_takes_precedence_over_create_text(
         digest_handler,
     )
     handle_message(ctx, make_msg(text="09:00", chat_id=CHAT_ID, user_id=USER_ID, update_id=40))
-    digest_handler.assert_called_once()
+    digest_handler.assert_not_called()
+    assert ctx.calendar_state.get(CHAT_ID) is not None

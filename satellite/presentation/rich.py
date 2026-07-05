@@ -99,16 +99,8 @@ def italic(text: str) -> str:
     return f"<i>{text}</i>"
 
 
-def spoiler(text: str) -> str:
-    return f"<spoiler>{text}</spoiler>"
-
-
 def mark(text: str) -> str:
     return f"<mark>{text}</mark>"
-
-
-def code(text: str) -> str:
-    return f"<code>{text}</code>"
 
 
 def blockquote(text: str, *, cite: str | None = None) -> str:
@@ -145,11 +137,6 @@ def footnote_def(ref_id: str, body: str) -> str:
         f'<a name="{escape_rich(ref_id)}"></a>'
         f'<tg-reference name="{escape_rich(ref_id)}">{body}</tg-reference>'
     )
-
-
-def reference(name: str, text: str) -> str:
-    """Текст, на который можно сослаться через ``anchor_link`` / ``#name``."""
-    return f'<tg-reference name="{escape_rich(name)}">{text}</tg-reference>'
 
 
 def thinking_block(text: str) -> str:

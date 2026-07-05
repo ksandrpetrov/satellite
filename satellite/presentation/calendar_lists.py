@@ -14,9 +14,11 @@ from ..calendar.events import (
     format_upcoming_day_header,
     parse_iso,
 )
-from ..messages_ru.meetings_ui import (
+from ..messages_ru import (
     INVITATIONS_INTRO_HTML,
     MANAGE_INTRO_HTML,
+    UPCOMING_EVENTS_HEADING_HTML,
+    UPCOMING_EVENTS_HEADING_PLAIN,
     manage_partstat_label,
 )
 from .html import expandable_blockquote
@@ -86,7 +88,7 @@ def upcoming_events_plain_fallback_html(
     max_events: int = 30,
 ) -> str:
     """Plain HTML fallback без ``<blockquote>`` — не мигает с rich ``<details>``."""
-    sections: list[str] = ["🗓 <b>Ближайшие события</b>"]
+    sections: list[str] = [UPCOMING_EVENTS_HEADING_HTML]
     for group in build_upcoming_events_groups(
         events, tz, reference_date, days=days, max_events=max_events
     ):
@@ -155,7 +157,7 @@ def upcoming_events_rich_html(
         return ""
 
     by_url = _events_by_url(events)
-    blocks: list[str] = [section_heading("Ближайшие события", level=2)]
+    blocks: list[str] = [section_heading(UPCOMING_EVENTS_HEADING_PLAIN, level=2)]
     for group in groups:
         raw_header = str(group["header"])
         header = escape_rich(raw_header)

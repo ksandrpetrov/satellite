@@ -16,6 +16,7 @@ from ..calendar.constants import (
     ANALYTICS_WORKDAY_10_19,
     DEFAULT_ANALYTICS_WORKDAY,
 )
+from ..calendar.url_utils import normalize_calendar_url as _normalize_calendar_url
 
 ALLOWED_ANALYTICS_WORKDAYS = frozenset({ANALYTICS_WORKDAY_9_18, ANALYTICS_WORKDAY_10_19})
 
@@ -170,10 +171,6 @@ def _coerce_optional_int(raw: object) -> int | None:
         except ValueError:
             return None
     return None
-
-
-def _normalize_calendar_url(url: str) -> str:
-    return (url or "").strip().rstrip("/")
 
 
 def _normalize_calendar_url_list(urls: Iterable[str]) -> tuple[str, ...]:

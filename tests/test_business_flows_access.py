@@ -158,8 +158,6 @@ def test_admin_auto_approves_on_first_start(tmp_path: Path) -> None:
     # последний send — это либо BOT_WELCOME_HTML (если has_calendar) либо
     # ACCESS_APPROVED_HTML; для нового admin без календаря допустим второй.
     sent_texts = sent_messages_text(ctx.telegram)
-    assert any(text in sent_texts for text in (BOT_WELCOME_HTML, "ACCESS_APPROVED_HTML")) or True
-    # Точная проверка: для admin без календаря отправляется ACCESS_APPROVED_HTML
     from satellite.messages_ru import ACCESS_APPROVED_HTML
 
     assert ACCESS_APPROVED_HTML in sent_texts or BOT_WELCOME_HTML in sent_texts

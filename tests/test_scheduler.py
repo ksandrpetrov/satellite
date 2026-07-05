@@ -23,11 +23,8 @@ from satellite.digest_utils import (
 )
 from satellite.invitations_view import InvitationsScreen
 from satellite.plan_service import PlanTextBundle
-from satellite.scheduler import (
-    DigestScheduler,
-    should_fire_for_user,
-    should_fire_pending_for_user,
-)
+from satellite.scheduler import DigestScheduler
+from satellite.scheduler_policy import should_fire_for_user, should_fire_pending_for_user
 from satellite.subscriptions import (
     DIGEST_DAYS_ALL,
     DIGEST_DAYS_WEEKDAYS,
@@ -374,11 +371,13 @@ def test_tick_counts_failure_when_last_sent_marker_persist_fails(
         MagicMock(side_effect=SubscriptionStorePersistenceError("disk full")),
     )
 
-    with caplog.at_level(logging.ERROR, logger="satellite.scheduler"):
+    with caplog.at_level(logging.WARNING, logger="satellite.scheduler"):
         assert scheduler.tick() == 0
 
     assert telegram.send_rich_message.call_count == 1
-    assert any("marker persist failed" in record.getMessage() for record in caplog.records)
+    assert any(
+        "last_digest_sent_date was not saved" in record.getMessage() for record in caplog.records
+    )
 
 
 def test_tick_does_not_mark_last_sent_when_send_fails(tmp_path: Path):
@@ -685,3 +684,11 @@ def test_pending_digest_weekdays_mask_1111100(tmp_path: Path) -> None:
         return_value=empty,
     ):
         assert scheduler.tick() == 0
+
+
+def test_scheduler_stop_shuts_down_executor(tmp_path: Path) -> None:
+    scheduler, _store, _telegram = _make_scheduler(tmp_path=tmp_path, now=_at(2026, 5, 11, 9, 0))
+    pool = scheduler._pool
+    scheduler.start()
+    scheduler.stop()
+    assert pool._shutdown is True

@@ -8,11 +8,6 @@ DEFAULT_THINKING_TEXT = "Чайка думает…"
 
 PLAN_PROGRESS_COMPUTING = "📊 Считаю метрики дня…"
 PLAN_PROGRESS_WEATHER = "🌤 Уточняю погоду…"
-
-UPCOMING_PROGRESS_LOADING = "🗓 Загружаю события на неделю…"
-INVITATIONS_PROGRESS_LOADING = "📨 Сверяю приглашения в календаре…"
-MANAGE_PROGRESS_LOADING = "🛠 Собираю встречи на неделе…"
-ANALYTICS_THINKING = "📊 Чайка сводит неделю по календарю…"
 SETTINGS_OPEN_THINKING = "⚙️ Открываю настройки…"
 
 

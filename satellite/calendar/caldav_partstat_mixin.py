@@ -40,10 +40,13 @@ from .caldav_shared import (
     log,
     login_variants_for_caldav,
 )
-from .events import event_local_start_date, sort_key
-from .events._collectors import event_relevant_for_invitations
-from .events._partstat import user_partstat
-from .events._time import event_ends_after
+from .events import (
+    event_ends_after,
+    event_local_start_date,
+    event_relevant_for_invitations,
+    sort_key,
+    user_partstat,
+)
 
 if TYPE_CHECKING:
     from .caldav_shared import _DiscoveryResult

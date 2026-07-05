@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Any, Literal
 
-from ...messages_ru.streaming_ui import DEFAULT_THINKING_TEXT, rich_thinking_status
+from ...messages_ru import DEFAULT_THINKING_TEXT, rich_thinking_status
 from ...presentation.delivery import deliver_rich_or_html
 from ...presentation.rich import input_rich_message
 from ..api import TelegramClient, TelegramError

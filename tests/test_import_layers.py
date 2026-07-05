@@ -104,6 +104,56 @@ def _collect_violations(package: str, prefixes: tuple[str, ...]) -> list[str]:
     return violations
 
 
+_MESSAGES_RU_PREFIXES = ("satellite.messages_ru", "messages_ru")
+_MESSAGES_RU_FACADE_ONLY = frozenset(_MESSAGES_RU_PREFIXES)
+
+
+def _messages_ru_violations(path: Path) -> list[str]:
+    rel = path.relative_to(ROOT)
+    bad: list[str] = []
+    for module in _import_modules(path):
+        if _matches(module, _MESSAGES_RU_PREFIXES):
+            bad.append(f"{rel} imports {module}")
+    return bad
+
+
+def _messages_ru_submodule_violations(path: Path) -> list[str]:
+    rel = path.relative_to(ROOT)
+    if str(rel).startswith("satellite/messages_ru/"):
+        return []
+    bad: list[str] = []
+    for module in _import_modules(path):
+        if module in _MESSAGES_RU_FACADE_ONLY:
+            continue
+        if _matches(module, _MESSAGES_RU_PREFIXES):
+            bad.append(f"{rel} imports {module} (use satellite.messages_ru facade)")
+    return bad
+
+
+@pytest.mark.parametrize("package", ("satellite/calendar",))
+def test_calendar_does_not_import_messages_ru(package: str) -> None:
+    path = ROOT / package
+    files = [path] if path.is_file() else _py_files_under(package)
+    violations: list[str] = []
+    for file_path in files:
+        violations.extend(_messages_ru_violations(file_path))
+    assert not violations, "; ".join(violations)
+
+
+def test_messages_ru_submodules_imported_only_via_facade() -> None:
+    """Вне пакета messages_ru — только ``from satellite.messages_ru import …``."""
+    violations: list[str] = []
+    for file_path in sorted((ROOT / "satellite").rglob("*.py")):
+        if not file_path.is_file():
+            continue
+        violations.extend(_messages_ru_submodule_violations(file_path))
+    for file_path in sorted((ROOT / "tests").rglob("*.py")):
+        if not file_path.is_file():
+            continue
+        violations.extend(_messages_ru_submodule_violations(file_path))
+    assert not violations, "; ".join(violations)
+
+
 @pytest.mark.parametrize("package", PURE_DOMAIN)
 def test_pure_domain_does_not_import_telegram_bot(package: str) -> None:
     violations = _collect_violations(package, _TELEGRAM_BOT_PREFIXES)

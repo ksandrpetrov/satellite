@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -13,8 +12,6 @@ STATE_CREATE_TIME = "create_time"
 STATE_CREATE_DURATION = "create_duration"
 STATE_CREATE_CONFIRM = "create_confirm"
 STATE_CREATE_SUBMITTING = "create_submitting"
-
-_DEDUP_CAPACITY = 1024
 
 
 @dataclass
@@ -32,11 +29,9 @@ class CalendarFlowState:
 
 
 class CalendarStateStore:
-    def __init__(self, dedup_capacity: int = _DEDUP_CAPACITY) -> None:
+    def __init__(self) -> None:
         self._lock = threading.Lock()
         self._items: dict[int, CalendarFlowState] = {}
-        self._seen_callbacks: OrderedDict[str, None] = OrderedDict()
-        self._dedup_capacity = max(1, int(dedup_capacity))
 
     def get(self, chat_id: int) -> CalendarFlowState | None:
         with self._lock:
@@ -53,15 +48,3 @@ class CalendarStateStore:
     def is_busy(self, chat_id: int) -> bool:
         with self._lock:
             return chat_id in self._items
-
-    def claim_callback(self, callback_id: str) -> bool:
-        if not callback_id:
-            return True
-        with self._lock:
-            if callback_id in self._seen_callbacks:
-                self._seen_callbacks.move_to_end(callback_id)
-                return False
-            self._seen_callbacks[callback_id] = None
-            while len(self._seen_callbacks) > self._dedup_capacity:
-                self._seen_callbacks.popitem(last=False)
-            return True

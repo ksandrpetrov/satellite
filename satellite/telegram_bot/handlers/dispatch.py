@@ -13,23 +13,7 @@ from dataclasses import dataclass
 
 from ...messages_ru import (
     BOT_KEYBOARD_HINT,
-    CB_ANALYTICS_BACK,
-    CB_ANALYTICS_RUN,
-    CB_ANALYTICS_WORKDAY_9,
-    CB_ANALYTICS_WORKDAY_10,
-    CB_INV_BACK,
-    CB_SETTINGS_ANALYTICS,
-    CB_SETTINGS_BACK,
-    CB_SETTINGS_CALENDAR_MENU,
-    CB_SETTINGS_CALENDARS,
-    CB_SETTINGS_CHECK,
-    CB_SETTINGS_CLOSE,
-    CB_SETTINGS_DIGEST,
-    CB_SETTINGS_DISCONNECT,
-    CB_SETTINGS_DISCONNECT_CONFIRM,
-    CB_SETTINGS_INVITATIONS,
     CB_SETTINGS_RECONNECT,
-    CB_SETTINGS_WEATHER_TOGGLE,
 )
 from ..api import TelegramError
 from .access import (
@@ -78,7 +62,11 @@ from .routing import (
     recognize_message,
 )
 from .settings import handle_digest_time_input, route_settings_callback
-from .settings_hub import handle_open_settings_hub, route_settings_hub_callback
+from .settings_hub import (
+    SETTINGS_HUB_ROUTE_KEYS,
+    handle_open_settings_hub,
+    route_settings_hub_callback,
+)
 from .subscription import handle_subscription_action
 
 log = logging.getLogger(__name__)
@@ -132,6 +120,8 @@ def _route_message(
     ctx: HandlerContext, msg: IncomingMessage, cmd: RecognizedCommand | None
 ) -> None:
     if cmd is None:
+        if handle_create_text_input(ctx, msg):
+            return
         if (
             msg.chat_id is not None
             and ctx.digest_state.is_waiting_for_time(msg.chat_id)
@@ -139,8 +129,6 @@ def _route_message(
         ):
             if ensure_calendar_access(ctx, msg):
                 handle_digest_time_input(ctx, msg)
-            return
-        if handle_create_text_input(ctx, msg):
             return
         if ensure_calendar_access(ctx, msg):
             _handle_unknown(ctx, msg)
@@ -285,23 +273,8 @@ _CALLBACK_ROUTERS: list[CallbackRouter] = [
 ]
 
 _SETTINGS_CALLBACK_OWNERS: dict[str, str] = {
-    CB_SETTINGS_DIGEST: "settings_hub",
-    CB_SETTINGS_ANALYTICS: "settings_hub",
-    CB_SETTINGS_CALENDAR_MENU: "settings_hub",
-    CB_SETTINGS_CALENDARS: "settings_hub",
-    CB_SETTINGS_INVITATIONS: "settings_hub",
-    CB_SETTINGS_CHECK: "settings_hub",
+    **{key: "settings_hub" for key in SETTINGS_HUB_ROUTE_KEYS},
     CB_SETTINGS_RECONNECT: "web_app",
-    CB_SETTINGS_DISCONNECT: "settings_hub",
-    CB_SETTINGS_DISCONNECT_CONFIRM: "settings_hub",
-    CB_SETTINGS_BACK: "settings_hub",
-    CB_SETTINGS_CLOSE: "settings_hub",
-    CB_SETTINGS_WEATHER_TOGGLE: "settings_hub",
-    CB_ANALYTICS_RUN: "settings_hub",
-    CB_ANALYTICS_WORKDAY_9: "settings_hub",
-    CB_ANALYTICS_WORKDAY_10: "settings_hub",
-    CB_ANALYTICS_BACK: "settings_hub",
-    CB_INV_BACK: "settings_hub",
 }
 
 

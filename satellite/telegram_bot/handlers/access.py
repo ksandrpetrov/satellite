@@ -11,6 +11,7 @@ from ...messages_ru import (
     BOT_HELP_HTML,
     BOT_WELCOME_HTML,
     CALENDAR_NOT_CONNECTED_HTML,
+    ERR_USERS_SAVE_FAILED_TEXT,
     REPLY_KEYBOARD_REMOVE,
     build_approved_main_keyboard,
     build_webapp_connect_keyboard,
@@ -21,11 +22,12 @@ from ...users import (
     USER_STATUS_BLOCKED,
     USER_STATUS_PENDING,
     USER_STATUS_REJECTED,
+    UserStorePersistenceError,
 )
 from ..visual import set_default_menu_button_for_chat
 from .access_notifications import notify_admins_new_request
 from .context import HandlerContext, IncomingCallback, IncomingMessage
-from .delivery import webapp_connect_url
+from .delivery import send, webapp_connect_url
 
 
 def effective_username(msg: IncomingMessage) -> str:
@@ -50,15 +52,19 @@ def handle_start_or_help(ctx: HandlerContext, msg: IncomingMessage, *, is_start:
     default_status = (
         USER_STATUS_APPROVED if ctx.admin.is_admin(msg.user_id) else USER_STATUS_PENDING
     )
-    record = ctx.users.upsert_from_telegram(
-        telegram_user_id=msg.user_id,
-        chat_id=msg.chat_id,
-        username=msg.username,
-        display_name=msg.display_name,
-        default_status=default_status,
-    )
-    if ctx.admin.is_admin(msg.user_id) and record.status != USER_STATUS_APPROVED:
-        record = ctx.users.approve(msg.user_id, admin_telegram_id=msg.user_id)
+    try:
+        record = ctx.users.upsert_from_telegram(
+            telegram_user_id=msg.user_id,
+            chat_id=msg.chat_id,
+            username=msg.username,
+            display_name=msg.display_name,
+            default_status=default_status,
+        )
+        if ctx.admin.is_admin(msg.user_id) and record.status != USER_STATUS_APPROVED:
+            record = ctx.users.approve(msg.user_id, admin_telegram_id=msg.user_id)
+    except UserStorePersistenceError:
+        send(ctx, msg.chat_id, ERR_USERS_SAVE_FAILED_TEXT)
+        return
 
     if is_start:
         _handle_start_flow(ctx, msg, record.status)

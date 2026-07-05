@@ -56,7 +56,8 @@ satellite/
   plan_service.py        # PlanBuilder (не читает users.json)
   visual_cards/
     base.py              # палитра, шрифты, примитивы PNG (аналитика)
-  scheduler.py           # DigestScheduler
+  scheduler.py           # DigestScheduler lifecycle
+  scheduler_policy.py    # should_fire_at / should_fire_for_user (чистая политика)
   subscriptions/           # пакет: фасад + record (DigestSettings) + store (SubscriptionStore)
     __init__.py
     record.py
@@ -75,13 +76,14 @@ satellite/
     settings_ui.py       # хаб настроек, аналитика, подэкран «Календарь», ERR_*
     digest_ui.py         # настройки дайджестов: daily + pending
     meetings_ui.py       # /invitations + /manage (PARTSTAT UI)
-    plan_strings.py, duration.py, streaming_ui.py, tokens.py
+    plan_strings.py, duration.py, streaming_ui.py, tokens.py, webapp_ui.py
 
   analytics/             # недельная аналитика
     service.py           # build_week_analytics (raw → отчёт → PNG + подпись)
     caption.py, render_card.py, period_stats — см. calendar/
 
   calendar/
+    duration_format.py # format_duration_long_ru (домен, без messages_ru)
     providers/             # Mail.ru + Yandex, registry
     user_calendar_service.py  # единый фасад для handlers/plan/scheduler/Web App
     operation_log.py       # audit CalDAV-операций
@@ -120,6 +122,7 @@ satellite/
       dispatch.py        # data-driven routing + access gating (см. _MESSAGE_ROUTES)
       routing.py         # recognize_message — таблица матчеров _RECOGNIZERS
       partstat_flow.py   # общий PARTSTAT-флоу для invitations и manage
+      streaming_caldav.py # ActionGuard → streaming → CalDAV fetch (invitations, manage)
       action_guard.py    # ActionGuard — дедуп долгих действий (plan/upcoming/analytics/…)
       calendar_view.py   # общие хелперы списка календарей (sources/foreign/hub)
       delivery.py, context.py  # context.py: HandlerContext + role-based views
@@ -258,13 +261,15 @@ satellite/
 - Импорт `_fetch_calendars` из `calendar_sources` в другие хендлеры — только [`calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py).
 - Второй путь нормализации событий — только `normalize_caldav_event`.
 - `DIGEST_TIME` / `DIGEST_WEEKDAYS_ONLY` в env — удалены; время в `subscriptions.json`.
-- Прямые строки в хендлерах — все user-facing тексты в [`messages_ru/`](satellite/messages_ru/) (импорт через корневой фасад).
+- Прямые строки в хендлерах — все user-facing тексты в [`messages_ru/`](satellite/messages_ru/) (импорт через корневой фасад `satellite.messages_ru`, не `messages_ru.<submodule>`; закреплено в [`test_import_layers.py`](tests/test_import_layers.py)).
 - Свой `_webapp_url` в хендлерах — только [`delivery.webapp_connect_url`](satellite/telegram_bot/handlers/delivery.py).
 - Lazy-back-импорты `settings_hub` из `settings`/`analytics` для «Назад» — навигация только в хабе (см. инвариант 12).
 - Прямой `<blockquote>` / `<tg-emoji>` в хендлерах — только [`presentation/html.py`](satellite/presentation/html.py); Rich HTML — [`presentation/rich.py`](satellite/presentation/rich.py) / [`presentation/calendar_lists.py`](satellite/presentation/calendar_lists.py); доставка rich — [`presentation/delivery.py`](satellite/presentation/delivery.py); fallback при отказе Telegram — в [`api/client.py`](satellite/telegram_bot/api/client.py). Шимы `telegram_bot/{html_format,rich_message,message_delivery}.py`, `telegram_bot/presenters/calendar_lists.py`, пакет `formatters/` и `messages_ru/_core.py` **удалены** — не воссоздавать.
 - Свой retry без `<tg-emoji>` в хендлерах — только `TelegramClient.send_message` / `edit_message_text`.
 - Дублирование PARTSTAT-логики в [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) / [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — общий флоу только в [`partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py).
 - Свой cooldown/дедуп долгих команд — только [`ActionGuard`](satellite/telegram_bot/handlers/action_guard.py) (не дублировать `_running` set в хендлерах).
+- Повторяющийся streaming+CalDAV scaffold — [`streaming_caldav.run_streaming_caldav_message`](satellite/telegram_bot/handlers/streaming_caldav.py); PARTSTAT — [`partstat_flow`](satellite/telegram_bot/handlers/partstat_flow.py).
+- `calendar/` не импортирует `messages_ru` (длительность — [`duration_format.py`](satellite/calendar/duration_format.py)); политика дайджеста — [`scheduler_policy.py`](satellite/scheduler_policy.py) (`should_fire_*`, не re-export из `scheduler.py`); `inv:back` обрабатывает invitations router, из хаба — `CB_SETTINGS_CALENDAR_BACK`.
 - Параллельный PNG-render (своя палитра/шрифты/`_load_font`/`_paste_brand_logo`) — все примитивы только в [`visual_cards/base.py`](satellite/visual_cards/base.py).
 - Прямой mutate `UserRecord`/`DigestSettings` в `users.json`/`subscriptions.json` без `_update_locked` / `_upsert_locked` — атомарность теряется.
 - `isinstance(..., RecognizedFoo)` / `if/elif` для роутинга команд и callback'ов — только таблицы `_MESSAGE_ROUTES` / `_CALLBACK_ROUTERS` в [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py).

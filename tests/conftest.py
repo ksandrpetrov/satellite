@@ -97,7 +97,9 @@ def _reset_action_guards():
         _plan._plan_run_guard,
         _upcoming._upcoming_guard,
         _invitations._invitations_open_guard,
+        _invitations._invitations_refresh_guard,
         _manage._manage_open_guard,
+        _manage._manage_refresh_guard,
         _partstat._partstat_respond_guard,
     ):
         guard.reset()

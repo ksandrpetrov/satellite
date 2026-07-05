@@ -22,5 +22,5 @@ def toggle_weather_in_plan(ctx: HandlerContext, user_id: int) -> bool | None:
         return None
     except UserStorePersistenceError:
         log.exception("Failed to persist weather_in_plan for user_id=%s", user_id)
-        return None
+        raise
     return new_enabled

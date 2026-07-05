@@ -210,10 +210,6 @@ def test_bot_commands_list_matches_menu_spec() -> None:
 # - settings_reconnect — мёртвая константа (reconnect живёт в `web_app: {url:}`).
 _CB_NOT_ROUTED_ALLOWLIST = {
     "settings_reconnect",  # см. messages_ru/settings_ui.py: web_app кнопка, не callback
-    # `cal_sources` объявлен исторически, но в текущих keyboard'ах не используется —
-    # реальный entry-point — `CB_SETTINGS_CALENDARS`. Оставлен как allowlisted,
-    # чтобы не плодить требование на «route to nowhere».
-    "cal_sources",
 }
 
 

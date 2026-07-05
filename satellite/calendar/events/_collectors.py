@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Any
 
-from ...messages_ru import format_duration_long_ru
+from ..duration_format import format_duration_long_ru
 from ..time_utils import merge_intervals, sum_minutes
 from ._filters import (
     event_index_marker,

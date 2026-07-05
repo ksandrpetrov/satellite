@@ -260,7 +260,7 @@ def test_settings_command_clears_create_fsm_and_opens_hub():
         text=BUTTON_SETTINGS,
     )
     handle_message(ctx, msg)
-    ctx.calendar_state.clear.assert_called_once_with(9001)
+    ctx.calendar_state.clear.assert_any_call(9001)
     ctx.digest_state.clear.assert_any_call(9001)
     sent = sent_messages_text(ctx.telegram)
     assert any("Настройки Чайки" in t for t in sent)

@@ -24,11 +24,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, tzinfo
 from zoneinfo import ZoneInfo
 
+from . import scheduler_policy
 from .calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
-from .calendar.time_utils import parse_hhmm
 from .calendar.user_calendar_service import UserCalendarService
 from .config import DigestConfig, PlanConfig, WeatherConfig
-from .digest_utils import DIGEST_MODE_TODAY, is_digest_day_allowed, resolve_target_date
+from .digest_utils import DIGEST_MODE_TODAY, resolve_target_date
 from .invitations_view import load_pending_invitations_screen
 from .plan_service import PlanBuilder
 from .presentation.delivery import deliver_rich_or_html
@@ -46,88 +46,6 @@ log = logging.getLogger(__name__)
 
 _DEFAULT_TICK_SEC = 30.0
 _DEFAULT_MAX_PARALLEL_DELIVERIES = 4
-
-
-def should_fire_at(
-    *,
-    enabled: bool,
-    days: str,
-    time_str: str,
-    last_sent_iso: str | None,
-    now_in_user_tz: datetime,
-    chat_id: int | None = None,
-    log_label: str = "digest_time",
-) -> bool:
-    """Чистый решатель «пора ли стрелять» для одного вида дайджеста.
-
-    Стреляем, если:
-
-    - дайджест включён;
-    - сегодня (в локали пользователя) — разрешённый день недели;
-    - локальное время **>=** запланированного (``HH:MM``);
-    - сегодня ещё не отправляли (``last_sent_iso`` ≠ сегодня).
-
-    Семантика «>=» вместо строгого «==» — защита от потери слота
-    при рестарте/исключении ровно в scheduled-минуту. Защита от двойной
-    отправки — единственно через ``last_sent_iso`` (его выставляет caller
-    после успешного ``sendMessage``).
-    """
-    if not enabled:
-        return False
-    if not is_digest_day_allowed(days, now_in_user_tz.weekday()):
-        return False
-    try:
-        scheduled_minutes = parse_hhmm(time_str)
-    except ValueError:
-        if chat_id is not None:
-            log.warning(
-                "Invalid %s for chat_id=%s: %r",
-                log_label,
-                chat_id,
-                time_str,
-            )
-        return False
-    current_minutes = now_in_user_tz.hour * 60 + now_in_user_tz.minute
-    if current_minutes < scheduled_minutes:
-        return False
-    today_iso = now_in_user_tz.date().isoformat()
-    if last_sent_iso == today_iso:
-        return False
-    return True
-
-
-def should_fire_for_user(
-    *,
-    settings: DigestSettings,
-    now_in_user_tz: datetime,
-) -> bool:
-    """Дайджест на сегодня (план дня)."""
-    return should_fire_at(
-        enabled=settings.digest_enabled,
-        days=settings.digest_days,
-        time_str=settings.digest_time,
-        last_sent_iso=settings.last_digest_sent_date,
-        now_in_user_tz=now_in_user_tz,
-        chat_id=settings.chat_id,
-        log_label="digest_time",
-    )
-
-
-def should_fire_pending_for_user(
-    *,
-    settings: DigestSettings,
-    now_in_user_tz: datetime,
-) -> bool:
-    """Дайджест непринятых встреч (экран /invitations)."""
-    return should_fire_at(
-        enabled=settings.pending_digest_enabled,
-        days=settings.pending_digest_days,
-        time_str=settings.pending_digest_time,
-        last_sent_iso=settings.last_pending_digest_sent_date,
-        now_in_user_tz=now_in_user_tz,
-        chat_id=settings.chat_id,
-        log_label="pending_digest_time",
-    )
 
 
 class DigestScheduler:
@@ -284,7 +202,7 @@ class DigestScheduler:
 
         user_tz_daily = self._user_tz(sub.digest_timezone)
         now_daily = self._now_fn(user_tz_daily)
-        if should_fire_for_user(settings=sub, now_in_user_tz=now_daily):
+        if scheduler_policy.should_fire_for_user(settings=sub, now_in_user_tz=now_daily):
             daily_due = 1
             today = now_daily.date()
             log.info(
@@ -299,10 +217,13 @@ class DigestScheduler:
                     self._subscriptions.mark_digest_sent(sub.chat_id, today)
                 except SubscriptionStorePersistenceError:
                     daily_failed = 1
-                    log.exception(
-                        "Daily digest sent but marker persist failed: chat_id=%s username=%s",
+                    log.warning(
+                        "Daily digest delivered but last_digest_sent_date was not saved "
+                        "(chat_id=%s username=%s) — user may receive a duplicate tomorrow; "
+                        "check logs/subscriptions.json permissions and disk space",
                         sub.chat_id,
                         sub.username,
+                        exc_info=True,
                     )
                 else:
                     daily_sent = 1
@@ -311,7 +232,7 @@ class DigestScheduler:
 
         user_tz_pending = self._user_tz(sub.pending_digest_timezone)
         now_pending = self._now_fn(user_tz_pending)
-        if should_fire_pending_for_user(settings=sub, now_in_user_tz=now_pending):
+        if scheduler_policy.should_fire_pending_for_user(settings=sub, now_in_user_tz=now_pending):
             pending_due = 1
             today = now_pending.date()
             log.info(
@@ -326,10 +247,13 @@ class DigestScheduler:
                     self._subscriptions.mark_pending_digest_sent(sub.chat_id, today)
                 except SubscriptionStorePersistenceError:
                     pending_failed = 1
-                    log.exception(
-                        "Pending digest sent but marker persist failed: chat_id=%s username=%s",
+                    log.warning(
+                        "Pending digest delivered but last_pending_digest_sent_date was not "
+                        "saved (chat_id=%s username=%s) — user may receive a duplicate "
+                        "tomorrow; check logs/subscriptions.json permissions and disk space",
                         sub.chat_id,
                         sub.username,
+                        exc_info=True,
                     )
                 else:
                     pending_sent = 1

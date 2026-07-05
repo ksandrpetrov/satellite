@@ -4,7 +4,30 @@ from __future__ import annotations
 
 import threading
 
-from satellite.telegram_bot.concurrency import ChatLockManager, InflightTracker
+from satellite.telegram_bot.concurrency import ChatLockManager
+
+
+class _InflightTracker:
+    """Legacy dedup helper — kept only to document prior behaviour in tests."""
+
+    def __init__(self) -> None:
+        self._items: set[int] = set()
+        self._lock = threading.Lock()
+
+    def add_if_absent(self, chat_id: int | None) -> bool:
+        if chat_id is None:
+            return True
+        with self._lock:
+            if chat_id in self._items:
+                return False
+            self._items.add(chat_id)
+            return True
+
+    def discard(self, chat_id: int | None) -> None:
+        if chat_id is None:
+            return
+        with self._lock:
+            self._items.discard(chat_id)
 
 
 def test_chat_lock_manager_returns_same_lock_for_same_chat():
@@ -49,7 +72,7 @@ def test_chat_lock_manager_is_threadsafe():
 
 
 def test_inflight_tracker_add_if_absent_returns_true_first_time():
-    tracker = InflightTracker()
+    tracker = _InflightTracker()
     assert tracker.add_if_absent(1) is True
     assert tracker.add_if_absent(1) is False
     tracker.discard(1)
@@ -57,14 +80,13 @@ def test_inflight_tracker_add_if_absent_returns_true_first_time():
 
 
 def test_inflight_tracker_handles_none_as_always_admit():
-    tracker = InflightTracker()
-    # None — это «нет чата»; обработка не должна сериализоваться, всегда True.
+    tracker = _InflightTracker()
     assert tracker.add_if_absent(None) is True
     assert tracker.add_if_absent(None) is True
 
 
 def test_inflight_tracker_discard_noop_for_missing():
-    tracker = InflightTracker()
-    tracker.discard(99)  # не должно крашиться
+    tracker = _InflightTracker()
+    tracker.discard(99)
     tracker.discard(None)
     assert tracker.add_if_absent(99) is True

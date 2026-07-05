@@ -12,7 +12,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
-from ..messages_ru.webapp_ui import webapp_copy_json
+from ..messages_ru import webapp_copy_json
 from .errors import error_payload
 from .responses import json_response
 

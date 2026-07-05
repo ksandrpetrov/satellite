@@ -6,13 +6,10 @@ from typing import TYPE_CHECKING
 
 from .callback_tokens import calendar_callback_token
 from .providers.base import CalendarListEntry
+from .url_utils import normalize_calendar_url
 
 if TYPE_CHECKING:
     from ..users import UserRecord
-
-
-def normalize_calendar_url(url: str | None) -> str:
-    return (url or "").strip().rstrip("/")
 
 
 def _normalize_url(url: str | None) -> str:

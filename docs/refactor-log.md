@@ -311,7 +311,8 @@ pytest оставался зелёным.
     `warn_if_users_lost` из `startup_checks`.
 13. **Слой presentation/** — canonical HTML/Rich/calendar_lists/delivery;
     `formatters/` re-export; убраны lazy-imports domain→telegram_bot;
-    `CB_INV_BACK` только в `settings_hub`; `subscriptions/` пакет (как `users/`);
+    `inv:back` → invitations router; из хаба настроек «Назад» — `CB_SETTINGS_CALENDAR_BACK`;
+    `subscriptions/` пакет (как `users/`);
     `tests/test_import_layers.py`.
 14. **Handlers/transport split** — `settings_bindings.py` + `settings_callbacks.py`;
     `telegram_bot/api/` (client + errors); `telegram_bot/streaming/` (helpers + session);
@@ -366,6 +367,26 @@ Behaviour-preserving: `make check` зелёный (954 теста).
 
 Behaviour-preserving: тексты, callback_data, HTTP-контракт, формат сторов не
 менялись. `make check` зелёный.
+
+---
+
+## Pre-release audit (2026-07-05)
+
+Цель — стабильность и чистота перед релизом без смены внешнего контракта.
+
+1. **Мёртвый код** — `BRAND_EMOJI`, `spoiler`/`code`/`reference` в `presentation/rich.py`,
+   `InflightTracker`, неиспользуемые строки в `streaming_ui.py`, orphan `CB_CAL_SOURCES`,
+   тройной `_normalize_calendar_url` → `calendar/selection.normalize_calendar_url`.
+2. **Invitations UX** — без дубля «В календарь» вне хаба; `from_settings_hub` в
+   `EventTokenCache`; refresh/respond сохраняют `CB_SETTINGS_CALENDAR_BACK`; тон «попробуй».
+3. **Тексты presenters** — shared strings из `messages_ru` для hub/calendar/upcoming.
+4. **Persistence + guards** — `UserStorePersistenceError` в access/admin/analytics/
+   calendar_sources/settings; weather toggle toast; ActionGuard на refresh invitations/manage;
+   WARNING при failed `mark_*_sent` в scheduler.
+5. **Тесты** — invitations hub/keyboard, `duration_format`, `scheduler_policy`,
+   `streaming_caldav`, `partstat_flow` dedup, `settings_bindings`, scheduler `stop()`.
+
+Post-release техдолг: JsonStore memory/disk divergence без rollback.
 
 ---
 
