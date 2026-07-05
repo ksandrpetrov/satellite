@@ -43,6 +43,27 @@ def test_url_field_has_priority_over_description():
     assert extract_conference_url(event) == "https://meet.google.com/from-url"
 
 
+def test_skips_calendar_permalink_url_in_favor_of_meet_in_description():
+    event = {
+        "url": "https://calendar.yandex.ru/event/?event_id=123",
+        "description": "Звонок: https://meet.google.com/abc-defg-hij",
+    }
+    assert extract_conference_url(event) == "https://meet.google.com/abc-defg-hij"
+
+
+def test_skips_calendar_permalink_url_in_favor_of_meet_in_location():
+    event = {
+        "url": "https://calendar.mail.ru/event/abc",
+        "location": "https://meet.google.com/abc-defg-hij",
+    }
+    assert extract_conference_url(event) == "https://meet.google.com/abc-defg-hij"
+
+
+def test_calendar_permalink_only_returns_none():
+    event = {"url": "https://calendar.yandex.ru/event/?event_id=123"}
+    assert extract_conference_url(event) is None
+
+
 def test_prefers_known_video_host_in_description():
     event = {
         "description": ("Docs: https://example.com/agenda Call: https://meet.google.com/best-link"),

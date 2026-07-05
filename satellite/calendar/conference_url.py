@@ -23,9 +23,21 @@ _PROVIDER_HOSTS: tuple[tuple[str, str], ...] = (
     ("teams.live.com", "teams"),
     ("vk.team", "vk_teams"),
     ("vkcalls", "vk_teams"),
+    ("telemost.yandex.", "telemost"),
     ("jit.si", "jitsi"),
     ("jitsi", "jitsi"),
     ("webex.com", "webex"),
+)
+
+# Permalink на страницу события в календаре — не ссылка на звонок (часто в поле ``URL``).
+_CALENDAR_PERMALINK_MARKERS: tuple[str, ...] = (
+    "calendar.yandex.",
+    "calendar.google.com",
+    "calendar.mail.ru",
+    "e.mail.ru/calendar",
+    "outlook.office.com/calendar",
+    "outlook.live.com/calendar",
+    "outlook.office365.com/calendar",
 )
 
 
@@ -86,25 +98,59 @@ def _pick_best_url(urls: list[str]) -> str | None:
     return min(urls, key=lambda candidate: (_provider_rank(candidate), len(candidate)))
 
 
+def _is_calendar_event_permalink(url: str) -> bool:
+    """Страница события в календаре, а не прямой вход в видеозвонок."""
+    parsed = urlparse(url)
+    host_path = f"{parsed.netloc.lower()}{parsed.path.lower()}"
+    if host_path.endswith(".ics"):
+        return True
+    return any(marker in host_path for marker in _CALENDAR_PERMALINK_MARKERS)
+
+
+def _append_candidate(
+    candidates: list[str],
+    url: str | None,
+    *,
+    skip_calendar_permalinks: bool,
+) -> None:
+    if not url or url in candidates:
+        return
+    if skip_calendar_permalinks and _is_calendar_event_permalink(url):
+        return
+    candidates.append(url)
+
+
 def extract_conference_url(event: Mapping[str, object]) -> str | None:
-    """URL видеозвонка: ``url`` → ``location`` → ``description`` (лучший по провайдеру)."""
+    """URL видеозвонка: лучший по провайдеру из ``url``, ``location`` и ``description``.
+
+    Поле ``URL`` в ICS часто содержит permalink события (Yandex/Google/Mail.ru),
+    а ссылка на Meet/Zoom лежит в ``location`` или ``description`` — поэтому
+    собираем все кандидаты и отдаём приоритет известным видеохостам.
+    """
+    candidates: list[str] = []
+
     url_field = event.get("url")
     if url_field is not None:
-        normalized = _normalize_url(str(url_field))
-        if normalized:
-            return normalized
+        _append_candidate(
+            candidates,
+            _normalize_url(str(url_field)),
+            skip_calendar_permalinks=True,
+        )
 
     location = event.get("location")
     if location is not None:
-        normalized = _normalize_url(str(location).strip())
-        if normalized:
-            return normalized
+        _append_candidate(
+            candidates,
+            _normalize_url(str(location).strip()),
+            skip_calendar_permalinks=False,
+        )
 
     description = event.get("description")
     if description is not None:
-        return _pick_best_url(_urls_in_text(str(description)))
+        for url in _urls_in_text(str(description)):
+            _append_candidate(candidates, url, skip_calendar_permalinks=True)
 
-    return None
+    return _pick_best_url(candidates)
 
 
 def display_room_location(
