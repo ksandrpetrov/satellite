@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 
 Interval = tuple[int, int]
@@ -44,8 +45,6 @@ def normalize_hhmm_input(value: str | None) -> str | None:
     Возврат None означает «не получилось распарсить»; пользователю об этом
     отвечает вызывающий хендлер. Так держим валидацию отделимой от UI.
     """
-    import re
-
     if value is None:
         return None
     candidate = value.strip()

@@ -23,7 +23,7 @@ JSON-store ``logs/users.json`` хранит per-user статус доступа
 разнесено по ответственности:
 
 - :mod:`.record` — ``UserRecord`` + enum-константы + helpers парсинга;
-- :mod:`.store` — ``UserStore`` + ``UserStorePersistenceError``;
+- :mod:`.store` — ``UserStore`` + ошибки загрузки/записи;
 - :mod:`.admin` — парсинг ``ADMIN_TELEGRAM_IDS``.
 
 Внешние импорты ``from satellite.users import …`` не меняются.
@@ -49,7 +49,7 @@ from .record import (
     USER_STATUS_REJECTED,
     UserRecord,
 )
-from .store import UserStore, UserStorePersistenceError
+from .store import UserStore, UserStoreLoadError, UserStorePersistenceError
 
 __all__ = [
     "ACCESS_REQUEST_APPROVED",
@@ -70,6 +70,7 @@ __all__ = [
     "USER_STATUS_REJECTED",
     "UserRecord",
     "UserStore",
+    "UserStoreLoadError",
     "UserStorePersistenceError",
     "admin_id_set",
     "parse_admin_ids",

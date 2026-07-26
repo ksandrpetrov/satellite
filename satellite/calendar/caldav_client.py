@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import date, datetime, timezone, tzinfo
+from datetime import UTC, date, datetime, tzinfo
 from typing import Any, cast
 from uuid import uuid4
 
@@ -205,7 +205,7 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
         uid = f"satellite-{uuid4()}@satellite.local"
         component = IcsEvent()
         component.add("uid", uid)
-        component.add("dtstamp", datetime.now(tz=timezone.utc))
+        component.add("dtstamp", datetime.now(tz=UTC))
         component.add("summary", title)
         component.add("dtstart", _to_utc(start))
         component.add("dtend", _to_utc(end))
@@ -263,7 +263,7 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
                         del component[prop]
                 component.add("dtstart", utc_start)
                 component.add("dtend", utc_end)
-                component.add("dtstamp", datetime.now(tz=timezone.utc))
+                component.add("dtstamp", datetime.now(tz=UTC))
                 if location:
                     component["location"] = location
                 elif "location" in component:

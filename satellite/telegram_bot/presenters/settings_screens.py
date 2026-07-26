@@ -7,6 +7,7 @@ from ...messages_ru import (
     ANALYTICS_WORKDAY_APPLIED_TEXT,
     DIGEST_DAYS_LABEL,
     SETTINGS_CALENDAR_MENU_BODY,
+    SETTINGS_CALENDAR_MENU_TEXT,
     SETTINGS_DISCONNECT_CONFIRM_TEXT,
     SETTINGS_HUB_INTRO,
     SETTINGS_HUB_TITLE_PLAIN,
@@ -57,8 +58,6 @@ def settings_hub_bundle(
 
 
 def settings_calendar_menu_bundle(*, reply_markup: dict | None = None) -> ScreenBundle:
-    from ...messages_ru import SETTINGS_CALENDAR_MENU_TEXT
-
     fallback = SETTINGS_CALENDAR_MENU_TEXT
     rich = join_blocks(
         [

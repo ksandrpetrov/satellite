@@ -30,7 +30,6 @@ bash scripts/install.sh --dev
 
 ```bash
 source venv/bin/activate
-pip install -r requirements.txt
 pip install -r requirements-dev.txt
 ```
 
@@ -44,8 +43,9 @@ python -m pytest
 В CI на **pull request** ([`.github/workflows/test.yml`](../.github/workflows/test.yml))
 и перед **deploy** ([`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml))
 один reusable workflow [`.github/workflows/_checks.yml`](../.github/workflows/_checks.yml)
-на Python 3.11:
+в матрице Python 3.11/3.12:
 
+- **lock-check** — generated locks соответствуют `requirements*.in`;
 - **ruff** — `ruff check` и `ruff format --check` (блокирующий);
 - **mypy** — `mypy satellite` (блокирующий);
 - **py_compile** — все модули `satellite/` и `tests/`;
@@ -63,9 +63,21 @@ semver-образ. После деплоя CI вызывает [`smoke-prod.sh`]
 
 ## Контракт зависимостей (`test_requirements.py`)
 
-[`tests/test_requirements.py`](../tests/test_requirements.py) фиксирует пины в
-`requirements.txt`, в первую очередь `caldav>=3.0,<4` (Python 3.10+; smoke проверяет импорты
-и mypy). Не ослабляйте assert без осознанной смены контракта CalDAV.
+[`requirements.in`](../requirements.in) и
+[`requirements-dev.in`](../requirements-dev.in) содержат только прямые точные
+пины. `requirements.txt` и `requirements-dev.txt` — generated uv-locks всех
+runtime/dev/transitive пакетов для Python 3.11/3.12, macOS/Linux; хеши
+distribution намеренно не включены. Обновление:
+
+```bash
+make lock        # только uv 0.11.32
+make lock-check  # не меняет рабочие lock-файлы
+```
+
+[`tests/test_requirements.py`](../tests/test_requirements.py) проверяет inputs,
+generated header, точные версии, Python baseline и `caldav==3.2.1`. Smoke
+сверяет lock с реально установленной версией. Не ослабляйте assert без
+осознанной смены контракта зависимостей.
 
 ## Smoke (образ и production URL)
 
@@ -280,7 +292,9 @@ CalDAV-словари в `calculate_day_stats` не подаём напряму�
 ## Static Checks
 
 Конфиг инструментов — [`pyproject.toml`](../pyproject.toml) (`ruff`, `mypy`,
-`pytest`). Dev-зависимости — `requirements-dev.txt`; опционально
+`pytest`). Mypy strict включён точечно для persistence, scheduler, dispatcher
+и bot lifecycle; остальной проект остаётся на базовом блокирующем режиме.
+Dev-зависимости устанавливаются из `requirements-dev.txt`; опционально
 `pre-commit install` (см. [`.pre-commit-config.yaml`](../.pre-commit-config.yaml)).
 
 ```bash
@@ -289,6 +303,7 @@ make format      # ruff format satellite tests
 make typecheck   # mypy satellite (блокирующий гейт, как в CI)
 make compile     # py_compile всех .py
 make check       # lint + typecheck + compile + test
+make lock-check  # generated dependency locks актуальны
 ```
 
 ## Compile Check

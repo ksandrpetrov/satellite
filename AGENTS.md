@@ -43,11 +43,11 @@ satellite/
   services.py            # run_bot
   backup.py              # снапшоты users.json / subscriptions.json при старте
   config.py              # load_settings; SecurityConfig, AdminConfig, WebAppConfig
-  json_store.py          # JsonStoreBase — общая атомарная persistence для JSON-сторов
+  json_store.py          # generic JsonStoreBase: transactional candidate → disk → memory
   users/                 # пакет: фасад + record (UserRecord) + store (UserStore) + admin (parse_admin_ids)
     __init__.py          # re-export публичного API (UserStore, UserRecord, USER_STATUS_*, …)
     record.py            # UserRecord (dataclass) + enum-константы + helpers парсинга
-    store.py             # UserStore + UserStorePersistenceError (наследует JsonStoreBase)
+    store.py             # UserStore + публичные Load/Persistence errors
     admin.py             # parse_admin_ids / admin_id_set (env → tuple[int])
   security/
     token_vault.py       # Fernet encrypt/decrypt ProviderCredentials
@@ -114,7 +114,7 @@ satellite/
 
   telegram_bot/
     bot.py               # lifecycle, scheduler, WebAppServer
-    update_dispatcher.py # worker pool + per-chat locks для updates
+    update_dispatcher.py # bounded worker queue + per-chat locks для updates
     startup_checks.py    # self-check шифрования и persistence на старте
     commands.py          # setup_bot_identity, меню команд
     visual.py            # TypingIndicator, message effects, menu button
@@ -125,7 +125,7 @@ satellite/
       streaming_caldav.py # ActionGuard → streaming → CalDAV fetch (invitations, manage)
       action_guard.py    # ActionGuard — дедуп долгих действий (plan/upcoming/analytics/…)
       calendar_view.py   # общие хелперы списка календарей (sources/foreign/hub)
-      delivery.py, context.py  # context.py: HandlerContext + role-based views
+      delivery.py, context.py  # context.py: плоский HandlerContext DI + update DTO
       access.py, access_notifications.py, admin.py
       settings_hub.py    # inline-хаб «Настройки» (роутер CB_SETTINGS_* / CB_ANALYTICS_*)
       settings.py        # фасад: re-export settings_bindings + settings_callbacks
@@ -163,7 +163,7 @@ satellite/
 | Финальный рендер | [`seagull/render.py`](satellite/seagull/render.py), [`seagull/rules.py`](satellite/seagull/rules.py) |
 | Команду / кнопку | [`recognize_message`](satellite/telegram_bot/handlers/routing.py) → запись в `_RECOGNIZERS`; маршрутизация — [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py) (`_MESSAGE_ROUTES`, `_CALLBACK_ROUTERS`) |
 | Хаб настроек / дайджест | [`handlers/settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py) (роутер всех `CB_SETTINGS_*` / `CB_ANALYTICS_*`), [`handlers/settings_callbacks.py`](satellite/telegram_bot/handlers/settings_callbacks.py) + [`handlers/settings_bindings.py`](satellite/telegram_bot/handlers/settings_bindings.py) (экраны «на сегодня» и «непринятых встреч», таблица `BINDINGS`) |
-| Дайджест непринятых встреч (расписание + автоотправка) | [`scheduler.py`](satellite/scheduler.py) `_deliver_pending`, [`invitations_view.py`](satellite/invitations_view.py) `load_pending_invitations_screen`; настройки — `pending_digest_*` в [`subscriptions/`](satellite/subscriptions/) (дни: legacy + 7-bit mask), UI — [`messages_ru/digest_ui.py`](satellite/messages_ru/digest_ui.py) `CB_PENDING_DIGEST_*`, `mark_pending_digest_sent` |
+| Дайджест непринятых встреч (расписание + автоотправка) | [`scheduler.py`](satellite/scheduler.py) `_deliver_pending`, [`invitations_view.py`](satellite/invitations_view.py) `load_pending_invitations_screen`; empty тоже отмечается обработанным в `last_pending_digest_sent_date`; настройки — `pending_digest_*` в [`subscriptions/`](satellite/subscriptions/) (дни: legacy + 7-bit mask), UI — [`messages_ru/digest_ui.py`](satellite/messages_ru/digest_ui.py) |
 | Дни отправки дайджестов (маска, подпись) | [`digest_utils.py`](satellite/digest_utils.py) — `is_digest_day_allowed`, `digest_days_to_bitmask`, `format_digest_days_label`, `toggle_digest_days_bitmask` |
 | Чужие (пошаренные) календари | [`handlers/calendar_foreign.py`](satellite/telegram_bot/handlers/calendar_foreign.py) |
 | Список CalDAV-календарей в UI | [`handlers/calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py) — `fetch_calendars` (→ `CalendarListResult`) и `build_calendar_sources_screen` |
@@ -190,7 +190,7 @@ satellite/
 | Ответ на встречу (PARTSTAT) | [`handlers/partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py) — общий флоу; [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) и [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — тонкие адаптеры |
 | PNG недельной аналитики | [`analytics/render_card.py`](satellite/analytics/render_card.py), примитивы — [`visual_cards/base.py`](satellite/visual_cards/base.py) |
 | JSON-store мутацию (users / subscriptions) | [`json_store.py`](satellite/json_store.py) (`JsonStoreBase`), [`users/store.py`](satellite/users/store.py) и [`subscriptions/store.py`](satellite/subscriptions/store.py) (`_upsert_locked`, `DigestSettings.{to,from}_json`); прямой `replace()` не использовать |
-| Контекст хендлера (роли) | [`handlers/context.py`](satellite/telegram_bot/handlers/context.py) — `HandlerContext` + view-свойства `.messaging` / `.identity` / `.calendar` / `.scheduling`; для access — `ensure_calendar_*` принимает `chat_id` / `user_id` явно, без `IncomingMessage`-фейков |
+| Контекст хендлера | [`handlers/context.py`](satellite/telegram_bot/handlers/context.py) — плоский `HandlerContext` как явный DI-контейнер; для access — `ensure_calendar_*` принимает `chat_id` / `user_id` явно, без `IncomingMessage`-фейков |
 | Диагностика CalDAV с сервера | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) — см. [troubleshooting.md](docs/troubleshooting.md) |
 
 ## Инварианты — не нарушать
@@ -207,14 +207,15 @@ satellite/
    (для `pending_digest_days` — и 7-bit mask).
 6. **Тексты** — [`messages_ru/`](satellite/messages_ru/) / шаблоны seagull/weather.
 7. **Хендлеры не пробрасывают исключения** — safe text из `messages_ru`.
-8. **Атомарная запись JSON-store** — общая логика в [`json_store.py`](satellite/json_store.py) (`JsonStoreBase`: tmp + fsync + `os.replace`); `UserStore` и `SubscriptionStore` наследуют её.
+8. **Транзакционная запись JSON-store** — общая логика в [`json_store.py`](satellite/json_store.py): под одним lock `candidate → tmp + fsync + os.replace → _items`. Ошибка записи не меняет memory/disk. Missing file допустим; битый root/record — фатальная load-ошибка запуска.
 9. **`logs/`, `.env`, `venv/`** — не коммитим.
 10. **Команды и кнопки** — только [`recognize_message`](satellite/telegram_bot/handlers/routing.py); любая распознанная команда сбрасывает FSM (`digest_state`, `calendar_state`) в [`dispatch.py`](satellite/telegram_bot/handlers/dispatch.py).
 11. **Подписка на дайджест** — `DigestSettings.telegram_user_id` в [`subscriptions/record.py`](satellite/subscriptions/record.py); scheduler резолвит пользователя через `UserStore.get`, не через `username`.
 12. **Навигация настроек** — кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` обрабатывает только [`settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py); `settings.py` и `analytics.py` не импортируют друг друга и не имеют lazy-back-импортов в хаб.
-13. **Сбой `UserStore._save_locked`** — поднимает [`UserStorePersistenceError`](satellite/users/store.py); caller (handler / Web App) ловит на границе и показывает безопасный текст.
+13. **Сбой store commit** — поднимает `UserStorePersistenceError` / `SubscriptionStorePersistenceError`; caller ловит на границе и показывает безопасный текст. Load-ошибки ловятся только startup boundary.
 14. **Перед коммитом** — `make check` (ruff lint + `ruff format --check` + mypy + py_compile + pytest). Стиль/форматирование — только [`ruff`](pyproject.toml) (lint + format); blackd/isort не используем. Поведение при падении тестов — см. раздел **«Тесты и регрессии»** ниже.
 15. **Слои импортов** — домен (`calendar/`, `seagull/`, `weather/`, `analytics/`, `messages_ru/`, `presentation/`, `scheduler.py`, `plan_service.py`, …) не импортирует `telegram_bot`; единственное исключение — `presentation/delivery.py → telegram_bot.api`. Закреплено в [`tests/test_import_layers.py`](tests/test_import_layers.py).
+16. **Зависимости** — прямые пины править только в `requirements.in` / `requirements-dev.in`; generated locks обновлять `make lock` через `uv==0.11.32` и проверять `make lock-check`. Python baseline — 3.11.
 
 ## Тесты и регрессии (для агентов)
 
@@ -306,6 +307,7 @@ python -m ruff format satellite tests             # make format
 python -m mypy satellite                          # make typecheck (блокирующий гейт)
 find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 python -m py_compile  # make compile
 make check                                        # lint + format-check + typecheck + compile + test (full)
+make lock-check                                   # generated dependency locks актуальны
 make docker-smoke                                 # smoke образа: импорты + /healthz (см. docs/testing.md)
 make smoke-prod                                   # curl публичного /healthz, /connect, /api/… после деплоя
 python telegram_test_command.py                   # make run
@@ -319,7 +321,7 @@ python telegram_test_command.py                   # make run
 [deploy/README.md](deploy/README.md));
 **Docker (local)** — `make env && make docker-up` (см. корневой `docker-compose.yml`).
 
-CI: reusable [`.github/workflows/_checks.yml`](.github/workflows/_checks.yml) (ruff lint + format check, mypy, py_compile, pytest);
+CI: reusable [`.github/workflows/_checks.yml`](.github/workflows/_checks.yml) на Python 3.11/3.12 (lock-check, ruff lint + format check, mypy, py_compile, pytest);
 [`.github/workflows/test.yml`](.github/workflows/test.yml) — только PR; [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — push в `main` или тег `v*`: checks → образ в GHCR → **docker smoke** → deploy (healthy + smoke-prod);
 rolling deploy по SSH (`scripts/ci-deploy-remote.sh`) — только для `main` и `workflow_dispatch`
 (тег `v*` лишь пушит semver-образ). Первичный деплой (`.env`, `docker-compose.yml`, образ) — `make deploy` (Ansible);
@@ -409,8 +411,11 @@ production, ngrok/Cloudflare Tunnel в dev). Проксируйте `/connect` �
 по `key_fingerprint` (sha256[0:8]) видно, что `TOKEN_ENCRYPTION_KEY` не сменился.
 Если хоть один approved-пользователь не расшифровывается текущим ключом,
 [`bot.py`](satellite/telegram_bot/bot.py) пишет `CRITICAL Encryption self-check failed`.
+Если durable store содержит невалидный JSON/root/record, после создания
+startup-снапшота процесс пишет `CRITICAL`, не запускает scheduler/Web App и
+требует восстановить последний валидный backup.
 Если стор пустой (`users=0, subs=0`), но в `logs/backups/` уже есть `users.json.*.bak`,
-[`bot.py::_warn_if_users_lost`](satellite/telegram_bot/bot.py) кричит `WARNING Persistence is empty …` —
+[`startup_checks.warn_if_users_lost`](satellite/telegram_bot/startup_checks.py) кричит `WARNING Persistence is empty …` —
 скорее всего, это миграция systemd→Docker без переноса данных в volume (см. ниже).
 
 #### Миграция systemd → Docker (один раз)
@@ -432,3 +437,18 @@ volume пустой — контейнер не видит legacy-данные, 
    Идемпотентен; `FORCE=1` чтобы перетереть непустой volume.
 3. [`bot.py::_warn_if_users_lost`](satellite/telegram_bot/bot.py) ловит сценарий «volume
    пустой, но backups уже есть» — последняя линия защиты, если детектор в (1) обойдут.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+When the user types `$graphify` (Codex syntax), use the installed graphify skill or
+instructions before doing anything else.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Graph updates are explicit; this project does not install Graphify git hooks.
+- After modifying code, run `make graphify-update` (AST-only, no API cost).
+- After modifying documentation, run `$graphify . --update` so Codex refreshes semantic nodes.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.

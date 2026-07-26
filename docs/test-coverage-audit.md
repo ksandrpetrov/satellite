@@ -158,7 +158,8 @@
 | Не отправляет дважды в одном tick | – | `test_tick_does_not_double_send_within_same_tick_cycle` | OK | без изменений |
 | Один упавший пользователь не блокирует других | – | `test_tick_one_failed_user_does_not_block_others` | Нет явной проверки, что `last_digest_sent_date` упавшего НЕ продвигается | [test_scheduler.py](../tests/test_scheduler.py) *(ext)* |
 | Catch-up после пропущенной минуты | – | `test_tick_catches_up_after_missed_scheduled_minute` | OK | без изменений |
-| Pending-digest (отправка + skip when empty + bitmask) | `_deliver_pending` | `test_tick_pending_*` | Нет специального теста с маской "Только среда" и `1111100` | [test_scheduler.py](../tests/test_scheduler.py) *(ext)* |
+| Pending-digest (отправка + empty обрабатывается один раз + bitmask) | `_deliver_pending` | `test_tick_pending_*` | Не было защиты от CalDAV-poll каждые 30 с при empty | `test_tick_pending_empty_is_marked_and_not_rechecked_same_day` |
+| Marker persistence failure не создаёт дубль в процессе; новый день снова разрешён | process-local checkpoint | – | Не было checkpoint поверх rollback store | `test_tick_counts_failure_when_last_sent_marker_persist_fails`, `test_pending_marker_failure_does_not_repeat_send_in_same_process`, `test_process_checkpoint_allows_processing_on_next_day` |
 | Резолв пользователя через `telegram_user_id`, не username | – | косвенно | Не было прямой проверки subscription без username | [test_scheduler.py](../tests/test_scheduler.py) *(ext)* |
 | TZ minute boundary | `resolve_target_date`, `_deliver_daily` | `test_resolve_target_date` | OK | без изменений |
 
@@ -188,7 +189,7 @@
 | Список без primary | `calendar/selection.py::foreign_calendar_entries` | `test_foreign_calendar_entries_excludes_primary` | OK | без изменений |
 | Day picker (today/tomorrow/day_after) | `messages_ru` | `test_foreign_day_keyboard_offers_today_tomorrow_and_day_after` | OK | без изменений |
 | Callback flow (pick → day → events) | `calendar_foreign.py::route_foreign_calendars_callback` | `test_foreign_calendars_callback_flow` | OK | без изменений |
-| CalDAV error / empty state / refresh-fail | `calendar_foreign.py` | – | Не было прямого теста | покрыто косвенно (cb_flow) — оставлено как известное упрощение, основной риск-репорт через `test_calendar_view_helpers` |
+| CalDAV error / empty state / refresh-fail | `calendar_foreign.py` | – | Не было прямого теста | [test_calendar_foreign.py](../tests/test_calendar_foreign.py) — open empty/error, callback refresh error, day fetch error |
 
 ## 14. Telegram API resilience
 
@@ -205,10 +206,13 @@
 |---|---|---|---|---|
 | TokenVault encrypt/decrypt + invalid key + key rotation | [security/token_vault.py](../satellite/security/token_vault.py) | – (только через `test_user_calendar_service.py`) | Не было прямых тестов TokenVault, key rotation, corrupted blob | [test_business_flows_runtime_state.py](../tests/test_business_flows_runtime_state.py) *(new)* |
 | Сырой пароль никогда не попадает в `users.json` | `users/store.py`, `web/api/calendar.py::handle_connect` | косвенно | Не было grep-теста | [test_business_flows_runtime_state.py](../tests/test_business_flows_runtime_state.py) *(new)*, [test_business_flows_webapp.py](../tests/test_business_flows_webapp.py) *(new)* |
-| `subscriptions.json` атомарная запись + recovery | [subscriptions.py](../satellite/subscriptions.py) | `test_subscriptions.py::test_persistence_*`, `test_load_from_corrupt_file_does_not_crash` | OK | без изменений |
-| `users.json` атомарная запись | – | `test_save_raises_persistence_error_on_disk_failure` | OK | без изменений |
+| Транзакционный commit stores: write failure сохраняет прежние memory/disk, параллельные commits не теряются | `json_store.py`, `users/store.py`, `subscriptions/store.py` | Проверялась только публичная write-ошибка | Не было rollback/concurrency контракта | `test_save_raises_persistence_error_on_disk_failure`, `test_parallel_*_commits_do_not_lose_records` |
+| Missing store допустим; битый JSON/root/record фатален | `UserStoreLoadError`, `SubscriptionStoreLoadError` | Битый subscription считался пустым | Fail-fast startup | `test_invalid_users_store_is_fatal`, `test_structurally_invalid_subscription_store_is_fatal`, `test_run_bot_reports_store_recovery_and_releases_instance_lock` |
+| Startup backup предшествует strict load; Web App/scheduler не создаются | `TelegramBot.__init__` | – | Не было проверки порядка | `test_startup_snapshot_precedes_strict_store_load` |
+| Shutdown закрывает все ресурсы независимо и идемпотентно | `TelegramBot.shutdown` | – | Не было failure injection по closer | `test_shutdown_failure_does_not_skip_other_resources`, `test_shutdown_is_idempotent` |
+| Dispatcher ограничивает running+queued и не подтверждает update при stop в ожидании | `UpdateDispatcher` | Только per-chat serialization | Не было backpressure | `test_pending_limit_applies_backpressure_before_submit`, `test_stop_while_waiting_keeps_unsubmitted_update_unconfirmed` |
 | Backup на старте + retention 20 | [backup.py](../satellite/backup.py) | `test_backup.py` (snapshot, prune, retention) | OK | без изменений |
-| Persistence warning при пустом сторе с бэкапами | `bot.py::_warn_if_users_lost` | `test_persistence_warning.py` | OK | без изменений |
+| Persistence warning при пустом сторе с бэкапами | `startup_checks.warn_if_users_lost` | `test_persistence_warning.py` | OK | без изменений |
 | Offset watermark не регрессит | `offset_store.py` | `test_polling_offset_does_not_regress` | OK | без изменений |
 | bot.lock единственный инстанс | `instance_lock.py` | `test_instance_lock.py` | OK | без изменений |
 | Лог hygiene (нет сырого пароля/токена) | – | – | Нет регрессии | [test_business_flows_runtime_state.py](../tests/test_business_flows_runtime_state.py) *(new)* |

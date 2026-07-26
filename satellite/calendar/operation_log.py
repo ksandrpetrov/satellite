@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -38,7 +38,7 @@ class CalendarOperationLog:
             "status": status,
             "error_code": error_code,
             "correlation_id": cid,
-            "ts": datetime.now(tz=timezone.utc).isoformat(timespec="seconds"),
+            "ts": datetime.now(tz=UTC).isoformat(timespec="seconds"),
         }
         line = json.dumps(entry, ensure_ascii=False)
         try:

@@ -47,11 +47,11 @@ pytest оставался зелёным.
    `_CALLBACK_ROUTERS`, `_RECOGNIZERS`. Хелпер `_button_or_command`
    объединил все `is_*_request`-проверки. Добавление новой команды теперь
    стоит одну строку в таблице.
-6. **`HandlerContext` — role-based views, `ensure_calendar_*` по IDs** —
-   `HandlerContext` остался для совместимости, но получил view-свойства
-   `.messaging`, `.identity`, `.calendar`, `.scheduling`. `ensure_calendar_access`
+6. **`HandlerContext`, `ensure_calendar_*` по IDs** —
+   `ensure_calendar_access`
    и `ensure_calendar_connected` принимают keyword-only `chat_id`/`user_id` —
-   фабрикация `IncomingMessage` (`_msg_from_cb`) удалена.
+   фабрикация `IncomingMessage` (`_msg_from_cb`) удалена. Экспериментальные
+   role-view свойства позднее удалены как неиспользуемые (см. hardening ниже).
 7. **`messages_ru.py` → пакет** — 1272-строчный файл превращён в пакет
    `satellite/messages_ru/`. `__init__.py` ре-экспортирует публичное API из
    `_core.py`. Старые импорты `from satellite.messages_ru import X`
@@ -101,10 +101,8 @@ pytest оставался зелёным.
 
 ## Что осталось «дешёвым» техдолгом
 
-- mypy strict пока выключен — план: включать модуль за модулем
-  (`web/`, `calendar/providers/`, `plan_service.py`, `scheduler.py`),
-  предварительно проставив аннотации. Базовый mypy уже блокирующий в CI
-  (0 ошибок на момент Фазы 11).
+- mypy strict включён для persistence, scheduler, dispatcher и bot lifecycle.
+  Остальные модули переводятся постепенно; базовый mypy блокирует весь проект.
 
 ## messages_ru: разбиение по сценариям (2026-05-22)
 
@@ -386,7 +384,35 @@ Behaviour-preserving: тексты, callback_data, HTTP-контракт, фор
 5. **Тесты** — invitations hub/keyboard, `duration_format`, `scheduler_policy`,
    `streaming_caldav`, `partstat_flow` dedup, `settings_bindings`, scheduler `stop()`.
 
-Post-release техдолг: JsonStore memory/disk divergence без rollback.
+JsonStore memory/disk divergence закрыт в hardening 2026-07-26 ниже.
+
+---
+
+## Архитектурный hardening (2026-07-26)
+
+Точечный аудит по стабильности, поддерживаемости и стоимости agent-driven
+правок. Внешние Telegram/Web API и wire-format durable JSON не менялись.
+
+1. **Transactional stores** — generic `JsonStoreBase[T]`, сериализованный
+   commit `candidate → tmp/fsync/replace → _items`. Write failure сохраняет
+   старое memory/disk состояние; version/write-lock схема удалена.
+2. **Fail-fast load** — missing file остаётся пустым store, а битый JSON/root/
+   record даёт `UserStoreLoadError` / `SubscriptionStoreLoadError`. Startup
+   сначала создаёт backup, затем отказывается запускать Web App/scheduler с
+   recovery-инструкцией.
+3. **Scheduler checkpoints** — pending outcome стал enum; empty отмечается как
+   обработанный день. Process-local checkpoint предотвращает повторный send или
+   CalDAV fetch при сбое marker persistence.
+4. **Lifecycle/backpressure** — shutdown независимо закрывает scheduler, Web
+   App, worker pool, Telegram и weather; dispatcher ограничивает running+queued
+   updates значением `2 × BOT_WORKERS`, не подтверждая неотправленную в pool
+   задачу.
+5. **Меньше ложных абстракций** — неиспользуемые role-view типы
+   `HandlerContext` удалены; остался плоский явный DI-контейнер. Strict-набор
+   mypy включён только для затронутых критических модулей.
+6. **Reproducible tooling** — Python baseline 3.11, CI 3.11/3.12, Docker 3.12;
+   direct pins в `requirements*.in`, generated locks через `uv==0.11.32`,
+   `make lock` / `make lock-check`.
 
 ---
 

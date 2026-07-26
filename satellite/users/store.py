@@ -1,22 +1,13 @@
-"""Thread-safe JSON-store пользователей.
-
-Атомарные записи (``tmp + fsync + os.replace``); все читающие/пишущие методы
-синхронизированы через один lock. Загрузка устойчива к битому файлу:
-невалидная запись игнорируется, остальные подгружаются.
-
-Все мутаторы — тонкие обёртки над ``_update_locked`` / ``_update_locked_with``;
-единственное место, где меняется ``updated_at`` и идёт ``_save_locked``.
-"""
+"""Транзакционный JSON-store пользователей."""
 
 from __future__ import annotations
 
-import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from ..json_store import JsonStoreBase
+from ..json_store import JsonStoreBase, JsonStoreLoadError
 from .record import (
     ACCESS_REQUEST_APPROVED,
     ACCESS_REQUEST_PENDING,
@@ -33,26 +24,23 @@ from .record import (
     _normalize_calendar_url_list,
 )
 
-log = logging.getLogger(__name__)
-
 
 class UserStorePersistenceError(RuntimeError):
-    """Не удалось записать ``users.json`` на диск.
-
-    Пробрасывается из ``UserStore._save_locked`` вместо тихого логирования —
-    in-memory состояние при этом уже обновлено и будет сохранено при следующей
-    успешной записи (мы сериализуем весь словарь, а не дельту). Caller должен
-    показать пользователю безопасный текст из ``messages_ru``.
-    """
+    """Не удалось записать ``users.json``; прежнее состояние сохранено."""
 
 
-class UserStore(JsonStoreBase):
+class UserStoreLoadError(JsonStoreLoadError):
+    """``users.json`` повреждён или недоступен."""
+
+
+class UserStore(JsonStoreBase[UserRecord]):
     """Thread-safe JSON-store пользователей.
 
     См. модульный docstring выше.
     """
 
     _PERSISTENCE_ERROR = UserStorePersistenceError
+    _LOAD_ERROR = UserStoreLoadError
     _STORE_LABEL = "users"
 
     def __init__(self, path: str | Path) -> None:
@@ -112,7 +100,6 @@ class UserStore(JsonStoreBase):
         normalized_user = (username or "").strip().lower() or None
         normalized_name = (display_name or "").strip() or None
         now_iso = self._now_iso()
-        changed = False
         with self._lock:
             existing = self._items.get(telegram_user_id)
             if existing is None:
@@ -125,8 +112,6 @@ class UserStore(JsonStoreBase):
                     created_at=now_iso,
                     updated_at=now_iso,
                 )
-                self._items[telegram_user_id] = record
-                changed = True
             else:
                 updated = existing
                 if chat_id is not None and existing.chat_id != chat_id:
@@ -137,11 +122,12 @@ class UserStore(JsonStoreBase):
                     updated = replace(updated, display_name=normalized_name)
                 if updated is not existing:
                     updated = replace(updated, updated_at=now_iso)
-                    self._items[telegram_user_id] = updated
-                    changed = True
                 record = updated
-        if changed:
-            self._save_locked()
+                if updated is existing:
+                    return record
+            candidate = dict(self._items)
+            candidate[telegram_user_id] = record
+            self._commit_items_locked(candidate)
         return record
 
     def submit_access_request(self, telegram_user_id: int) -> tuple[UserRecord, bool]:
@@ -152,7 +138,6 @@ class UserStore(JsonStoreBase):
         создаёт новую заявку и не дёргает админа второй раз.
         """
         now_iso = self._now_iso()
-        changed = False
         with self._lock:
             existing = self._items.get(telegram_user_id)
             if existing is None:
@@ -170,10 +155,9 @@ class UserStore(JsonStoreBase):
                 resolved_by_admin_id=None,
                 updated_at=now_iso,
             )
-            self._items[telegram_user_id] = updated
-            changed = True
-        if changed:
-            self._save_locked()
+            candidate = dict(self._items)
+            candidate[telegram_user_id] = updated
+            self._commit_items_locked(candidate)
         return updated, True
 
     def approve(self, telegram_user_id: int, *, admin_telegram_id: int) -> UserRecord:
@@ -361,17 +345,15 @@ class UserStore(JsonStoreBase):
         ``updated_at`` всегда обновляется на ``now_iso``.
         """
         now_iso = self._now_iso()
-        changed = False
         with self._lock:
             existing = self._items.get(telegram_user_id)
             if existing is None:
                 raise KeyError(telegram_user_id)
             fields = change(existing, now_iso)
             updated = replace(existing, **fields, updated_at=now_iso)
-            self._items[telegram_user_id] = updated
-            changed = True
-        if changed:
-            self._save_locked()
+            candidate = dict(self._items)
+            candidate[telegram_user_id] = updated
+            self._commit_items_locked(candidate)
         return updated
 
     def _load(self) -> dict[int, UserRecord]:
@@ -380,15 +362,18 @@ class UserStore(JsonStoreBase):
         for key, value in raw.items():
             try:
                 user_id = int(key)
-            except (TypeError, ValueError):
-                continue
+            except (TypeError, ValueError) as exc:
+                raise self._load_error(f"record key {key!r} is not an integer") from exc
             if not isinstance(value, dict):
-                continue
+                raise self._load_error(f"record {key!r} must be a JSON object")
             try:
                 items[user_id] = UserRecord.from_json(user_id, value)
-            except Exception:  # noqa: BLE001 - не валим бот из-за одной битой записи
-                log.warning("Skipping malformed user record %r", key, exc_info=True)
+            except Exception as exc:  # noqa: BLE001 - переводим в публичную load-ошибку
+                raise self._load_error(f"record {key!r} is structurally invalid: {exc}") from exc
         return items
 
-    def _build_snapshot_payload(self) -> dict[str, Any]:
-        return {str(rec.telegram_user_id): rec.to_json() for rec in self._items.values()}
+    def _build_snapshot_payload(
+        self,
+        items: Mapping[int, UserRecord],
+    ) -> dict[str, Any]:
+        return {str(rec.telegram_user_id): rec.to_json() for rec in items.values()}

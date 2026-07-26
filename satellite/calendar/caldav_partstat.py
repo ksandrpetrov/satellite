@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .ical_parser import _attendee_to_str
@@ -24,7 +24,7 @@ def bump_vevent_dtstamp(component: Any) -> None:
     for prop in ("dtstamp", "DTSTAMP"):
         if prop in component:
             del component[prop]
-    component.add("dtstamp", datetime.now(tz=timezone.utc))
+    component.add("dtstamp", datetime.now(tz=UTC))
 
 
 def bump_vevent_sequence(component: Any) -> None:

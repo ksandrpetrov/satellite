@@ -10,18 +10,33 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from satellite.calendar.events import format_single_day_events_lines
-from satellite.calendar.providers.base import CalendarListEntry
+from satellite.calendar.providers.base import CalendarListEntry, CalendarProviderError
 from satellite.calendar.selection import calendar_callback_token, foreign_calendar_entries
 from satellite.messages_ru import (
     BUTTON_DAY_AFTER,
     BUTTON_FOREIGN_CALENDARS,
     BUTTON_TODAY,
     BUTTON_TOMORROW,
+    CB_FOREIGN_BACK,
     CB_FOREIGN_DAY_PREFIX,
+    ERR_CALDAV_UNAVAILABLE_TEXT,
+    FOREIGN_CALENDARS_EMPTY_HTML,
+    FOREIGN_CALENDARS_LOAD_FAIL_HTML,
     build_foreign_day_keyboard,
     button_text_is_foreign_calendars,
 )
+from satellite.telegram_bot.handlers.calendar_foreign import (
+    clear_foreign_list_cache,
+    handle_open_foreign_calendars,
+    route_foreign_calendars_callback,
+)
+from satellite.telegram_bot.handlers.context import (
+    HandlerContext,
+    IncomingCallback,
+    IncomingMessage,
+)
 from satellite.telegram_bot.handlers.routing import is_foreign_calendars_request
+from satellite.testing.delivery_helpers import final_message_html
 from satellite.users import CALENDAR_CONNECTED, USER_STATUS_APPROVED, UserStore
 
 TZ = ZoneInfo("Europe/Moscow")
@@ -83,6 +98,147 @@ def test_format_single_day_events_lines():
 @pytest.fixture
 def users(tmp_path: Path) -> UserStore:
     return UserStore(tmp_path / "users.json")
+
+
+def _connected_context(
+    users: UserStore,
+    *,
+    user_id: int,
+    list_calendars: object,
+) -> MagicMock:
+    users.upsert_from_telegram(
+        telegram_user_id=user_id,
+        chat_id=user_id,
+        username=f"user{user_id}",
+        display_name=f"User {user_id}",
+        default_status=USER_STATUS_APPROVED,
+    )
+    users.set_calendar_connection(
+        user_id,
+        provider="mailru",
+        encrypted_credentials="enc",
+        primary_calendar_url="https://cal/primary",
+    )
+    users.mark_calendar_status(user_id, status=CALENDAR_CONNECTED)
+
+    ctx = MagicMock(spec=HandlerContext)
+    ctx.users = users
+    ctx.tz = TZ
+    ctx.calendar_service = MagicMock()
+    if isinstance(list_calendars, Exception):
+        ctx.calendar_service.list_calendars.side_effect = list_calendars
+    else:
+        ctx.calendar_service.list_calendars.return_value = list_calendars
+    ctx.telegram = MagicMock()
+    ctx.telegram.edit_message_text = MagicMock()
+    ctx.telegram.answer_callback_query = MagicMock()
+    ctx.digest_state = MagicMock()
+    ctx.digest_state.claim_callback.return_value = True
+    return ctx
+
+
+def test_open_foreign_calendars_empty_state_is_safe(users: UserStore) -> None:
+    user_id = 201
+    ctx = _connected_context(
+        users,
+        user_id=user_id,
+        list_calendars=[CalendarListEntry(name="Мой", url="https://cal/primary")],
+    )
+
+    handle_open_foreign_calendars(
+        ctx,
+        IncomingMessage(
+            update_id=1,
+            chat_id=user_id,
+            user_id=user_id,
+            username=f"user{user_id}",
+            display_name=f"User {user_id}",
+            text="/foreign",
+        ),
+    )
+
+    assert final_message_html(ctx.telegram) == FOREIGN_CALENDARS_EMPTY_HTML
+
+
+def test_open_foreign_calendars_provider_error_is_safe(users: UserStore) -> None:
+    user_id = 202
+    ctx = _connected_context(
+        users,
+        user_id=user_id,
+        list_calendars=CalendarProviderError("timeout", error_code="CALENDAR_ERROR"),
+    )
+
+    handle_open_foreign_calendars(
+        ctx,
+        IncomingMessage(
+            update_id=2,
+            chat_id=user_id,
+            user_id=user_id,
+            username=f"user{user_id}",
+            display_name=f"User {user_id}",
+            text="/foreign",
+        ),
+    )
+
+    assert final_message_html(ctx.telegram) == FOREIGN_CALENDARS_LOAD_FAIL_HTML
+
+
+def test_foreign_back_provider_error_replaces_loading_state(users: UserStore) -> None:
+    user_id = 203
+    clear_foreign_list_cache(user_id)
+    ctx = _connected_context(
+        users,
+        user_id=user_id,
+        list_calendars=CalendarProviderError("timeout", error_code="CALENDAR_ERROR"),
+    )
+    cb = IncomingCallback(
+        update_id=3,
+        callback_query_id="cb-back-error",
+        chat_id=user_id,
+        message_id=5,
+        user_id=user_id,
+        username=f"user{user_id}",
+        data=CB_FOREIGN_BACK,
+    )
+
+    assert route_foreign_calendars_callback(ctx, cb)
+
+    assert ctx.telegram.edit_message_text.call_args_list[-1].args[2] == (
+        FOREIGN_CALENDARS_LOAD_FAIL_HTML
+    )
+
+
+def test_foreign_day_provider_error_uses_safe_caldav_text(users: UserStore) -> None:
+    user_id = 204
+    clear_foreign_list_cache(user_id)
+    shared_url = "https://cal/shared"
+    ctx = _connected_context(
+        users,
+        user_id=user_id,
+        list_calendars=[
+            CalendarListEntry(name="Мой", url="https://cal/primary"),
+            CalendarListEntry(name="Команда", url=shared_url),
+        ],
+    )
+    ctx.calendar_service.list_events.side_effect = CalendarProviderError(
+        "timeout",
+        error_code="CALENDAR_ERROR",
+    )
+    cb = IncomingCallback(
+        update_id=4,
+        callback_query_id="cb-day-error",
+        chat_id=user_id,
+        message_id=5,
+        user_id=user_id,
+        username=f"user{user_id}",
+        data=f"{CB_FOREIGN_DAY_PREFIX}{calendar_callback_token(shared_url)}:0",
+    )
+
+    assert route_foreign_calendars_callback(ctx, cb)
+
+    assert ctx.telegram.edit_message_text.call_args_list[-1].args[2] == (
+        ERR_CALDAV_UNAVAILABLE_TEXT
+    )
 
 
 def test_foreign_calendars_callback_flow(users: UserStore) -> None:

@@ -3,7 +3,7 @@
 Фасад пакета. Раньше всё жило в одном ``subscriptions.py``; сейчас:
 
 - :mod:`.record` — ``DigestSettings``, константы, validation helpers;
-- :mod:`.store` — ``SubscriptionStore``, ``SubscriptionStorePersistenceError``.
+- :mod:`.store` — ``SubscriptionStore`` и ошибки загрузки/записи.
 
 Импорты ``from satellite.subscriptions import …`` не меняются.
 """
@@ -21,7 +21,11 @@ from .record import (
     Subscription,
     is_valid_pending_digest_days,
 )
-from .store import SubscriptionStore, SubscriptionStorePersistenceError
+from .store import (
+    SubscriptionStore,
+    SubscriptionStoreLoadError,
+    SubscriptionStorePersistenceError,
+)
 
 __all__ = [
     "ALLOWED_DIGEST_DAYS",
@@ -35,6 +39,7 @@ __all__ = [
     "DigestSettings",
     "Subscription",
     "SubscriptionStore",
+    "SubscriptionStoreLoadError",
     "SubscriptionStorePersistenceError",
     "is_valid_pending_digest_days",
 ]

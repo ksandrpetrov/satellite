@@ -8,7 +8,6 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Union
 
 from ...messages_ru import (
     button_text_is_calendar_sources,
@@ -100,22 +99,22 @@ class PendingCommand:
     pass
 
 
-RecognizedCommand = Union[
-    PlanCommand,
-    SubscriptionCommand,
-    StartOrHelpCommand,
-    SettingsCommand,
-    UpcomingCommand,
-    CreateCommand,
-    ConnectCommand,
-    DisconnectCommand,
-    CheckCommand,
-    CalendarSourcesCommand,
-    ForeignCalendarsCommand,
-    InvitationsCommand,
-    ManageEventsCommand,
-    PendingCommand,
-]
+RecognizedCommand = (
+    PlanCommand
+    | SubscriptionCommand
+    | StartOrHelpCommand
+    | SettingsCommand
+    | UpcomingCommand
+    | CreateCommand
+    | ConnectCommand
+    | DisconnectCommand
+    | CheckCommand
+    | CalendarSourcesCommand
+    | ForeignCalendarsCommand
+    | InvitationsCommand
+    | ManageEventsCommand
+    | PendingCommand
+)
 
 
 def _plan_command(text: str) -> PlanCommand | None:

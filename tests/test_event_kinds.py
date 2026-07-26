@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import UTC
 
 from satellite.calendar.event_kinds import (
     classify_event_kind,
@@ -11,7 +11,7 @@ from satellite.calendar.event_kinds import (
 )
 from satellite.calendar.events import Event
 
-TZ = timezone.utc
+TZ = UTC
 
 
 def _ev(

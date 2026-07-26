@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from threading import Lock
 
 from ...calendar.providers.base import (
@@ -68,7 +68,7 @@ def clear_calendar_list_cache(user_id: int | None = None) -> None:
             _calendar_list_cache.pop(user_id, None)
 
 
-class CalendarListStatus(str, Enum):
+class CalendarListStatus(StrEnum):
     """Исход попытки получить список календарей пользователя."""
 
     OK = "ok"
@@ -120,7 +120,7 @@ def fetch_calendars(
     return result
 
 
-class CalendarSourcesScreenStatus(str, Enum):
+class CalendarSourcesScreenStatus(StrEnum):
     """Готовый экран «Календари в плане» либо причина, почему его нет."""
 
     SCREEN = "screen"

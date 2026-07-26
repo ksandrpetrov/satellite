@@ -215,7 +215,7 @@ ghcr.io/ksandrpetrov/satellite:<semver>      # для тега vX.Y.Z
 задайте секрет `GHCR_PULL_TOKEN` — опционально: без него rolling deploy логинится
 через `github.token` job'а, см. [deploy/README.md](../deploy/README.md)).
 
-Образ собирается на **Python 3.12** (`Dockerfile`); CI-тесты — на 3.11.
+Образ собирается на **Python 3.12** (`Dockerfile`); CI-тесты идут на 3.11 и 3.12.
 
 #### Подготовка
 
@@ -305,7 +305,7 @@ Push в `main`, ручной запуск workflow `deploy` (`Actions → deploy
 
 Pipeline [`deploy.yml`](../.github/workflows/deploy.yml) после сборки образа гоняет
 [`docker-smoke-image.sh`](../scripts/docker-smoke-image.sh) (импорт всех модулей `satellite`,
-пин `caldav>=3.0,<4`, HTTP `/healthz` внутри контейнера через
+пин `caldav==3.2.1`, HTTP `/healthz` внутри контейнера через
 [`smoke_container.py`](../scripts/smoke_container.py)). Локально: `make docker-smoke`.
 
 Скрипт [`ci-deploy-remote.sh`](../scripts/ci-deploy-remote.sh) (тот же, что в Actions):
@@ -608,6 +608,13 @@ active=… key_fingerprint=…` — по `key_fingerprint` (sha256[0:8]) вид�
 (включая `TOKEN_ENCRYPTION_KEY`) и при необходимости `logs/backups/` обязательно
 при переносе сервера.
 
+Если `users.json` или `subscriptions.json` содержит невалидный JSON/root/record,
+бот после startup-снапшота пишет `CRITICAL` и отказывается запускать scheduler
+и Web App. Это намеренная защита от перезаписи повреждённого store пустым
+состоянием. Восстановите последний **валидный** файл из `logs/backups/` и
+перезапустите процесс; самый свежий snapshot может быть копией уже повреждённого
+файла, поэтому проверьте JSON перед восстановлением.
+
 ## Scheduler Lifecycle
 
 Scheduler стартует вместе с `TelegramBot` и останавливается при shutdown.
@@ -615,6 +622,11 @@ Scheduler стартует вместе с `TelegramBot` и останавлив
 Он не создает отдельные per-user jobs. Вместо этого один thread раз в 30 секунд
 проверяет активных подписчиков. Это проще и устойчивее для небольшого числа
 пользователей.
+
+Пустая проверка pending-приглашений считается успешно обработанным днём:
+сообщение не отправляется, но `last_pending_digest_sent_date` обновляется.
+Process-local checkpoint защищает от повторной отправки/проверки в том же
+процессе, если durable marker не удалось сохранить.
 
 ## Обновление
 
@@ -632,7 +644,7 @@ make run
 ```bash
 git pull --ff-only
 source venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements-dev.txt
 python -m pytest
 python telegram_test_command.py
 ```
@@ -657,7 +669,9 @@ sudo systemctl restart satellite-bot.service
 ```
 
 Для production достаточно `requirements.txt`; dev-зависимости нужны только
-для локальной разработки и CI.
+для локальной разработки и CI. Оба файла generated: прямые пины меняют в
+`requirements.in` / `requirements-dev.in`, затем запускают `make lock`
+(`uv==0.11.32`). `make lock-check` проверяет, что locks не устарели.
 
 ## Наблюдение
 

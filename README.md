@@ -63,7 +63,7 @@ Production Telegram-бот для календарных дайджестов и
 
 ## Быстрый старт
 
-Один из вариантов на выбор.
+Нужен Python 3.11 или 3.12. Один из вариантов установки:
 
 **Через bootstrap-скрипт (рекомендуется).** Создаёт `venv/`, ставит зависимости,
 готовит `logs/` и `.env` с автосгенерированным `TOKEN_ENCRYPTION_KEY`:
@@ -203,6 +203,7 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 | Эксплуатация и деплой | [docs/operations.md](docs/operations.md) |
 | Docker (Ansible) | [deploy/README.md](deploy/README.md) |
 | Тестирование | [docs/testing.md](docs/testing.md) ([smoke](docs/testing.md#smoke-образ-и-production-url)) |
+| Knowledge graph для Codex | [docs/graphify.md](docs/graphify.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | Refactor log | [docs/refactor-log.md](docs/refactor-log.md) |
 | Покрытие сценариев | [docs/test-coverage-audit.md](docs/test-coverage-audit.md) |
@@ -219,7 +220,7 @@ CI/CD:
 - [_checks.yml](.github/workflows/_checks.yml) — reusable: ruff (lint + format check), mypy, py_compile, pytest.
 - [test.yml](.github/workflows/test.yml) — только PR (вызывает `_checks.yml`).
 - [deploy.yml](.github/workflows/deploy.yml) — push в `main` или тег `v*`: `_checks.yml` → образ в GHCR →
-  **docker smoke** (`scripts/docker-smoke-image.sh`: импорты, `caldav>=3`, `/healthz` в образе) → deploy
+  **docker smoke** (`scripts/docker-smoke-image.sh`: импорты, `caldav==3.2.1`, `/healthz` в образе) → deploy
   (`:sha-<short>`, на main ещё `:latest`, на теге — semver). Rolling deploy по SSH — только для `main`
   и ручного **Run workflow** (healthy + host `/healthz` + `smoke-prod` с публичного URL); тег `v*`
   только публикует образ. Секреты, variable `SMOKE_PUBLIC_BASE_URL` и первичный деплой (Ansible) —

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from .config import Settings, assert_telegram_bot_token_valid, load_settings
+from .json_store import JsonStoreLoadError
 from .logging_setup import setup_logging
 from .telegram_bot.bot import TelegramBot
 from .telegram_bot.instance_lock import InstanceLock, InstanceLockError
@@ -37,7 +38,16 @@ def run_bot(*, settings: Settings | None = None) -> None:
         )
         raise SystemExit(1) from exc
     try:
-        bot = TelegramBot(settings)
+        try:
+            bot = TelegramBot(settings)
+        except JsonStoreLoadError as exc:
+            log.critical(
+                "Refusing to start because a durable JSON store is unreadable: %s. "
+                "Restore the latest valid snapshot from %s and restart the bot.",
+                exc,
+                settings.project_root / "logs" / "backups",
+            )
+            raise SystemExit(1) from exc
         try:
             bot.run()
         except KeyboardInterrupt:

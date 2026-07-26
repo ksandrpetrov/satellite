@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -14,7 +14,7 @@ def test_snapshot_creates_copy_with_timestamp(tmp_path: Path) -> None:
     source = tmp_path / "users.json"
     source.write_text('{"42": {}}', encoding="utf-8")
 
-    fixed = datetime(2026, 5, 20, 18, 30, 0, tzinfo=timezone.utc)
+    fixed = datetime(2026, 5, 20, 18, 30, 0, tzinfo=UTC)
     snap = backup.snapshot(source, now=fixed)
 
     assert snap is not None
@@ -32,7 +32,7 @@ def test_snapshot_prunes_oldest(tmp_path: Path) -> None:
     source = tmp_path / "subscriptions.json"
     source.write_text("{}", encoding="utf-8")
 
-    start = datetime(2026, 5, 20, 12, 0, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 5, 20, 12, 0, 0, tzinfo=UTC)
     for offset in range(5):
         backup.snapshot(
             source,
@@ -55,7 +55,7 @@ def test_snapshot_prune_only_touches_same_prefix(tmp_path: Path) -> None:
     users.write_text("{}", encoding="utf-8")
     subs.write_text("{}", encoding="utf-8")
 
-    fixed = datetime(2026, 5, 20, 9, 0, 0, tzinfo=timezone.utc)
+    fixed = datetime(2026, 5, 20, 9, 0, 0, tzinfo=UTC)
     backup.snapshot(users, max_snapshots=1, now=fixed)
     backup.snapshot(subs, max_snapshots=1, now=fixed + timedelta(seconds=1))
 

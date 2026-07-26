@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -82,7 +82,7 @@ def test_plan_aliases_call_plan_builder_with_correct_target_date(
     expected_offset: int,
 ) -> None:
     """Каждый alias плана должен дать ровно один build_text с корректной датой."""
-    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.plan", now=fixed_now)
 
     ctx = _build_ctx(approved_user_store)
@@ -117,7 +117,7 @@ def test_plan_releases_guard_after_caldav_failure(
     при исключении. Иначе одна сетевая блика → 30 с глухой блокировки для всего
     чата, и пользователь думает, что бот сломан.
     """
-    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.plan", now=fixed_now)
 
     ctx = _build_ctx(approved_user_store)
@@ -147,7 +147,7 @@ def test_plan_releases_guard_after_unexpected_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ModuleNotFoundError / любой другой Exception — тоже не оставляет cooldown."""
-    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.plan", now=fixed_now)
 
     ctx = _build_ctx(approved_user_store)
@@ -170,7 +170,7 @@ def test_plan_releases_guard_after_calendar_not_connected(
     approved_user_store: UserStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.plan", now=fixed_now)
 
     ctx = _build_ctx(approved_user_store)
@@ -196,7 +196,7 @@ def test_plan_no_post_success_cooldown_allows_immediate_retry(
     Двойную доставку при настоящей гонке double-tap покрывает while-running лок
     (см. ``test_plan_busy_message_when_build_in_progress``).
     """
-    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.plan", now=fixed_now)
 
     ctx = _build_ctx(approved_user_store)
@@ -217,7 +217,7 @@ def test_plan_busy_message_when_build_in_progress(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Пока идёт сборка — повтор /td получает busy-сообщение, build не вызывается."""
-    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.plan", now=fixed_now)
 
     ctx = _build_ctx(approved_user_store)
@@ -239,7 +239,7 @@ def test_plan_independent_action_keys_per_mode(
 ) -> None:
     """`plan:today` и `plan:tomorrow` — независимые keys; cooldown one не блокирует
     другую."""
-    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.plan", now=fixed_now)
 
     ctx = _build_ctx(approved_user_store)
@@ -272,7 +272,7 @@ def test_build_plan_for_user_passes_reference_and_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Smoke-уровень: build_plan_for_user → PlanBuilder.build_text с правильными датами."""
-    fixed_now = datetime(2026, 1, 7, 18, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 1, 7, 18, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.plan", now=fixed_now)
 
     ctx = _build_ctx(approved_user_store)

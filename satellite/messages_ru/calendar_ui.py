@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..calendar.url_utils import normalize_calendar_url
 from .buttons import (
     BUTTON_CONNECT_CALENDAR,
     BUTTON_CREATE_CANCEL,
@@ -159,12 +160,8 @@ def build_calendar_sources_keyboard(
     enabled_urls: set[str],
     url_tokens: list[str],
 ) -> dict:
-    # Lazy: реальный цикл calendar.events._collectors → messages_ru →
-    # calendar_ui → calendar.selection → providers → caldav_client → events.
-    from ..calendar.selection import normalize_calendar_url
-
     rows: list[list[dict[str, str]]] = []
-    for (name, url), token in zip(calendars, url_tokens):
+    for (name, url), token in zip(calendars, url_tokens, strict=True):
         mark = "✅" if normalize_calendar_url(url) in enabled_urls else "⬜️"
         label = f"{mark} {name}"
         if len(label) > 60:
@@ -216,7 +213,7 @@ def build_foreign_calendars_keyboard(
     url_tokens: list[str],
 ) -> dict:
     rows: list[list[dict[str, str]]] = []
-    for (name, _url), token in zip(calendars, url_tokens):
+    for (name, _url), token in zip(calendars, url_tokens, strict=True):
         label = name if len(name) <= 60 else name[:57] + "…"
         rows.append([{"text": label, "callback_data": f"{CB_FOREIGN_PICK_PREFIX}{token}"}])
     rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_FOREIGN_CLOSE}])

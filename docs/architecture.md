@@ -76,6 +76,9 @@ Handlers принимают Telegram-события и не считают ка�
 - `satellite/services.py` — `run_bot`.
 - `satellite/backup.py` — снапшоты `users.json` / `subscriptions.json` при старте
   (`logs/backups/`, последние 20).
+- `satellite/json_store.py` — generic transactional base для durable JSON:
+  candidate сериализуется под одним lock, атомарно пишется на диск и только
+  после успешного `os.replace` публикуется в памяти.
 - `satellite/config.py` — `load_settings`, dataclasses конфигов, парсинг `.env`.
 - `satellite/users/` — пакет: фасад (`__init__.py`) + `record.py` (`UserRecord`,
   статусы) + `store.py` (`UserStore`, атомарная запись `logs/users.json`) +
@@ -135,9 +138,10 @@ telegram_test_command.py
 ## Users and Security
 
 - `satellite/users/` — пакет: `record.py` (`UserRecord`, статусы доступа и
-  календаря), `store.py` (`UserStore`, атомарная запись JSON, thread-safe lock,
-  `UserStorePersistenceError` при ошибке диска — caller показывает безопасный
-  текст), `admin.py` (`parse_admin_ids` / `admin_id_set`). Фасад в `__init__.py`
+  календаря), `store.py` (`UserStore`, транзакционная запись JSON,
+  `UserStorePersistenceError` при ошибке диска и `UserStoreLoadError` при
+  повреждённом durable-файле), `admin.py` (`parse_admin_ids` / `admin_id_set`).
+  Фасад в `__init__.py`
   re-export'ит публичный API, поэтому импорты `from satellite.users import …`
   не меняются. Не хранит сырые токены и display name календаря (PII).
 - `satellite/security/token_vault.py` — `TokenVault`, `ProviderCredentials`
@@ -149,7 +153,10 @@ telegram_test_command.py
 ## Telegram Layer
 
 - `satellite/telegram_bot/bot.py` — lifecycle, long-polling, offset, worker pool,
-  scheduler start/stop, graceful shutdown, Web App server bind.
+  scheduler start/stop, best-effort idempotent shutdown, Web App server bind.
+- `satellite/telegram_bot/update_dispatcher.py` — worker fan-out с per-chat
+  сериализацией и backpressure: running + queued updates ограничены
+  `2 × BOT_WORKERS`; durable offset двигается только после handler completion.
 - `satellite/telegram_bot/handlers/` — package with one scenario per file:
   - `context.py` — `HandlerContext` and DTOs.
   - `routing.py` — `recognize_message`, pure parsers.
@@ -306,13 +313,18 @@ pending_digest_enabled
 pending_digest_days         # weekdays | all_days | 7-bit mask
 pending_digest_time         # default 10:00
 pending_digest_timezone
-last_pending_digest_sent_date
+last_pending_digest_sent_date  # дата успешной обработки, включая empty
 ```
 
 `unsubscribe` не удаляет запись — выставляет `digest_enabled=false`, настройки
 сохраняются для повторного включения.
 
-Writes are atomic: temporary file, flush, `fsync`, `os.replace`.
+`UserStore` и `SubscriptionStore` наследуют `JsonStoreBase`. Commit строит
+candidate-копию, под одним lock пишет `tmp → flush → fsync → os.replace` и
+только затем меняет `_items`. Ошибка записи оставляет прежнее состояние и в
+памяти, и на диске. Отсутствующий файл означает пустой store; невалидный JSON,
+не-object root или структурно невалидная запись дают публичную load-ошибку и
+останавливают запуск. Перед строгим чтением `TelegramBot` снимает startup backup.
 
 ### `logs/connect-tokens.json` (`ConnectTokenStore`)
 
@@ -334,11 +346,14 @@ record:
    `pending_digest_time`, `last_pending_digest_sent_date`) — same screen as
    `/invitations` via [`invitations_view.load_pending_invitations_screen`](../satellite/invitations_view.py)
    (inline keyboard included). If there are no NEEDS-ACTION meetings at fire
-   time, the tick skips silently (no message, no `last_pending` mark).
+   time, the tick sends no message but records the date as processed.
 
 Each kind fires only when enabled, day allowed, `HH:MM` matches, not already
-sent today, and `has_calendar`. `last_*_sent_date` updates only after
-successful `sendMessage`. One failed user does not stop the rest of the tick.
+processed today, and `has_calendar`. Delivery or CalDAV failures are not marked,
+so catch-up continues. After a successful send or empty pending-check, a
+process-local checkpoint is set before durable marker persistence: a disk error
+cannot create duplicate work until restart. One failed user does not stop the
+rest of the tick.
 
 Доставки внутри тика идут через общий `ThreadPoolExecutor`
 (`max_parallel_deliveries`, по умолчанию 4): пул создаётся один раз в
@@ -358,7 +373,7 @@ Per tick (pending):
 
 ```text
 load_pending_invitations_screen(calendar_service, user_id, tz)
-  -> if pending empty: skip
+  -> if pending empty: mark processed, no message
   -> else sendMessage(text, reply_markup=keyboard)
 ```
 
@@ -435,9 +450,10 @@ The bot logs operational failures but sends users only safe, non-technical messa
   контейнера `WEBAPP_HOST=0.0.0.0`, volume `satellite-logs` → `/app/logs`).
 
 **CI/CD (Docker):** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) на
-push в `main` или тег `v*` — reusable `_checks.yml` (ruff + mypy + `py_compile` + pytest),
+push в `main` или тег `v*` — reusable `_checks.yml` на Python 3.11/3.12
+(lock-check + ruff + mypy + `py_compile` + pytest),
 сборка в GHCR (`:sha-<short>`; `:latest` на main; semver на теге), затем
-`scripts/docker-smoke-image.sh` (импорты, `caldav>=3`, `/healthz` в образе). Rolling update
+`scripts/docker-smoke-image.sh` (импорты, `caldav==3.2.1`, `/healthz` в образе). Rolling update
 контейнера на сервере (`scripts/ci-deploy-remote.sh`, `SATELLITE_IMAGE` в `.env`) — только
 для `main` и `workflow_dispatch`: `compose pull/up`, ожидание `healthy`, host `/healthz`,
 затем `scripts/smoke-prod.sh` с публичного URL (`SMOKE_PUBLIC_BASE_URL`, в Actions

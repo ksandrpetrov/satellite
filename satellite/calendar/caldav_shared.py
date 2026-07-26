@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import unquote
 
@@ -170,8 +170,8 @@ def _handle_for_event_url(
 def _to_utc(value: datetime) -> datetime:
     """Приводит datetime к UTC. Naive значения трактуются как UTC."""
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _dav_status(exc: BaseException) -> str:

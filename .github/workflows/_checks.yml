@@ -12,19 +12,28 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: |
+            requirements.in
+            requirements-dev.in
             requirements.txt
             requirements-dev.txt
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r requirements-dev.txt
+      - name: Generated dependency lock check
+        if: matrix.python-version == '3.12'
+        run: make lock-check
       - name: Ruff lint
         run: python -m ruff check satellite tests
       - name: Ruff format check

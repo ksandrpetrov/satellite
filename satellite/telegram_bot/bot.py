@@ -7,6 +7,8 @@ import signal
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from types import FrameType
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..backup import snapshot_all
@@ -51,15 +53,15 @@ class TelegramBot:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._tz = ZoneInfo(settings.plan.tz_name)
-        self._telegram = TelegramClient(settings.telegram.bot_token)
         logs_dir = settings.project_root / "logs"
         self._users_path = logs_dir / "users.json"
         self._subscriptions_path = logs_dir / "subscriptions.json"
-        # Снапшоты до открытия сторов: если кто-то руками подменил файл и сейчас
-        # запись битая, мы успеем сохранить его как-есть до того, как сторы
-        # перезапишут диск своим in-memory представлением.
+        # Снапшоты снимаются до строгого чтения stores: повреждённый файл
+        # сохраняется для ручного восстановления, а запуск прекращается.
         self._startup_snapshots = snapshot_all([self._users_path, self._subscriptions_path])
         self._users = UserStore(self._users_path)
+        self._subscriptions = SubscriptionStore(self._subscriptions_path)
+        self._telegram = TelegramClient(settings.telegram.bot_token)
         self._token_vault = TokenVault(settings.security.encryption_key)
         self._operation_log = CalendarOperationLog(logs_dir / "calendar_ops.jsonl")
         self._calendar_service = UserCalendarService(
@@ -70,7 +72,6 @@ class TelegramBot:
         )
         self._offset_store = OffsetStore(logs_dir / "telegram-offset.json")
         self._offset_tracker = OffsetTracker(self._offset_store)
-        self._subscriptions = SubscriptionStore(self._subscriptions_path)
         self._weather_client: WeatherForecastClient | None = (
             WeatherForecastClient() if settings.weather.enabled else None
         )
@@ -83,6 +84,7 @@ class TelegramBot:
         )
         self._stop_event = threading.Event()
         self._shutdown_done = False
+        self._shutdown_in_progress = False
         self._shutdown_lock = threading.Lock()
         self._connect_tokens = ConnectTokenStore(
             storage_path=logs_dir / "connect-tokens.json",
@@ -122,6 +124,7 @@ class TelegramBot:
             chat_locks=self._chat_locks,
             offset_tracker=self._offset_tracker,
             stop_event=self._stop_event,
+            max_pending_updates=settings.bot.workers * 2,
         )
 
     def run(self) -> None:
@@ -169,21 +172,36 @@ class TelegramBot:
 
     def shutdown(self) -> None:
         with self._shutdown_lock:
-            if self._shutdown_done:
+            if self._shutdown_done or self._shutdown_in_progress:
                 return
-            self._shutdown_done = True
-        self._stop_event.set()
-        log.info("Shutting down: waiting for in-flight handlers ...")
-        self._scheduler.stop()
-        self._webapp.stop()
-        self._executor.shutdown(wait=True, cancel_futures=False)
-        self._telegram.close()
-        if self._weather_client is not None:
-            self._weather_client.close()
+            self._shutdown_in_progress = True
+        try:
+            self._stop_event.set()
+            log.info("Shutting down: waiting for in-flight handlers ...")
+            steps = [
+                ("scheduler", self._scheduler.stop),
+                ("Web App", self._webapp.stop),
+                (
+                    "handler worker pool",
+                    lambda: self._executor.shutdown(wait=True, cancel_futures=False),
+                ),
+                ("Telegram client", self._telegram.close),
+            ]
+            if self._weather_client is not None:
+                steps.append(("weather client", self._weather_client.close))
+            for label, closer in steps:
+                try:
+                    closer()
+                except Exception:  # noqa: BLE001 - cleanup остальных обязан продолжиться
+                    log.exception("Shutdown step failed: %s", label)
+        finally:
+            with self._shutdown_lock:
+                self._shutdown_done = True
+                self._shutdown_in_progress = False
         log.info("Stopped.")
 
     def _install_signal_handlers(self) -> None:
-        def _handler(signum, _frame):  # noqa: ANN001
+        def _handler(signum: int, _frame: FrameType | None) -> None:
             log.info("Received signal %s, stopping", signum)
             self._stop_event.set()
 
@@ -227,7 +245,7 @@ class TelegramBot:
                     break
                 self._dispatcher.dispatch_update(ctx, update)
 
-    def _poll_updates_or_backoff(self, backoff: float) -> list[dict] | None:
+    def _poll_updates_or_backoff(self, backoff: float) -> list[dict[str, Any]] | None:
         try:
             return self._telegram.get_updates(
                 self._offset_tracker.polling_offset,

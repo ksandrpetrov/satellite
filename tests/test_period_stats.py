@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta, timezone
+from datetime import UTC, date, timedelta
 
 from satellite.calendar.period_stats import (
     build_analytics_report,
@@ -12,7 +12,7 @@ from satellite.calendar.period_stats import (
 )
 from satellite.calendar.stats import WorkdayOptions
 
-TZ = timezone.utc
+TZ = UTC
 LOGIN = "user@test.ru"
 
 

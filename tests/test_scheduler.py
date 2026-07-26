@@ -367,14 +367,16 @@ def test_tick_counts_failure_when_last_sent_marker_persist_fails(
     store.subscribe(1, "alice")
     monkeypatch.setattr(
         store,
-        "_save_locked",
+        "_persist_payload",
         MagicMock(side_effect=SubscriptionStorePersistenceError("disk full")),
     )
 
     with caplog.at_level(logging.WARNING, logger="satellite.scheduler"):
         assert scheduler.tick() == 0
+        assert scheduler.tick() == 0
 
     assert telegram.send_rich_message.call_count == 1
+    assert store.get(1).last_digest_sent_date is None
     assert any(
         "last_digest_sent_date was not saved" in record.getMessage() for record in caplog.records
     )
@@ -509,7 +511,7 @@ def test_tick_one_failed_user_does_not_block_others(tmp_path: Path):
     assert 2 in seen  # bob всё равно дошёл до отправки
 
 
-def test_tick_pending_silent_skip_when_empty(tmp_path: Path, monkeypatch):
+def test_tick_pending_empty_is_marked_and_not_rechecked_same_day(tmp_path: Path):
     from unittest.mock import patch
 
     now = _at(2026, 5, 11, 10, 0)
@@ -528,10 +530,70 @@ def test_tick_pending_silent_skip_when_empty(tmp_path: Path, monkeypatch):
     with patch(
         "satellite.scheduler.load_pending_invitations_screen",
         return_value=empty_screen,
-    ):
+    ) as load_screen:
+        assert scheduler.tick() == 0
         assert scheduler.tick() == 0
     telegram.send_message.assert_not_called()
+    assert load_screen.call_count == 1
+    assert store.get(1).last_pending_digest_sent_date == "2026-05-11"
+
+
+def test_pending_marker_failure_does_not_repeat_send_in_same_process(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from unittest.mock import patch
+
+    now = _at(2026, 5, 11, 10, 0)
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    store.subscribe(1, "alice")
+    store.update_settings(1, "alice", digest_enabled=False, pending_digest_enabled=True)
+    screen = InvitationsScreen(
+        pending=[{"url": "https://cal/event/1", "summary": "Sync"}],
+        text="<b>inv</b>",
+        rich_text="<h3>inv</h3>",
+        keyboard={"inline_keyboard": []},
+        truncated=False,
+        login="alice@mail.ru",
+    )
+    monkeypatch.setattr(
+        store,
+        "_persist_payload",
+        MagicMock(side_effect=SubscriptionStorePersistenceError("disk full")),
+    )
+
+    with patch(
+        "satellite.scheduler.load_pending_invitations_screen",
+        return_value=screen,
+    ) as load_screen:
+        assert scheduler.tick() == 0
+        assert scheduler.tick() == 0
+
+    assert load_screen.call_count == 1
+    assert telegram.send_rich_message.call_count == 1
     assert store.get(1).last_pending_digest_sent_date is None
+
+
+def test_process_checkpoint_allows_processing_on_next_day(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    moments = [_at(2026, 5, 11, 9, 0)]
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=moments[0])
+    scheduler._now_fn = lambda _tz: moments[0]
+    store.subscribe(1, "alice")
+    monkeypatch.setattr(
+        store,
+        "_persist_payload",
+        MagicMock(side_effect=SubscriptionStorePersistenceError("disk full")),
+    )
+
+    assert scheduler.tick() == 0
+    assert scheduler.tick() == 0
+    moments[0] = _at(2026, 5, 12, 9, 0)
+    assert scheduler.tick() == 0
+
+    assert telegram.send_rich_message.call_count == 2
 
 
 def test_tick_pending_sends_with_keyboard_and_marks_sent(tmp_path: Path):

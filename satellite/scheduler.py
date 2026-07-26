@@ -5,8 +5,10 @@
 - Один поток просыпается каждые ``tick_interval_sec`` (по умолчанию 30 с)
   и сверяет ``HH:MM`` в часовом поясе пользователя с его расписанием.
 - Стреляем, если: день недели разрешён, локальное время ``>=`` scheduled,
-  и сегодня этому пользователю ещё не отправляли. ``last_*_sent_date``
-  записывается **только** после успешного ``sendMessage`` — это анти-дубль.
+  и сегодня этому пользователю ещё не отправляли/не проверяли пустой pending.
+- Durable marker и process-local checkpoint ставятся после успешной обработки.
+  Checkpoint защищает от дубля в текущем процессе, даже если запись marker
+  на диск не удалась.
 - Догон после пропуска: если бот рестартился / тик упал / сеть моргнула
   ровно в минуту scheduled — следующий тик в этот же день всё равно
   отправит дайджест (а не молча потеряет слот до завтра). Окно «догона» —
@@ -22,6 +24,7 @@ import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, tzinfo
+from enum import Enum, auto
 from zoneinfo import ZoneInfo
 
 from . import scheduler_policy
@@ -46,6 +49,17 @@ log = logging.getLogger(__name__)
 
 _DEFAULT_TICK_SEC = 30.0
 _DEFAULT_MAX_PARALLEL_DELIVERIES = 4
+
+
+class _DigestKind(Enum):
+    DAILY = auto()
+    PENDING = auto()
+
+
+class _PendingDeliveryOutcome(Enum):
+    SENT = auto()
+    EMPTY = auto()
+    FAILED = auto()
 
 
 class DigestScheduler:
@@ -88,6 +102,8 @@ class DigestScheduler:
         self._now_fn = now_fn or (lambda tz_: datetime.now(tz=tz_))
         self._thread: threading.Thread | None = None
         self._tz_cache: dict[str, ZoneInfo] = {}
+        self._checkpoint_lock = threading.Lock()
+        self._processed_dates: dict[tuple[_DigestKind, int], date] = {}
         # Общий пул на все тики: потоки спавнятся лениво по мере submit'ов,
         # закрывается в stop().
         self._pool = ThreadPoolExecutor(
@@ -202,25 +218,31 @@ class DigestScheduler:
 
         user_tz_daily = self._user_tz(sub.digest_timezone)
         now_daily = self._now_fn(user_tz_daily)
-        if scheduler_policy.should_fire_for_user(settings=sub, now_in_user_tz=now_daily):
+        daily_date = now_daily.date()
+        daily_processed = self._was_processed(_DigestKind.DAILY, sub.chat_id, daily_date)
+        if not daily_processed and scheduler_policy.should_fire_for_user(
+            settings=sub,
+            now_in_user_tz=now_daily,
+        ):
             daily_due = 1
-            today = now_daily.date()
             log.info(
                 "Daily digest firing at %s for chat_id=%s username=%s",
                 now_daily.isoformat(timespec="seconds"),
                 sub.chat_id,
                 sub.username,
             )
-            delivered = self._deliver_daily(sub, today=today)
+            delivered = self._deliver_daily(sub, today=daily_date)
             if delivered:
+                self._mark_processed(_DigestKind.DAILY, sub.chat_id, daily_date)
                 try:
-                    self._subscriptions.mark_digest_sent(sub.chat_id, today)
+                    self._subscriptions.mark_digest_sent(sub.chat_id, daily_date)
                 except SubscriptionStorePersistenceError:
                     daily_failed = 1
                     log.warning(
                         "Daily digest delivered but last_digest_sent_date was not saved "
-                        "(chat_id=%s username=%s) — user may receive a duplicate tomorrow; "
-                        "check logs/subscriptions.json permissions and disk space",
+                        "(chat_id=%s username=%s); process-local checkpoint prevents a "
+                        "duplicate until restart. Check logs/subscriptions.json permissions "
+                        "and disk space",
                         sub.chat_id,
                         sub.username,
                         exc_info=True,
@@ -232,36 +254,60 @@ class DigestScheduler:
 
         user_tz_pending = self._user_tz(sub.pending_digest_timezone)
         now_pending = self._now_fn(user_tz_pending)
-        if scheduler_policy.should_fire_pending_for_user(settings=sub, now_in_user_tz=now_pending):
+        pending_date = now_pending.date()
+        pending_processed = self._was_processed(
+            _DigestKind.PENDING,
+            sub.chat_id,
+            pending_date,
+        )
+        if not pending_processed and scheduler_policy.should_fire_pending_for_user(
+            settings=sub,
+            now_in_user_tz=now_pending,
+        ):
             pending_due = 1
-            today = now_pending.date()
             log.info(
                 "Pending digest firing at %s for chat_id=%s username=%s",
                 now_pending.isoformat(timespec="seconds"),
                 sub.chat_id,
                 sub.username,
             )
-            result = self._deliver_pending(sub, today=today, now_local=now_pending)
-            if result is True:
+            result = self._deliver_pending(
+                sub,
+                now_local=now_pending,
+            )
+            if result in (
+                _PendingDeliveryOutcome.SENT,
+                _PendingDeliveryOutcome.EMPTY,
+            ):
+                self._mark_processed(_DigestKind.PENDING, sub.chat_id, pending_date)
                 try:
-                    self._subscriptions.mark_pending_digest_sent(sub.chat_id, today)
+                    self._subscriptions.mark_pending_digest_sent(sub.chat_id, pending_date)
                 except SubscriptionStorePersistenceError:
                     pending_failed = 1
                     log.warning(
-                        "Pending digest delivered but last_pending_digest_sent_date was not "
-                        "saved (chat_id=%s username=%s) — user may receive a duplicate "
-                        "tomorrow; check logs/subscriptions.json permissions and disk space",
+                        "Pending digest processed but last_pending_digest_sent_date was not "
+                        "saved (chat_id=%s username=%s); process-local checkpoint prevents "
+                        "repeat work until restart. Check logs/subscriptions.json permissions "
+                        "and disk space",
                         sub.chat_id,
                         sub.username,
                         exc_info=True,
                     )
                 else:
-                    pending_sent = 1
-            elif result is False:
+                    if result is _PendingDeliveryOutcome.SENT:
+                        pending_sent = 1
+            elif result is _PendingDeliveryOutcome.FAILED:
                 pending_failed = 1
-            # None — silent skip (нет pending), не считаем failure
 
         return daily_due, daily_sent, daily_failed, pending_due, pending_sent, pending_failed
+
+    def _was_processed(self, kind: _DigestKind, chat_id: int, target_date: date) -> bool:
+        with self._checkpoint_lock:
+            return self._processed_dates.get((kind, chat_id)) == target_date
+
+    def _mark_processed(self, kind: _DigestKind, chat_id: int, target_date: date) -> None:
+        with self._checkpoint_lock:
+            self._processed_dates[(kind, chat_id)] = target_date
 
     def _resolve_telegram_user_id(self, sub: DigestSettings) -> int | None:
         user_record = self._users.get(sub.telegram_user_id)
@@ -339,13 +385,11 @@ class DigestScheduler:
         self,
         sub: DigestSettings,
         *,
-        today: date,
         now_local: datetime,
-    ) -> bool | None:
-        """True — отправлено; False — ошибка; None — нет pending, молча пропуск."""
+    ) -> _PendingDeliveryOutcome:
         telegram_user_id = self._resolve_telegram_user_id(sub)
         if telegram_user_id is None:
-            return False
+            return _PendingDeliveryOutcome.FAILED
 
         user_tz = self._user_tz(sub.pending_digest_timezone)
         try:
@@ -362,7 +406,7 @@ class DigestScheduler:
                 sub.username,
                 exc,
             )
-            return False
+            return _PendingDeliveryOutcome.FAILED
 
         if not screen.pending:
             log.info(
@@ -370,7 +414,7 @@ class DigestScheduler:
                 sub.chat_id,
                 sub.username,
             )
-            return None
+            return _PendingDeliveryOutcome.EMPTY
 
         try:
             deliver_rich_or_html(
@@ -386,7 +430,7 @@ class DigestScheduler:
                 sub.username,
                 len(screen.pending),
             )
-            return True
+            return _PendingDeliveryOutcome.SENT
         except TelegramError as exc:
             log.error(
                 "Pending digest send failed: chat_id=%s username=%s: %s",
@@ -394,4 +438,4 @@ class DigestScheduler:
                 sub.username,
                 exc,
             )
-            return False
+            return _PendingDeliveryOutcome.FAILED

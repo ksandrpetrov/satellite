@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -36,6 +38,7 @@ from satellite.users import (
     USER_STATUS_PENDING,
     USER_STATUS_REJECTED,
     UserStore,
+    UserStoreLoadError,
     UserStorePersistenceError,
 )
 
@@ -203,8 +206,16 @@ def test_non_admin_cannot_approve(users: UserStore) -> None:
 def test_save_raises_persistence_error_on_disk_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """OSError при записи не должен теряться: caller должен видеть исключение."""
-    store = UserStore(tmp_path / "users.json")
+    """Неуспешный commit не публикует candidate ни в память, ни на диск."""
+    path = tmp_path / "users.json"
+    store = UserStore(path)
+    original = store.upsert_from_telegram(
+        telegram_user_id=USER_ID,
+        chat_id=CHAT_ID,
+        username="newbie",
+        display_name="Original",
+    )
+    original_disk = path.read_bytes()
     real_replace = __import__("os").replace
 
     def failing_replace(src: str, dst: str) -> None:
@@ -219,8 +230,52 @@ def test_save_raises_persistence_error_on_disk_failure(
             telegram_user_id=USER_ID,
             chat_id=CHAT_ID,
             username="newbie",
-            display_name="New",
+            display_name="Changed",
         )
+
+    assert store.get(USER_ID) == original
+    assert path.read_bytes() == original_disk
+
+
+def test_missing_users_file_is_empty_store(tmp_path: Path) -> None:
+    store = UserStore(tmp_path / "missing.json")
+    assert store.list_all() == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "not valid json",
+        "[]",
+        '{"not-an-id": {}}',
+        '{"42": []}',
+    ],
+)
+def test_invalid_users_store_is_fatal(tmp_path: Path, payload: str) -> None:
+    path = tmp_path / "users.json"
+    path.write_text(payload)
+
+    with pytest.raises(UserStoreLoadError, match="Failed to load users"):
+        UserStore(path)
+
+
+def test_parallel_user_commits_do_not_lose_records(tmp_path: Path) -> None:
+    path = tmp_path / "users.json"
+    store = UserStore(path)
+
+    def create(user_id: int) -> None:
+        store.upsert_from_telegram(
+            telegram_user_id=user_id,
+            chat_id=user_id,
+            username=f"user{user_id}",
+            display_name=None,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(create, range(1, 33)))
+
+    assert {record.telegram_user_id for record in store.list_all()} == set(range(1, 33))
+    assert set(json.loads(path.read_text())) == {str(user_id) for user_id in range(1, 33)}
 
 
 def test_pending_command_lists_open_requests(users: UserStore) -> None:

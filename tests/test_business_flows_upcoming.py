@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -44,7 +44,7 @@ def test_upcoming_calls_list_events_with_seven_day_horizon(
     store: UserStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.calendar_list", now=fixed_now)
 
     cal = FakeCalendarService(events=[])
@@ -59,7 +59,7 @@ def test_upcoming_calls_list_events_with_seven_day_horizon(
 
 
 def test_upcoming_button_alias(store: UserStore, monkeypatch: pytest.MonkeyPatch) -> None:
-    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.calendar_list", now=fixed_now)
 
     cal = FakeCalendarService(events=[])
@@ -71,7 +71,7 @@ def test_upcoming_button_alias(store: UserStore, monkeypatch: pytest.MonkeyPatch
 
 
 def test_upcoming_empty_shows_empty_html(store: UserStore, monkeypatch: pytest.MonkeyPatch) -> None:
-    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.calendar_list", now=fixed_now)
 
     ctx = _upcoming_ctx(store, FakeCalendarService(events=[]))
@@ -85,7 +85,7 @@ def test_upcoming_caldav_error_shows_safe_text(
     store: UserStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.calendar_list", now=fixed_now)
 
     cal = FakeCalendarService(
@@ -102,7 +102,7 @@ def test_upcoming_cooldown_blocks_second_call_after_success(
     store: UserStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.calendar_list", now=fixed_now)
 
     cal = FakeCalendarService(events=[])
@@ -117,7 +117,7 @@ def test_upcoming_releases_guard_after_caldav_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """После ошибки CalDAV повторный /upcoming не блокируется cooldown'ом."""
-    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
     freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.calendar_list", now=fixed_now)
 
     cal = FakeCalendarService(

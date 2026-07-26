@@ -27,6 +27,7 @@ def dispatcher_ctx(tmp_path) -> tuple[UpdateDispatcher, OffsetTracker, MagicMock
         chat_locks=chat_locks,
         offset_tracker=tracker,
         stop_event=stop_event,
+        max_pending_updates=2,
     )
     ctx = MagicMock(spec=HandlerContext)
     yield disp, tracker, ctx, stop_event
@@ -121,6 +122,7 @@ def test_executor_shutdown_defers_without_advancing_persisted_offset(
         chat_locks=ChatLockManager(),
         offset_tracker=tracker,
         stop_event=stop_event,
+        max_pending_updates=2,
     )
     ctx = MagicMock(spec=HandlerContext)
 
@@ -180,3 +182,125 @@ def test_same_chat_messages_are_serialized(dispatcher_ctx, monkeypatch: pytest.M
     allow_first_finish.set()
     assert both_done.wait(timeout=2.0)
     assert order == [20, 21]
+
+
+def test_pending_limit_applies_backpressure_before_submit(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tracker = OffsetTracker(OffsetStore(tmp_path / "offset.json"))
+    stop_event = threading.Event()
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="test-capacity")
+    disp = UpdateDispatcher(
+        executor=executor,
+        chat_locks=ChatLockManager(),
+        offset_tracker=tracker,
+        stop_event=stop_event,
+        max_pending_updates=2,
+    )
+    ctx = MagicMock(spec=HandlerContext)
+    first_started = threading.Event()
+    allow_first_finish = threading.Event()
+    third_dispatched = threading.Event()
+
+    def _handle_message(_ctx: HandlerContext, msg) -> None:
+        if msg.update_id == 1:
+            first_started.set()
+            assert allow_first_finish.wait(timeout=2.0)
+
+    monkeypatch.setattr(
+        "satellite.telegram_bot.update_dispatcher.handle_message",
+        _handle_message,
+    )
+
+    def update(update_id: int) -> dict:
+        return {
+            "update_id": update_id,
+            "message": {"message_id": update_id, "chat": {"id": update_id}, "text": "x"},
+        }
+
+    try:
+        disp.dispatch_update(ctx, update(1))
+        assert first_started.wait(timeout=2.0)
+        disp.dispatch_update(ctx, update(2))
+
+        waiter = threading.Thread(
+            target=lambda: (
+                disp.dispatch_update(ctx, update(3)),
+                third_dispatched.set(),
+            )
+        )
+        waiter.start()
+        assert not third_dispatched.wait(timeout=0.2)
+
+        allow_first_finish.set()
+        assert third_dispatched.wait(timeout=2.0)
+        waiter.join(timeout=2.0)
+    finally:
+        allow_first_finish.set()
+        stop_event.set()
+        executor.shutdown(wait=True)
+
+
+def test_stop_while_waiting_keeps_unsubmitted_update_unconfirmed(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tracker = OffsetTracker(OffsetStore(tmp_path / "offset.json"))
+    stop_event = threading.Event()
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="test-stop-capacity")
+    disp = UpdateDispatcher(
+        executor=executor,
+        chat_locks=ChatLockManager(),
+        offset_tracker=tracker,
+        stop_event=stop_event,
+        max_pending_updates=1,
+    )
+    ctx = MagicMock(spec=HandlerContext)
+    first_started = threading.Event()
+    allow_first_finish = threading.Event()
+    second_returned = threading.Event()
+
+    def _handle_message(_ctx: HandlerContext, msg) -> None:
+        if msg.update_id == 1:
+            first_started.set()
+            assert allow_first_finish.wait(timeout=2.0)
+
+    monkeypatch.setattr(
+        "satellite.telegram_bot.update_dispatcher.handle_message",
+        _handle_message,
+    )
+    first = {
+        "update_id": 1,
+        "message": {"message_id": 1, "chat": {"id": 1}, "text": "first"},
+    }
+    second = {
+        "update_id": 2,
+        "message": {"message_id": 2, "chat": {"id": 2}, "text": "second"},
+    }
+
+    try:
+        disp.dispatch_update(ctx, first)
+        assert first_started.wait(timeout=2.0)
+        waiter = threading.Thread(
+            target=lambda: (
+                disp.dispatch_update(ctx, second),
+                second_returned.set(),
+            )
+        )
+        waiter.start()
+        assert not second_returned.wait(timeout=0.2)
+
+        stop_event.set()
+        assert second_returned.wait(timeout=2.0)
+        assert tracker.offset == 0
+
+        allow_first_finish.set()
+        waiter.join(timeout=2.0)
+        executor.shutdown(wait=True)
+        assert tracker.offset == 2
+        assert tracker.polling_offset == 3
+    finally:
+        allow_first_finish.set()
+        stop_event.set()
+        executor.shutdown(wait=True)

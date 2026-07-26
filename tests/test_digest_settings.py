@@ -585,7 +585,7 @@ def test_callback_toggle_persistence_failure_sends_safe_text(
     store.get_or_create(900, "alice")
     monkeypatch.setattr(
         store,
-        "_save_locked",
+        "_persist_payload",
         MagicMock(side_effect=SubscriptionStorePersistenceError("disk full")),
     )
 

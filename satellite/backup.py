@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import shutil
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ def snapshot(
     if not source.is_file():
         return None
     target_dir = Path(snapshots_dir) if snapshots_dir else source.parent / SNAPSHOT_DIR_NAME
-    timestamp = (now or datetime.now(tz=timezone.utc)).strftime(_TIMESTAMP_FORMAT)
+    timestamp = (now or datetime.now(tz=UTC)).strftime(_TIMESTAMP_FORMAT)
     target_name = f"{source.name}.{timestamp}.bak"
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -77,7 +77,7 @@ def snapshot_all(
 ) -> list[Path]:
     """Снимает копии нескольких файлов; ошибки логируются и не прерывают цикл."""
     created: list[Path] = []
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     for raw in paths:
         snap = snapshot(
             raw,

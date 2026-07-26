@@ -78,6 +78,6 @@ def test_subscription_store_atomic_write_failure_raises(tmp_path: Path, monkeypa
     def boom(*_args, **_kwargs):
         raise OSError("disk full")
 
-    monkeypatch.setattr(store, "_save_locked", boom)
+    monkeypatch.setattr(store, "_persist_payload", boom)
     with pytest.raises(OSError, match="disk full"):
         store.update_settings(1, "alice", digest_time="10:30")

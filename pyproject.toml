@@ -4,16 +4,13 @@ version = "0.0.0"
 description = "Production Telegram bot 'Chaika': CalDAV → дайджест дня (см. AGENTS.md)"
 requires-python = ">=3.11"
 
-# Полный список рантайм-зависимостей живёт в requirements.txt — `pip install -r`
-# остаётся первичным способом установки (см. scripts/install.sh). Здесь
-# `pyproject.toml` нужен только как площадка для конфигов инструментов (ruff,
-# mypy, pytest) — пакет в PyPI мы не публикуем.
+# Прямые зависимости задаются в requirements*.in, а установка идёт только из
+# generated requirements*.txt (см. `make lock`). Здесь `pyproject.toml` нужен
+# для Python baseline и конфигов инструментов; пакет в PyPI не публикуется.
 
 [tool.ruff]
 line-length = 100
-# Локальный dev-venv может быть на 3.9, а CI/прод — на 3.11+; держим младшую
-# версию, чтобы ruff не предлагал апгрейды синтаксиса, которые сломают локал.
-target-version = "py39"
+target-version = "py311"
 extend-exclude = ["venv", ".venv", "logs", "deploy", "scripts"]
 
 [tool.ruff.lint]
@@ -56,6 +53,31 @@ files = ["satellite"]
 # mypy теперь блокирующий гейт CI (см. .github/workflows/_checks.yml). Если
 # где-то нужно подавить ложный позитив — точечный `# type: ignore[<code>]`
 # с комментарием «почему».
+
+[[tool.mypy.overrides]]
+module = [
+    "satellite.json_store",
+    "satellite.users.store",
+    "satellite.subscriptions.store",
+    "satellite.scheduler",
+    "satellite.services",
+    "satellite.telegram_bot.bot",
+    "satellite.telegram_bot.update_dispatcher",
+]
+# ``strict = true`` в mypy разворачивается как глобальный preset. Явный
+# список тех же per-module флагов сохраняет строгий режим только здесь.
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+warn_unused_ignores = true
+warn_return_any = true
+implicit_reexport = false
+strict_equality = true
+extra_checks = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

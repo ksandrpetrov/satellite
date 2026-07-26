@@ -49,9 +49,9 @@ fi
 PY_VERSION="$("${PYTHON_BIN}" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 log "Python: ${PYTHON_BIN} (${PY_VERSION})"
 
-PY_OK="$("${PYTHON_BIN}" -c 'import sys; print(1 if sys.version_info >= (3, 9) else 0)')"
+PY_OK="$("${PYTHON_BIN}" -c 'import sys; print(1 if sys.version_info >= (3, 11) else 0)')"
 if [[ "${PY_OK}" != "1" ]]; then
-    die "Нужен Python 3.9+ (CI и продакшен — 3.11). Текущая: ${PY_VERSION}."
+    die "Нужен Python 3.11+. Текущая: ${PY_VERSION}."
 fi
 
 # --- venv ---
@@ -68,12 +68,12 @@ source venv/bin/activate
 log "Обновляю pip"
 python -m pip install --upgrade pip >/dev/null
 
-log "Устанавливаю requirements.txt"
-pip install -r requirements.txt
-
 if [[ "${INSTALL_DEV}" == "1" ]]; then
-    log "Устанавливаю requirements-dev.txt"
+    log "Устанавливаю generated requirements-dev.txt"
     pip install -r requirements-dev.txt
+else
+    log "Устанавливаю generated requirements.txt"
+    pip install -r requirements.txt
 fi
 
 # --- logs/ ---

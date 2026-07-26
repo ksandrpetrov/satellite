@@ -39,6 +39,7 @@ Production Telegram-бот: CalDAV → метрики дня → HTML-дайдж
 | [telegram-ux.md](telegram-ux.md) | Команды, клавиатуры, FSM, streaming, ActionGuard, авторизация сценариев |
 | [operations.md](operations.md) | Локальный и серверный запуск, systemd, Docker, CI/CD, reverse proxy, runtime state |
 | [testing.md](testing.md) | pytest, `make check`, smoke, release-blocking тесты, фикстуры |
+| [graphify.md](graphify.md) | Knowledge graph для Codex: установка, запросы, обновление и Git-артефакты |
 | [troubleshooting.md](troubleshooting.md) | Типичные сбои: env, CalDAV, Web App, дайджест, deploy, миграция logs |
 | [refactor-log.md](refactor-log.md) | История архитектурных фаз и инварианты после рефакторинга |
 | [test-coverage-audit.md](test-coverage-audit.md) | Сценарий → код → тесты (release-blocking карта) |
@@ -74,6 +75,7 @@ Production Telegram-бот: CalDAV → метрики дня → HTML-дайдж
 1. [AGENTS.md](../AGENTS.md) — обязательно перед правками
 2. [refactor-log.md](refactor-log.md) — что уже рефакторили
 3. [architecture.md](architecture.md) + [testing.md](testing.md) — границы слоёв и регрессии
+4. [graphify.md](graphify.md) — запросы к knowledge graph и правила обновления
 
 ---
 
@@ -113,6 +115,7 @@ flowchart LR
 | Команды и кнопки | [telegram-ux.md](telegram-ux.md), [AGENTS.md § routing](../AGENTS.md#где-менять-что-типичные-правки) |
 | Деплой и CI | [operations.md](operations.md), [deploy/README.md](../deploy/README.md) |
 | Тесты и релиз | [testing.md](testing.md), [test-coverage-audit.md](test-coverage-audit.md) |
+| Knowledge graph | [graphify.md](graphify.md), [AGENTS.md § graphify](../AGENTS.md#graphify) |
 | Сбои в production | [troubleshooting.md](troubleshooting.md) |
 
 ---
@@ -151,6 +154,7 @@ make check                        # ruff + mypy + compile + pytest (перед �
 make deploy                       # Ansible → Docker на сервер
 make docker-smoke                 # smoke образа
 make smoke-prod                   # публичные /healthz, /connect, /api/…
+make graphify-check               # нужен ли semantic update графа
 ```
 
-Подробнее: [testing.md](testing.md), [operations.md](operations.md).
+Подробнее: [testing.md](testing.md), [operations.md](operations.md), [graphify.md](graphify.md).

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 from ..calendar.time_utils import normalize_hhmm_input
-from ..json_store import JsonStoreBase
+from ..json_store import JsonStoreBase, JsonStoreLoadError
 from .record import (
     ALLOWED_DIGEST_DAYS,
     DigestSettings,
@@ -21,16 +21,21 @@ log = logging.getLogger(__name__)
 
 
 class SubscriptionStorePersistenceError(RuntimeError):
-    """Не удалось записать ``subscriptions.json`` на диск."""
+    """Не удалось записать ``subscriptions.json``; прежнее состояние сохранено."""
 
 
-class SubscriptionStore(JsonStoreBase):
+class SubscriptionStoreLoadError(JsonStoreLoadError):
+    """``subscriptions.json`` повреждён или недоступен."""
+
+
+class SubscriptionStore(JsonStoreBase[DigestSettings]):
     """JSON-файл `{str(chat_id): { ...fields... }}`.
 
     Все мутации атомарны (tmp + os.replace) и потокобезопасны.
     """
 
     _PERSISTENCE_ERROR = SubscriptionStorePersistenceError
+    _LOAD_ERROR = SubscriptionStoreLoadError
     _STORE_LABEL = "subscriptions"
 
     def __init__(self, path: str | Path) -> None:
@@ -76,15 +81,13 @@ class SubscriptionStore(JsonStoreBase):
         Запись НЕ удаляется: настройки (дни/время) переживают отписку, чтобы
         при повторном включении пользователь не настраивал всё заново.
         """
-        changed = False
         with self._lock:
             existing = self._items.get(chat_id)
             if existing is None or not existing.digest_enabled:
                 return False
-            self._items[chat_id] = replace(existing, digest_enabled=False)
-            changed = True
-        if changed:
-            self._save_locked()
+            candidate = dict(self._items)
+            candidate[chat_id] = replace(existing, digest_enabled=False)
+            self._commit_items_locked(candidate)
         return True
 
     # --- per-user settings ------------------------------------------------
@@ -220,32 +223,28 @@ class SubscriptionStore(JsonStoreBase):
     def mark_digest_sent(self, chat_id: int, sent_date: date | str) -> None:
         """Записывает дату последней успешной автоотправки (YYYY-MM-DD)."""
         iso = sent_date.isoformat() if isinstance(sent_date, date) else str(sent_date)
-        changed = False
         with self._lock:
             existing = self._items.get(chat_id)
             if existing is None:
                 return
             if existing.last_digest_sent_date == iso:
                 return
-            self._items[chat_id] = replace(existing, last_digest_sent_date=iso)
-            changed = True
-        if changed:
-            self._save_locked()
+            candidate = dict(self._items)
+            candidate[chat_id] = replace(existing, last_digest_sent_date=iso)
+            self._commit_items_locked(candidate)
 
     def mark_pending_digest_sent(self, chat_id: int, sent_date: date | str) -> None:
-        """Дата последней успешной автоотправки дайджеста непринятых встреч."""
+        """Дата последней успешной обработки pending-дайджеста."""
         iso = sent_date.isoformat() if isinstance(sent_date, date) else str(sent_date)
-        changed = False
         with self._lock:
             existing = self._items.get(chat_id)
             if existing is None:
                 return
             if existing.last_pending_digest_sent_date == iso:
                 return
-            self._items[chat_id] = replace(existing, last_pending_digest_sent_date=iso)
-            changed = True
-        if changed:
-            self._save_locked()
+            candidate = dict(self._items)
+            candidate[chat_id] = replace(existing, last_pending_digest_sent_date=iso)
+            self._commit_items_locked(candidate)
 
     def list_active(self) -> list[DigestSettings]:
         """Подписчики с хотя бы одним включённым дайджестом.
@@ -276,15 +275,13 @@ class SubscriptionStore(JsonStoreBase):
         Сохраняет только если что-то реально поменялось или запись только что
         появилась. Возвращает финальную запись.
         """
-        changed = False
         with self._lock:
             existing = self._items.get(chat_id)
             updated = build(existing)
             if updated != existing or chat_id not in self._items:
-                self._items[chat_id] = updated
-                changed = True
-        if changed:
-            self._save_locked()
+                candidate = dict(self._items)
+                candidate[chat_id] = updated
+                self._commit_items_locked(candidate)
         return updated
 
     def _load(self) -> dict[int, DigestSettings]:
@@ -293,14 +290,18 @@ class SubscriptionStore(JsonStoreBase):
         for chat_key, value in raw.items():
             try:
                 chat_id = int(chat_key)
-            except (TypeError, ValueError):
-                continue
+            except (TypeError, ValueError) as exc:
+                raise self._load_error(f"record key {chat_key!r} is not an integer") from exc
             if not isinstance(value, dict):
-                continue
+                raise self._load_error(f"record {chat_key!r} must be a JSON object")
             record = DigestSettings.from_json(chat_id, value)
-            if record is not None:
-                items[chat_id] = record
+            if record is None:
+                raise self._load_error(f"record {chat_key!r} is structurally invalid")
+            items[chat_id] = record
         return items
 
-    def _build_snapshot_payload(self) -> dict[str, Any]:
-        return {str(chat_id): rec.to_json() for chat_id, rec in self._items.items()}
+    def _build_snapshot_payload(
+        self,
+        items: Mapping[int, DigestSettings],
+    ) -> dict[str, Any]:
+        return {str(chat_id): rec.to_json() for chat_id, rec in items.items()}
