@@ -35,7 +35,7 @@ jh2==5.0.13
     # via urllib3-future
 lxml==6.1.1
     # via caldav
-niquests==3.20.1
+niquests==3.21.0
     # via caldav
 pillow==12.3.0
     # via -r requirements.in
@@ -69,7 +69,7 @@ tzdata==2026.3
     #   x-wr-timezone
 urllib3==2.7.0
     # via requests
-urllib3-future==2.23.900
+urllib3-future==2.24.900
     # via niquests
 wassima==2.1.3 ; sys_platform != 'emscripten'
     # via niquests

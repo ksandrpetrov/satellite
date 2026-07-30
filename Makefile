@@ -103,11 +103,13 @@ lock: check-uv
 	$(UV) pip compile requirements.in \
 		--universal \
 		--python-version 3.11 \
+		--upgrade \
 		--custom-compile-command "make lock" \
 		--output-file requirements.txt
 	$(UV) pip compile requirements-dev.in \
 		--universal \
 		--python-version 3.11 \
+		--upgrade \
 		--custom-compile-command "make lock" \
 		--output-file requirements-dev.txt
 
