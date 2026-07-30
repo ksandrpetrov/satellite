@@ -226,9 +226,15 @@ def invitations_list_rich_html(
     body_events: list[dict[str, Any]],
     tz: tzinfo,
     reference_date: date,
+    preview_title: str,
+    preview_when: str,
     truncated: bool,
 ) -> str:
-    blocks: list[str] = [paragraph(INVITATIONS_INTRO_HTML)]
+    blocks: list[str] = [
+        paragraph(f"📨 {bold(escape_rich(preview_title))}"),
+        paragraph(f"🗓 {escape_rich(preview_when)}"),
+        paragraph(INVITATIONS_INTRO_HTML),
+    ]
     blocks.extend(_invitation_items_rich(body_events, tz, reference_date))
     if truncated:
         blocks.append(paragraph("<i>Показаны первые встречи — обновите список после ответов.</i>"))

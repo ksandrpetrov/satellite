@@ -10,7 +10,10 @@ from .calendar.callback_tokens import event_callback_token
 from .calendar.event_token_cache import get_event_token_cache
 from .calendar.events import (
     collect_pending_invitations,
+    event_local_start_date,
     format_invitation_list_lines,
+    format_time_range,
+    format_upcoming_day_header,
 )
 from .calendar.user_calendar_service import UserCalendarService
 from .messages_ru import (
@@ -95,16 +98,31 @@ def screen_from_pending(
     if not pending:
         empty = INVITATIONS_EMPTY_HTML
         return empty, empty, build_invitations_keyboard([], from_settings_hub=from_settings_hub)
+    preview_event = pending[0]
+    preview_title = str(preview_event.get("summary") or "—")
+    preview_day = event_local_start_date(preview_event, tz)
+    preview_when_parts = []
+    if preview_day is not None:
+        preview_when_parts.append(format_upcoming_day_header(preview_day, reference_date))
+    preview_when_parts.append(format_time_range(preview_event, tz))
+    preview_when = " · ".join(preview_when_parts)
     body = format_invitation_list_lines(pending, tz, reference_date)
     keyboard_rows = [
         (event_callback_token(str(ev.get("url") or "")), str(idx + 1))
         for idx, ev in enumerate(pending)
     ]
-    text = invitations_list_html(body_lines=body, truncated=truncated)
+    text = invitations_list_html(
+        body_lines=body,
+        preview_title=preview_title,
+        preview_when=preview_when,
+        truncated=truncated,
+    )
     rich_text = invitations_list_rich_html(
         body_events=pending,
         tz=tz,
         reference_date=reference_date,
+        preview_title=preview_title,
+        preview_when=preview_when,
         truncated=truncated,
     )
     return (

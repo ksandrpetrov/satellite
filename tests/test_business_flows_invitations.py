@@ -14,6 +14,7 @@ from satellite.invitations_view import (
     INVITATION_HORIZON_DAYS,
     INVITATION_LOOKBACK_DAYS,
     MAX_INVITATIONS,
+    screen_from_pending,
 )
 from satellite.messages_ru import (
     CB_INV_REFRESH,
@@ -98,6 +99,75 @@ def _ctx(*, events: list[dict] | None = None, raise_on_list: Exception | None = 
     ctx.calendar_service.list_events_for_invitations = MagicMock(side_effect=list_invitations)
     ctx.calendar_service.set_attendee_partstat = MagicMock()
     return ctx
+
+
+def test_invitations_screen_starts_with_first_event_title_and_when() -> None:
+    pending = [
+        _ev(
+            summary="QA 2.0 ВКонтакте: синк",
+            start="2026-08-04T17:00:00+03:00",
+            end="2026-08-04T18:00:00+03:00",
+        ),
+        _ev(
+            summary="Следующая встреча",
+            url="https://cal/e/2.ics",
+            uid="uid-2",
+            start="2026-08-18T13:00:00+03:00",
+            end="2026-08-18T14:00:00+03:00",
+        ),
+    ]
+
+    text, rich_text, keyboard = screen_from_pending(
+        pending,
+        TZ,
+        reference_date=date(2026, 7, 30),
+        truncated=False,
+    )
+
+    assert text.startswith(
+        "📨 <b>QA 2.0 ВКонтакте: синк</b>\n🗓 Вт, 04.08 · 17:00–18:00\n\n<b>Приглашения</b>"
+    )
+    assert rich_text.startswith(
+        "<p>📨 <b>QA 2.0 ВКонтакте: синк</b></p>"
+        "<p>🗓 Вт, 04.08 · 17:00–18:00</p>"
+        "<p><b>Приглашения</b>"
+    )
+    assert "Следующая встреча" in text
+    assert "Следующая встреча" in rich_text
+    assert len(keyboard["inline_keyboard"]) == 4
+
+
+def test_invitations_preview_escapes_title_and_supports_all_day() -> None:
+    pending = [
+        _ev(
+            summary="<QA & Release>",
+            start="2026-08-04",
+            end="2026-08-05",
+        )
+    ]
+
+    text, rich_text, _keyboard = screen_from_pending(
+        pending,
+        TZ,
+        reference_date=date(2026, 7, 30),
+        truncated=False,
+    )
+
+    expected_preview = "📨 <b>&lt;QA &amp; Release&gt;</b>"
+    assert text.startswith(f"{expected_preview}\n🗓 Вт, 04.08 · весь день")
+    assert rich_text.startswith(f"<p>{expected_preview}</p><p>🗓 Вт, 04.08 · весь день</p>")
+
+
+def test_empty_invitations_screen_keeps_existing_text() -> None:
+    text, rich_text, _keyboard = screen_from_pending(
+        [],
+        TZ,
+        reference_date=date(2026, 7, 30),
+        truncated=False,
+    )
+
+    assert text == rich_text
+    assert text.startswith("📨 <b>Приглашения</b>")
 
 
 def test_invitations_open_uses_tg_thinking_status_draft(

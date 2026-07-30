@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from html import escape
+
 from ..presentation.html import expandable_blockquote
 from .buttons import styled_button
 from .settings_ui import CB_SETTINGS_CALENDAR_BACK
@@ -18,7 +20,7 @@ INVITATIONS_EMPTY_HTML = (
     "📨 <b>Приглашения</b>\n\nВсё разобрано — встреч, где нужно принять решение, сейчас нет."
 )
 INVITATIONS_INTRO_HTML = (
-    "📨 <b>Приглашения</b>\n\n"
+    "<b>Приглашения</b>\n\n"
     "Встречи, где тебя ждут как участника. Нажми кнопку под событием — "
     "ответ улетит в календарь."
 )
@@ -72,8 +74,15 @@ def build_invitations_keyboard(
     return {"inline_keyboard": rows}
 
 
-def invitations_list_html(*, body_lines: list[str], truncated: bool) -> str:
-    parts = [INVITATIONS_INTRO_HTML]
+def invitations_list_html(
+    *,
+    body_lines: list[str],
+    preview_title: str,
+    preview_when: str,
+    truncated: bool,
+) -> str:
+    preview = f"📨 <b>{escape(preview_title, quote=False)}</b>\n🗓 {escape(preview_when)}"
+    parts = [preview, "", INVITATIONS_INTRO_HTML]
     if body_lines:
         parts.append("")
         body = "\n".join(body_lines)
