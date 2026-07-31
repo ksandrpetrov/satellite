@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import random
 from datetime import date
 
 import pytest
@@ -185,3 +186,30 @@ def test_defaults_match_tz_spec():
     assert DEFAULT_WORKDAY_END == "19:00"
     assert DEFAULT_LUNCH_START == "13:00"
     assert DEFAULT_LUNCH_END == "14:00"
+
+
+def test_random_intervals_match_independent_minute_grid_oracle():
+    rng = random.Random(20260731)
+    for _ in range(100):
+        events = []
+        raw: list[tuple[int, int]] = []
+        for index in range(rng.randint(0, 12)):
+            start = rng.randint(8 * 60, 20 * 60)
+            end = start + rng.randint(1, 180)
+            raw.append((start, end))
+            events.append(NormalizedEvent(f"E{index}", start, end))
+
+        stats = calculate_day_stats(events, date_label="", plan_date=_PD)
+        occupied = {
+            minute for start, end in raw for minute in range(max(start, 10 * 60), min(end, 19 * 60))
+        }
+        overlaps = sum(
+            1
+            for i, (a_start, a_end) in enumerate(raw)
+            for b_start, b_end in raw[i + 1 :]
+            if a_start < b_end and b_start < a_end
+        )
+
+        assert stats.busy_minutes == len(occupied)
+        assert stats.free_minutes == max(0, 480 - len(occupied))
+        assert stats.overlaps_count == overlaps

@@ -249,6 +249,31 @@ def test_mailru_list_events_for_invitations_enables_partstat_verify() -> None:
     assert captured.get("invitation_partstat_verify") is True
 
 
+def test_mailru_list_events_for_analytics_is_enriched_and_strict() -> None:
+    provider = MailruCalendarProvider()
+    ctx = _mailru_context()
+    captured: dict = {}
+
+    def fake_fetch(*args: object, **kwargs: object) -> list:
+        captured.update(kwargs)
+        return []
+
+    mock_service = MagicMock()
+    mock_service.fetch_events_in_range.side_effect = fake_fetch
+
+    with patch.object(provider, "_service_for_invitations", return_value=mock_service):
+        provider.list_events_for_analytics(
+            ctx,
+            start_date=date(2026, 2, 16),
+            end_date=date(2026, 5, 17),
+            tz=TZ,
+        )
+
+    assert captured.get("enrich_partstat") is True
+    assert captured.get("invitation_partstat_verify") is True
+    assert captured.get("strict") is True
+
+
 def test_many_accepted_fillers_do_not_block_kto_est_kto_with_short_phase2_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from ..calendar.period_stats import AnalyticsReport, format_week_range_label
 from ..visual_cards import base as vc
+from .caption import format_event_count_ru, format_overlap_count_ru
 
 if TYPE_CHECKING:
     from PIL import ImageDraw, ImageFont
@@ -248,7 +249,12 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
     draw = ImageDraw.Draw(img)
 
     y = vc.MARGIN
-    draw.text((vc.MARGIN, y), "ЧАЙКА · НЕДЕЛЬНАЯ АНАЛИТИКА", fill=vc.COLOR_MUTED, font=font_eyebrow)
+    draw.text(
+        (vc.MARGIN, y),
+        "ЧАЙКА · ПЛАНОВАЯ НАГРУЗКА НЕДЕЛИ",
+        fill=vc.COLOR_MUTED,
+        font=font_eyebrow,
+    )
     y += 32
     week_label = format_week_range_label(report.current.week_start)
     draw.text((vc.MARGIN, y), week_label, fill=vc.COLOR_TEXT, font=font_title)
@@ -285,14 +291,16 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
 
     stats_left = vc.MARGIN + 300
     stats_top = y + 36
-    meetings_total = sum(d.meetings_count for d in report.current.days)
+    meetings_sub = vc.meetings_label(report.current.total_meetings)
+    if report.current.total_overlaps:
+        meetings_sub += f" · {format_overlap_count_ru(report.current.total_overlaps)}"
     vc.draw_stat_row(
         draw,
         stats_left,
         stats_top,
         label="Встречи",
         value=vc.hours_label(report.current.total_busy),
-        sub=vc.meetings_label(meetings_total),
+        sub=meetings_sub,
         font_label=font_stat_label,
         font_value=font_stat_value,
         font_sub=font_stat_sub,
@@ -353,6 +361,22 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
         font=font_footer,
         anchor="mt",
     )
+    draw.text(
+        (vc.CARD_WIDTH // 2, y + 28),
+        "План Пн–Пт целиком, включая будущие встречи",
+        fill=vc.COLOR_MUTED,
+        font=font_footer,
+        anchor="mt",
+    )
+    if report.quality.unverified_partstat_events:
+        draw.text(
+            (vc.CARD_WIDTH // 2, y + 56),
+            "Статус участия не проверен: "
+            + format_event_count_ru(report.quality.unverified_partstat_events),
+            fill=vc.COLOR_TREND_UP,
+            font=font_footer,
+            anchor="mt",
+        )
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)

@@ -24,6 +24,54 @@ def test_login_variants_for_caldav_includes_local_part():
     assert login_variants_for_caldav("user@mail.ru") == ["user@mail.ru", "user"]
 
 
+def test_strict_range_fetch_raises_when_selected_calendar_fails():
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login="me@test",
+        app_password="pw",
+    )
+    calendar = MagicMock()
+    calendar.search.side_effect = RuntimeError("REPORT failed")
+    handle = CalendarHandle("Broken", calendar, "https://fake/cal/broken")
+
+    with pytest.raises(CalDAVError, match="range search failed"):
+        service._collect_events_in_range(
+            [handle],
+            datetime(2026, 5, 11, tzinfo=ZoneInfo("UTC")),
+            datetime(2026, 5, 18, tzinfo=ZoneInfo("UTC")),
+            strict=True,
+        )
+
+
+def test_range_fallback_expands_recurring_resource_locally():
+    service = CalDAVService(
+        caldav_url="https://fake/",
+        login="me@test",
+        app_password="pw",
+    )
+    ics = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n"
+        "UID:weekly@test\r\nSUMMARY:Weekly\r\n"
+        "DTSTART:20260504T070000Z\r\nDTEND:20260504T080000Z\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=4\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+    raw = MagicMock(data=ics, url="https://fake/cal/weekly.ics")
+    calendar = MagicMock()
+    calendar.search.side_effect = [ValueError("bad expansion"), [raw]]
+    handle = CalendarHandle("Primary", calendar, "https://fake/cal/primary")
+
+    events = service._parse_range_events_from_handle(
+        handle,
+        datetime(2026, 5, 11, tzinfo=ZoneInfo("UTC")),
+        datetime(2026, 5, 18, tzinfo=ZoneInfo("UTC")),
+        strict=True,
+    )
+
+    assert len(events) == 1
+    assert events[0]["dtstart"].startswith("2026-05-11T07:00")
+    assert events[0]["url"] == "https://fake/cal/weekly.ics"
+
+
 def test_build_candidate_urls_includes_principal_and_calendars_paths():
     candidates = build_candidate_urls("https://calendar.mail.ru/", "alex@mail.ru")
     assert "https://calendar.mail.ru" in candidates

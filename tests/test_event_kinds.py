@@ -128,3 +128,15 @@ def test_explicit_exclusion_drops_regular_meeting_from_analytics():
         )
         is None
     )
+
+
+def test_duplicate_attendee_rows_use_best_partstat_for_analytics():
+    event = _ev(
+        "Sync",
+        attendees=[
+            "mailto:u@test;PARTSTAT=DECLINED",
+            "mailto:u@test;PARTSTAT=ACCEPTED",
+        ],
+    )
+
+    assert classify_event_kind(event, TZ, login="u@test") == "meeting"

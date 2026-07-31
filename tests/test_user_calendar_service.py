@@ -43,6 +43,7 @@ class FakeProvider:
         self.validate_calls = 0
         self.list_calendars_calls = 0
         self.list_events_calls = 0
+        self.list_analytics_calls = 0
         self.next_status = CalendarConnectionStatus(
             connected=True, provider_id=PROVIDER_MAILRU, status="connected"
         )
@@ -81,6 +82,17 @@ class FakeProvider:
         if self.raise_on_list_events is not None:
             raise self.raise_on_list_events
         return [{"summary": "Standup", "start": start_date.isoformat()}]
+
+    def list_events_for_analytics(
+        self,
+        context: UserCalendarContext,
+        *,
+        start_date: date,
+        end_date: date,
+        tz: tzinfo,
+    ) -> list[dict[str, Any]]:
+        self.list_analytics_calls += 1
+        return [{"summary": "Verified", "start": start_date.isoformat()}]
 
     def create_event(self, *args, **kwargs):  # pragma: no cover - не вызывается
         raise NotImplementedError
@@ -233,3 +245,20 @@ def test_close_closes_cached_providers_once(
     service.close()
 
     assert fake_provider.close_calls == 1
+
+
+def test_list_events_for_analytics_uses_dedicated_provider_path(
+    service: UserCalendarService, fake_provider: FakeProvider
+) -> None:
+    _connect(service)
+
+    events = service.list_events_for_analytics(
+        USER_ID,
+        start_date=date(2026, 2, 16),
+        end_date=date(2026, 5, 17),
+        tz=datetime.now().astimezone().tzinfo,
+    )
+
+    assert events == [{"summary": "Verified", "start": "2026-02-16"}]
+    assert fake_provider.list_analytics_calls == 1
+    assert fake_provider.list_events_calls == 0

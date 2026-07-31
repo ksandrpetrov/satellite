@@ -18,7 +18,7 @@ from .caldav_shared import (
     log,
 )
 from .events import day_bounds
-from .ical_parser import parse_calendar_events
+from .ical_parser import parse_calendar_events, parse_calendar_events_in_range
 from .url_utils import normalize_calendar_url as _normalize_calendar_url
 
 if TYPE_CHECKING:
@@ -63,6 +63,7 @@ class CalDAVFetchMixin:
         calendar_urls: Sequence[str] | None = None,
         enrich_partstat: bool = False,
         invitation_partstat_verify: bool = False,
+        strict: bool = False,
     ) -> list[Event]:
         """События в диапазоне дат включительно для одного или нескольких календарей."""
         if end_date < start_date:
@@ -79,7 +80,7 @@ class CalDAVFetchMixin:
         range_start, _ = day_bounds(start_date, tz)
         _, range_end = day_bounds(end_date, tz)
         report_started = time.monotonic()
-        out = self._collect_events_in_range(handles, range_start, range_end)
+        out = self._collect_events_in_range(handles, range_start, range_end, strict=strict)
         report_ms = int((time.monotonic() - report_started) * 1000)
         if enrich_partstat:
             verify_moment = datetime.now(tz) if invitation_partstat_verify else None
@@ -110,12 +111,18 @@ class CalDAVFetchMixin:
         handles: Sequence[CalendarHandle],
         range_start: datetime,
         range_end: datetime,
+        *,
+        strict: bool = False,
     ) -> list[Event]:
         """REPORT по одному или нескольким календарям; при N>1 — параллельно."""
         if not handles:
             return []
         if len(handles) == 1:
-            chunks = [self._parse_range_events_from_handle(handles[0], range_start, range_end)]
+            chunks = [
+                self._parse_range_events_from_handle(
+                    handles[0], range_start, range_end, strict=strict
+                )
+            ]
         else:
             workers = min(len(handles), _RANGE_SEARCH_MAX_WORKERS)
             chunks = []
@@ -126,6 +133,7 @@ class CalDAVFetchMixin:
                         handle,
                         range_start,
                         range_end,
+                        strict=strict,
                     )
                     for handle in handles
                 ]
@@ -141,22 +149,55 @@ class CalDAVFetchMixin:
         handle: CalendarHandle,
         range_start: datetime,
         range_end: datetime,
+        *,
+        strict: bool = False,
     ) -> list[Event]:
         local: list[Event] = []
         try:
-            events_iter = self._iter_calendar_range_search(handle, range_start, range_end)
+            events_iter, server_expanded = self._iter_calendar_range_search(
+                handle, range_start, range_end
+            )
         except Exception as exc:  # noqa: BLE001
             log.warning(
                 "CalDAV range search failed url=%s: %s",
                 _redact_url(handle.url),
                 exc.__class__.__name__,
             )
+            if strict:
+                raise CalDAVError("Selected calendar range search failed") from exc
             return local
-        for raw_event in events_iter:
-            parsed = parse_calendar_events(raw_event.data, handle.name)
-            for ev in parsed:
-                ev["url"] = str(getattr(raw_event, "url", "") or "")
-            local.extend(parsed)
+        try:
+            for raw_event in events_iter:
+                if server_expanded:
+                    parsed = parse_calendar_events(raw_event.data, handle.name)
+                else:
+                    parsed = parse_calendar_events_in_range(
+                        raw_event.data,
+                        handle.name,
+                        range_start=range_start,
+                        range_end=range_end,
+                    )
+                raw_data = raw_event.data
+                has_vevent = (
+                    b"BEGIN:VEVENT" in raw_data
+                    if isinstance(raw_data, bytes)
+                    else ("BEGIN:VEVENT" in str(raw_data))
+                )
+                if strict and has_vevent and not parsed:
+                    raise CalDAVError("Calendar event could not be parsed")
+                for ev in parsed:
+                    ev["url"] = str(getattr(raw_event, "url", "") or "")
+                local.extend(parsed)
+        except CalDAVError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            if strict:
+                raise CalDAVError("Selected calendar response could not be read") from exc
+            log.warning(
+                "CalDAV range response parse failed url=%s: %s",
+                _redact_url(handle.url),
+                exc.__class__.__name__,
+            )
         return local
 
     def _iter_calendar_range_search(
@@ -164,7 +205,7 @@ class CalDAVFetchMixin:
         handle: CalendarHandle,
         range_start: datetime,
         range_end: datetime,
-    ) -> Any:
+    ) -> tuple[Any, bool]:
         """REPORT/поиск событий в диапазоне; при битом RRULE — fallback expand=False.
 
         Mail.ru иногда отдаёт recurrence set, который ``icalendar_searcher`` не
@@ -174,8 +215,9 @@ class CalDAVFetchMixin:
         last_value_error: ValueError | None = None
         for expand in (True, False):
             try:
-                return handle.obj.search(
-                    start=range_start, end=range_end, event=True, expand=expand
+                return (
+                    handle.obj.search(start=range_start, end=range_end, event=True, expand=expand),
+                    expand,
                 )
             except ValueError as exc:
                 last_value_error = exc

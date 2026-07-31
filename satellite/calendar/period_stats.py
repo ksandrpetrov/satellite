@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 from typing import Literal
 
 from .constants import (
@@ -13,7 +13,7 @@ from .constants import (
 )
 from .event_exclusions import EventExclusionPolicy
 from .event_kinds import filter_meetings_for_analytics
-from .events import Event, event_occurs_on
+from .events import Event, event_occurs_on, parse_iso, user_partstat
 from .stats import WorkdayOptions, calculate_day_stats, normalize_caldav_event
 
 QUARTER_WEEKS = 13
@@ -36,10 +36,32 @@ class WeekSummary:
     total_busy: int
     total_free: int
     load_percent: int
+    total_meetings: int
 
     @property
     def week_end(self) -> date:
         return self.week_start + timedelta(days=6)
+
+    @property
+    def total_overlaps(self) -> int:
+        """Число пар пересекающихся встреч за рабочую неделю."""
+        return sum(day.overlaps_count for day in self.days)
+
+    @property
+    def most_conflicted_day(self) -> DaySlice | None:
+        """Первый день с максимальным числом пересечений или None."""
+        if not self.days:
+            return None
+        day = max(self.days, key=lambda item: item.overlaps_count)
+        return day if day.overlaps_count > 0 else None
+
+
+@dataclass(frozen=True)
+class AnalyticsDataQuality:
+    """Observable limitations of the source data used for the report."""
+
+    duplicate_occurrences_dropped: int = 0
+    unverified_partstat_events: int = 0
 
 
 @dataclass(frozen=True)
@@ -50,6 +72,7 @@ class AnalyticsReport:
     quarter_weekly_busy: tuple[int, ...]
     workday: WorkdayOptions
     trend: Literal["up", "down", "flat"]
+    quality: AnalyticsDataQuality = AnalyticsDataQuality()
 
 
 def week_bounds(reference_date: date) -> tuple[date, date]:
@@ -73,6 +96,72 @@ def _load_percent(total_busy: int, capacity: int) -> int:
     if capacity <= 0:
         return 0
     return min(100, max(0, round(100 * total_busy / capacity)))
+
+
+def _stable_time_key(value: object, tz: tzinfo) -> str:
+    parsed = parse_iso(value)
+    if parsed is None:
+        return str(value or "")
+    if isinstance(parsed, datetime):
+        localized = parsed.replace(tzinfo=tz) if parsed.tzinfo is None else parsed.astimezone(tz)
+        return localized.isoformat()
+    return parsed.isoformat()
+
+
+def event_occurrence_key(event: Event, tz: tzinfo) -> tuple[str, ...] | None:
+    """Cross-calendar identity for one expanded occurrence.
+
+    A recurring series deliberately keeps separate occurrences because DTSTART
+    and DTEND are part of the key. Missing UID is not guessed from title/time:
+    collapsing unrelated meetings would be worse than retaining a duplicate.
+    """
+    uid = str(event.get("uid") or "").strip().casefold()
+    if not uid:
+        return None
+    return (
+        uid,
+        _stable_time_key(event.get("dtstart"), tz),
+        _stable_time_key(event.get("dtend"), tz),
+    )
+
+
+def _duplicate_information_score(event: Event, login: str | None) -> tuple[int, int, int]:
+    status = user_partstat(event, login or "") if login else None
+    status_priority = {
+        "DECLINED": 5,
+        "NEEDS-ACTION": 4,
+        "DELEGATED": 4,
+        "TENTATIVE": 3,
+        "ACCEPTED": 2,
+    }.get(status or "", 0)
+    attendees = event.get("attendees") or []
+    return status_priority, len(attendees), 1 if event.get("status") else 0
+
+
+def deduplicate_event_occurrences(
+    events: Sequence[Event], tz: tzinfo, *, login: str | None = None
+) -> tuple[list[Event], int]:
+    positions: dict[tuple[str, ...], int] = {}
+    unique: list[Event] = []
+    dropped = 0
+    for event in events:
+        key = event_occurrence_key(event, tz)
+        if key is not None and key in positions:
+            dropped += 1
+            index = positions[key]
+            if _duplicate_information_score(event, login) > _duplicate_information_score(
+                unique[index], login
+            ):
+                unique[index] = event
+            continue
+        if key is not None:
+            positions[key] = len(unique)
+        unique.append(event)
+    return unique, dropped
+
+
+def _event_count_key(event: Event, tz: tzinfo) -> tuple[object, ...]:
+    return event_occurrence_key(event, tz) or ("object", id(event))
 
 
 def _day_slice(
@@ -120,9 +209,10 @@ def build_week_summary(
     options: WorkdayOptions,
     exclusion_policy: EventExclusionPolicy | None = None,
 ) -> WeekSummary:
+    unique_events, _ = deduplicate_event_occurrences(events, tz, login=login)
     days = tuple(
         _day_slice(
-            events,
+            unique_events,
             week_start + timedelta(days=offset),
             tz=tz,
             login=login,
@@ -134,12 +224,27 @@ def build_week_summary(
     total_busy = sum(d.busy_minutes for d in days)
     total_free = sum(d.free_minutes for d in days)
     capacity = _effective_week_capacity(options)
+    weekday_events: dict[tuple[object, ...], Event] = {}
+    for event in unique_events:
+        if not any(
+            event_occurs_on(event, week_start + timedelta(days=offset), tz)
+            for offset in range(WORK_WEEK_DAYS)
+        ):
+            continue
+        if filter_meetings_for_analytics(
+            [event],
+            tz=tz,
+            login=login,
+            exclusion_policy=exclusion_policy,
+        ):
+            weekday_events[_event_count_key(event, tz)] = event
     return WeekSummary(
         week_start=week_start,
         days=days,
         total_busy=total_busy,
         total_free=total_free,
         load_percent=_load_percent(total_busy, capacity),
+        total_meetings=len(weekday_events),
     )
 
 
@@ -152,7 +257,7 @@ def _quarter_trend(weekly_busy: Sequence[int]) -> Literal["up", "down", "flat"]:
     prev_avg = sum(prev_four) / len(prev_four)
     last_avg = sum(last_four) / len(last_four)
     if prev_avg <= 0:
-        return "flat"
+        return "up" if last_avg > 0 else "flat"
     delta_ratio = (last_avg - prev_avg) / prev_avg
     if delta_ratio > 0.08:
         return "up"
@@ -171,14 +276,20 @@ def build_analytics_report(
     exclusion_policy: EventExclusionPolicy | None = None,
 ) -> AnalyticsReport:
     opts = options or WorkdayOptions()
+    unique_events, duplicates_dropped = deduplicate_event_occurrences(events, tz, login=login)
     current_start, _ = week_bounds(reference_date)
     previous_start = current_start - timedelta(days=7)
     quarter_starts = [
         current_start - timedelta(days=7 * offset) for offset in range(QUARTER_WEEKS - 1, -1, -1)
     ]
+    analytics_dates = tuple(
+        week_start + timedelta(days=day_offset)
+        for week_start in quarter_starts
+        for day_offset in range(WORK_WEEK_DAYS)
+    )
     quarter_busy = tuple(
         build_week_summary(
-            events,
+            unique_events,
             ws,
             tz=tz,
             login=login,
@@ -190,7 +301,7 @@ def build_analytics_report(
     return AnalyticsReport(
         reference_date=reference_date,
         current=build_week_summary(
-            events,
+            unique_events,
             current_start,
             tz=tz,
             login=login,
@@ -198,7 +309,7 @@ def build_analytics_report(
             exclusion_policy=exclusion_policy,
         ),
         previous=build_week_summary(
-            events,
+            unique_events,
             previous_start,
             tz=tz,
             login=login,
@@ -208,6 +319,21 @@ def build_analytics_report(
         quarter_weekly_busy=quarter_busy,
         workday=opts,
         trend=_quarter_trend(quarter_busy),
+        quality=AnalyticsDataQuality(
+            duplicate_occurrences_dropped=duplicates_dropped,
+            unverified_partstat_events=sum(
+                1
+                for event in unique_events
+                if any(event_occurs_on(event, plan_date, tz) for plan_date in analytics_dates)
+                and user_partstat(event, login) is None
+                and filter_meetings_for_analytics(
+                    [event],
+                    tz=tz,
+                    login=login,
+                    exclusion_policy=exclusion_policy,
+                )
+            ),
+        ),
     )
 
 
@@ -229,8 +355,8 @@ _MONTH_GENITIVE_RU = (
 
 def format_week_range_label(week_start: date) -> str:
     end = week_start + timedelta(days=6)
-    month = _MONTH_GENITIVE_RU[end.month - 1]
+    start_month = _MONTH_GENITIVE_RU[week_start.month - 1]
     if week_start.month == end.month:
-        return f"{week_start.day}–{end.day} {month}"
+        return f"{week_start.day}–{end.day} {start_month}"
     end_month = _MONTH_GENITIVE_RU[end.month - 1]
-    return f"{week_start.day} {month} – {end.day} {end_month}"
+    return f"{week_start.day} {start_month} – {end.day} {end_month}"

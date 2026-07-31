@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta, tzinfo
 
 from ..calendar.event_exclusions import EventExclusionPolicy
@@ -16,6 +17,8 @@ from ..users import UserStore
 from .caption import build_analytics_caption
 from .render_card import render_analytics_card
 from .rich_caption import build_analytics_rich_caption
+
+log = logging.getLogger(__name__)
 
 
 def build_week_analytics(
@@ -36,7 +39,7 @@ def build_week_analytics(
     current_start, current_end = week_bounds(reference_date)
     quarter_start = current_start - timedelta(days=7 * (QUARTER_WEEKS - 1))
 
-    events = calendar_service.list_events(
+    events = calendar_service.list_events_for_analytics(
         telegram_user_id,
         start_date=quarter_start,
         end_date=current_end,
@@ -49,6 +52,13 @@ def build_week_analytics(
         login=login,
         options=options,
         exclusion_policy=exclusion_policy,
+    )
+    log.info(
+        "Analytics input quality user_id=%s events=%d duplicates_dropped=%d unverified_partstat=%d",
+        telegram_user_id,
+        len(events),
+        report.quality.duplicate_occurrences_dropped,
+        report.quality.unverified_partstat_events,
     )
     png = render_analytics_card(report)
     caption = build_analytics_caption(report)

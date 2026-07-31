@@ -15,7 +15,7 @@ def test_build_week_analytics_applies_exclusion_policy(monkeypatch):
         context=SimpleNamespace(login="user@test.ru"),
         record=SimpleNamespace(analytics_workday="10-19"),
     )
-    calendar_service.list_events.return_value = [
+    calendar_service.list_events_for_analytics.return_value = [
         {
             "summary": "Weekly Placeholder",
             "dtstart": "2026-05-11T10:00:00+00:00",
@@ -52,3 +52,9 @@ def test_build_week_analytics_applies_exclusion_policy(monkeypatch):
     assert result == (b"png", "caption", "rich caption")
     assert captured["report"].current.total_busy == 0
     assert captured["report"].quarter_weekly_busy == (0,) * 13
+    calendar_service.list_events_for_analytics.assert_called_once_with(
+        1,
+        start_date=date(2026, 2, 16),
+        end_date=date(2026, 5, 17),
+        tz=UTC,
+    )

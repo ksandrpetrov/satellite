@@ -11,6 +11,7 @@ from satellite.calendar.period_stats import (
     WeekSummary,
     workday_options_from_preset,
 )
+from satellite.visual_cards import base as vc
 
 
 def _report() -> AnalyticsReport:
@@ -31,6 +32,7 @@ def _report() -> AnalyticsReport:
         total_busy=sum(d.busy_minutes for d in days),
         total_free=sum(d.free_minutes for d in days),
         load_percent=35,
+        total_meetings=10,
     )
     previous = WeekSummary(
         week_start=start - __import__("datetime").timedelta(days=7),
@@ -38,6 +40,7 @@ def _report() -> AnalyticsReport:
         total_busy=300,
         total_free=3000,
         load_percent=20,
+        total_meetings=10,
     )
     return AnalyticsReport(
         reference_date=date(2026, 5, 14),
@@ -53,3 +56,44 @@ def test_render_produces_valid_png():
     png = render_analytics_card(_report())
     assert len(png) > 5000
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_render_with_overlap_summary_produces_valid_png():
+    report = _report()
+    first_day = report.current.days[0]
+    days = (
+        DaySlice(
+            first_day.plan_date,
+            first_day.busy_minutes,
+            first_day.free_minutes,
+            first_day.meetings_count,
+            2,
+        ),
+        *report.current.days[1:],
+    )
+    current = WeekSummary(
+        week_start=report.current.week_start,
+        days=days,
+        total_busy=report.current.total_busy,
+        total_free=report.current.total_free,
+        load_percent=report.current.load_percent,
+        total_meetings=report.current.total_meetings,
+    )
+    report = AnalyticsReport(
+        reference_date=report.reference_date,
+        current=current,
+        previous=report.previous,
+        quarter_weekly_busy=report.quarter_weekly_busy,
+        workday=report.workday,
+        trend=report.trend,
+    )
+
+    png = render_analytics_card(report)
+
+    assert len(png) > 5000
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_selected_fonts_cover_cyrillic_arrows_and_dashes():
+    assert vc._font_supports_required_glyphs(vc.load_font(24))
+    assert vc._font_supports_required_glyphs(vc.load_font(24, bold=True))

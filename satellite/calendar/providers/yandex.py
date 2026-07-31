@@ -83,6 +83,16 @@ class YandexCalendarProvider:
     ) -> list:
         raise ProviderNotImplementedError(self.provider_id)
 
+    def list_events_for_analytics(
+        self,
+        context: UserCalendarContext,
+        *,
+        start_date: date,
+        end_date: date,
+        tz: tzinfo,
+    ) -> list:
+        raise ProviderNotImplementedError(self.provider_id)
+
     def set_attendee_partstat(
         self,
         context: UserCalendarContext,

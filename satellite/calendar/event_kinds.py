@@ -11,7 +11,6 @@ from .events import (
     Event,
     is_all_day_event,
     is_cancelled_event,
-    is_declined_event_for_user,
     is_lunch_event,
     user_partstat,
 )
@@ -59,7 +58,7 @@ def classify_event_kind(
     """Возвращает kind или None, если событие полностью исключается из аналитики."""
     if is_cancelled_event(event):
         return None
-    if is_declined_event_for_user(event, login):
+    if user_partstat(event, login) == "DECLINED":
         return None
     if is_unconfirmed_for_analytics(event, login):
         return None

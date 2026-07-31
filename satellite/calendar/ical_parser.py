@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from icalendar import Calendar
@@ -62,6 +62,18 @@ def _rrule_to_dict(rrule: Any) -> dict[str, list[str]] | None:
 def parse_event(component: Any, calendar_name: str) -> dict[str, Any]:
     dtstart = component.get("DTSTART")
     dtend = component.get("DTEND")
+    if dtend is None and dtstart is not None:
+        duration = component.get("DURATION")
+        try:
+            duration_value = duration.dt if duration is not None else None
+            if isinstance(duration_value, timedelta):
+                dtend_value = dtstart.dt + duration_value
+            else:
+                dtend_value = None
+        except (AttributeError, TypeError, ValueError):
+            dtend_value = None
+    else:
+        dtend_value = dtend.dt if dtend else None
     created = component.get("CREATED")
     last_modified = component.get("LAST-MODIFIED")
 
@@ -77,7 +89,7 @@ def parse_event(component: Any, calendar_name: str) -> dict[str, Any]:
         "attendees": _attendees_to_list(component.get("ATTENDEE")),
         "categories": _categories_to_list(component.get("CATEGORIES")),
         "dtstart": _to_serializable(dtstart.dt if dtstart else None),
-        "dtend": _to_serializable(dtend.dt if dtend else None),
+        "dtend": _to_serializable(dtend_value),
         "created": _to_serializable(created.dt if created else None),
         "last_modified": _to_serializable(last_modified.dt if last_modified else None),
         "rrule": _rrule_to_dict(component.get("RRULE")),
@@ -105,6 +117,32 @@ def parse_calendar_events(ics_text: str | bytes, calendar_name: str) -> list[dic
                 events.append(parse_event(component, calendar_name))
             except Exception:  # noqa: BLE001 - один битый VEVENT не должен валить всё
                 continue
+    return events
+
+
+def parse_calendar_events_in_range(
+    ics_text: str | bytes,
+    calendar_name: str,
+    *,
+    range_start: datetime,
+    range_end: datetime,
+) -> list[dict[str, Any]]:
+    """Expand a recurrence set locally when the CalDAV server cannot do it."""
+    from recurring_ical_events import of
+
+    if isinstance(ics_text, bytes):
+        ics_text = ics_text.decode("utf-8", errors="replace")
+    try:
+        calendar = Calendar.from_ical(ics_text)
+        components = of(calendar, skip_bad_series=False).between(range_start, range_end)
+    except Exception:  # noqa: BLE001 - strictness is decided by the range caller
+        return []
+    events: list[dict[str, Any]] = []
+    for component in components:
+        try:
+            events.append(parse_event(component, calendar_name))
+        except Exception:  # noqa: BLE001
+            continue
     return events
 
 

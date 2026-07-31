@@ -136,6 +136,17 @@ class CalendarProvider(Protocol):
         tz: tzinfo,
     ) -> list[Event]: ...
 
+    def list_events_for_analytics(
+        self,
+        context: UserCalendarContext,
+        *,
+        start_date: date,
+        end_date: date,
+        tz: tzinfo,
+    ) -> list[Event]:
+        """Return range events with best-effort participant-state enrichment."""
+        ...
+
     def set_attendee_partstat(
         self,
         context: UserCalendarContext,

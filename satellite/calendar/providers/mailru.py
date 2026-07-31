@@ -172,6 +172,38 @@ class MailruCalendarProvider:
                 error_code="CALDAV_UNAVAILABLE",
             ) from exc
 
+    def list_events_for_analytics(
+        self,
+        context: UserCalendarContext,
+        *,
+        start_date: date,
+        end_date: date,
+        tz: tzinfo,
+    ) -> list[Event]:
+        """Analytics cannot silently treat a partial calendar response as zero load."""
+        service = self._service_for_invitations(context.credentials)
+        calendar_urls = effective_enabled_calendar_urls_from_parts(
+            enabled_calendar_urls=context.enabled_calendar_urls,
+            primary_calendar_url=context.primary_calendar_url,
+        )
+        if not calendar_urls:
+            raise CalendarProviderError("Календарь не настроен.", error_code="NO_CALENDAR")
+        try:
+            return service.fetch_events_in_range(
+                start_date,
+                end_date,
+                tz=tz,
+                calendar_urls=calendar_urls,
+                enrich_partstat=True,
+                invitation_partstat_verify=True,
+                strict=True,
+            )
+        except CalDAVError as exc:
+            raise CalendarProviderError(
+                "Календарь временно недоступен. Попробуйте позже.",
+                error_code="CALDAV_UNAVAILABLE",
+            ) from exc
+
     def set_attendee_partstat(
         self,
         context: UserCalendarContext,

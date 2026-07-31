@@ -71,29 +71,40 @@ def paste_brand_logo(img) -> None:
 def load_font(size: int, *, bold: bool = False):
     _, _, ImageFont = pil()
     regular = (
-        "/System/Library/Fonts/SFNSText.ttf",
         "/System/Library/Fonts/Supplemental/SF-Pro-Text-Regular.otf",
-        "/System/Library/Fonts/Helvetica.ttc",
         "/System/Library/Fonts/Supplemental/Arial.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
         "arial.ttf",
     )
     heavy = (
-        "/System/Library/Fonts/SFNSText.ttf",
         "/System/Library/Fonts/Supplemental/SF-Pro-Text-Bold.otf",
         "/System/Library/Fonts/Supplemental/SF-Pro-Display-Bold.otf",
-        "/System/Library/Fonts/Helvetica.ttc",
         "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
         "arialbd.ttf",
     )
     paths = heavy if bold else regular
     for path in paths:
         try:
-            return ImageFont.truetype(path, size)
+            font = ImageFont.truetype(path, size)
         except OSError:
             continue
+        if _font_supports_required_glyphs(font):
+            return font
     return ImageFont.load_default()
+
+
+def _font_supports_required_glyphs(font) -> bool:
+    """Reject fonts that Pillow would render as visible tofu squares."""
+
+    def signature(char: str) -> tuple[tuple[int, int], bytes]:
+        mask = font.getmask(char)
+        return mask.size, bytes(mask)
+
+    missing = signature(chr(0x10FFFF))
+    return all(signature(char) != missing for char in "Ая–→−·")
 
 
 def hours_label(minutes: int) -> str:

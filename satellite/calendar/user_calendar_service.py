@@ -227,6 +227,26 @@ class UserCalendarService:
             ),
         )
 
+    def list_events_for_analytics(
+        self,
+        telegram_user_id: int,
+        *,
+        start_date: date,
+        end_date: date,
+        tz: tzinfo,
+    ) -> list:
+        """Fetch a strict range with best-effort PARTSTAT enrichment."""
+        return self._run(
+            telegram_user_id,
+            operation="list",
+            fn=lambda cc: cc.provider.list_events_for_analytics(
+                cc.context,
+                start_date=start_date,
+                end_date=end_date,
+                tz=tz,
+            ),
+        )
+
     def set_attendee_partstat(
         self,
         telegram_user_id: int,

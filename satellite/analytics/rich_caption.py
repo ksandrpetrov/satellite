@@ -15,7 +15,12 @@ from ..presentation.rich import (
     truncate_rich_html,
 )
 from . import templates as t
-from .caption import _compare_line, _trend_line, _week_tone
+from .caption import (
+    _comparison,
+    _overlap_details,
+    _quality_line,
+    _week_tone,
+)
 
 
 def _week_label(report: AnalyticsReport) -> str:
@@ -61,17 +66,52 @@ def build_analytics_rich_caption(report: AnalyticsReport) -> str:
             ],
         ),
         paragraph(_compare_rich(report)),
-        paragraph(escape_rich(_trend_line(report))),
+        paragraph(_trend_rich(report)),
         footnote_def(
             "metrics",
             escape_rich(
-                "Занято — встречи в рабочем окне (без обедов и all-day); "
+                "Занято — встречи в рабочем окне; обычные встречи 13:00–14:00 считаются, "
+                "события-приёмы пищи и all-day — нет. Загрузка считается относительно "
+                "рабочего окна за вычетом часа обеда; "
+                "план охватывает Пн–Пт целиком, включая будущие встречи; "
                 "сравнение — с прошлой неделей."
             ),
         ),
     ]
+    overlaps = _overlaps_rich(report)
+    if overlaps is not None:
+        blocks.insert(-1, paragraph(overlaps))
+    quality = _quality_line(report)
+    if quality is not None:
+        blocks.insert(-1, paragraph(quality))
     return truncate_rich_html(join_blocks(blocks))
 
 
 def _compare_rich(report: AnalyticsReport) -> str:
-    return escape_rich(_compare_line(report))
+    kind, delta = _comparison(report)
+    if kind == "same":
+        return escape_rich(t.COMPARE_SAME)
+    assert delta is not None
+    emphasized_delta = bold(escape_rich(delta))
+    if kind == "previous_lighter":
+        return f"Прошлая неделя была легче на {emphasized_delta} встреч."
+    return f"Прошлая неделя была плотнее на {emphasized_delta} встреч."
+
+
+def _trend_rich(report: AnalyticsReport) -> str:
+    if report.trend == "up":
+        return f"За квартал встречи {bold('набирают высоту')} — небо плотнее."
+    if report.trend == "down":
+        return f"За квартал встречи {bold('ползут вниз')} — небо светлеет."
+    return f"За квартал нагрузка {bold('держится на одной высоте')}."
+
+
+def _overlaps_rich(report: AnalyticsReport) -> str | None:
+    details = _overlap_details(report)
+    if details is None:
+        return None
+    count, day_label, day_count = details
+    return (
+        f"⚠️ {bold(escape_rich(count))}; больше всего — "
+        f"{escape_rich(day_label)} ({escape_rich(day_count)})."
+    )
