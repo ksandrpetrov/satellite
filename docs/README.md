@@ -40,6 +40,7 @@ Production Telegram-бот: CalDAV → метрики дня → HTML-дайдж
 | [operations.md](operations.md) | Локальный и серверный запуск, systemd, Docker, CI/CD, reverse proxy, runtime state |
 | [testing.md](testing.md) | pytest, `make check`, smoke, release-blocking тесты, фикстуры |
 | [graphify.md](graphify.md) | Knowledge graph для Codex: установка, запросы, обновление и Git-артефакты |
+| [design/analytics-orbital-rhythm.md](design/analytics-orbital-rhythm.md) | Визуальная философия и эталон PNG недельной аналитики |
 | [troubleshooting.md](troubleshooting.md) | Типичные сбои: env, CalDAV, Web App, дайджест, deploy, миграция logs |
 | [refactor-log.md](refactor-log.md) | История архитектурных фаз и инварианты после рефакторинга |
 | [test-coverage-audit.md](test-coverage-audit.md) | Сценарий → код → тесты (release-blocking карта) |

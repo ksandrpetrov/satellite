@@ -1,9 +1,8 @@
-"""PNG-инфографика недельной аналитики (Apple Health–style).
+"""PNG-инфографика недельной аналитики в стиле орбитальной телеметрии.
 
-Примитивы (палитра, шрифты, фон, карточка-surface, ring, pill, stat-row)
-живут в :mod:`satellite.visual_cards.base` — единственное место правды для
-всех карточек. В этом модуле остаются только аналитика-специфичные блоки:
-бейджи трендов, недельная диаграмма «Пн–Пт» и квартальный sparkline.
+Палитра, шрифты, логотип и универсальные PNG-примитивы живут в
+:mod:`satellite.visual_cards.base`. Здесь остаются только композиция отчёта и
+аналитика-специфичные графики.
 """
 
 from __future__ import annotations
@@ -14,36 +13,68 @@ from typing import TYPE_CHECKING
 
 from ..calendar.period_stats import AnalyticsReport, format_week_range_label
 from ..visual_cards import base as vc
-from .caption import format_event_count_ru, format_overlap_count_ru
 
 if TYPE_CHECKING:
     from PIL import ImageDraw, ImageFont
 
 CARD_HEIGHT = 1920
 
-_WEEKDAY_LABELS = ("Пн", "Вт", "Ср", "Чт", "Пт")
+_WEEKDAY_LABELS = ("ПН", "ВТ", "СР", "ЧТ", "ПТ")
 
 
 def _trend_badge(trend: str) -> tuple[str, str, tuple[int, int, int]]:
     if trend == "up":
-        return "↑", "Нагрузка растёт", vc.COLOR_TREND_UP
+        return "↑", "НАГРУЗКА РАСТЁТ", vc.COLOR_TREND_UP
     if trend == "down":
-        return "↓", "Нагрузка снижается", vc.COLOR_TREND_DOWN
-    return "→", "Стабильный ритм", vc.COLOR_TREND_FLAT
+        return "↓", "НАГРУЗКА СНИЖАЕТСЯ", vc.COLOR_TREND_DOWN
+    return "→", "СТАБИЛЬНЫЙ РИТМ", vc.COLOR_TREND_FLAT
 
 
 def _week_delta_badge(report: AnalyticsReport) -> tuple[str, tuple[int, int, int]]:
     delta_min = report.current.total_busy - report.previous.total_busy
     pct_delta = report.current.load_percent - report.previous.load_percent
     if abs(delta_min) < 30:
-        return "Как на прошлой неделе", vc.COLOR_MUTED
+        return "КАК НА ПРОШЛОЙ НЕДЕЛЕ", vc.COLOR_TREND_FLAT
     sign = "+" if delta_min > 0 else "−"
-    hours = vc.hours_label(abs(delta_min))
-    text = f"{sign}{hours} встреч"
-    if pct_delta != 0:
-        text += f"  ·  {pct_delta:+d}% загрузки"
+    text = f"{sign}{vc.hours_label(abs(delta_min))} ВСТРЕЧ"
+    if pct_delta:
+        text += f"  /  {pct_delta:+d}% ЗАГРУЗКИ"
     color = vc.COLOR_TREND_UP if delta_min > 0 else vc.COLOR_TREND_DOWN
     return text, color
+
+
+def _draw_section_label(
+    draw: ImageDraw.ImageDraw,
+    *,
+    x: int,
+    y: int,
+    number: str,
+    title: str,
+    subtitle: str,
+    font_title: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    font_micro: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+) -> None:
+    draw.text((x, y), number, fill=vc.COLOR_ACCENT, font=font_micro)
+    draw.text((x + 48, y - 8), title, fill=vc.COLOR_TEXT, font=font_title)
+    draw.text((x + 48, y + 31), subtitle, fill=vc.COLOR_MUTED, font=font_micro)
+
+
+def _draw_metric(
+    draw: ImageDraw.ImageDraw,
+    *,
+    x: int,
+    y: int,
+    label: str,
+    value: str,
+    sub: str,
+    value_color: tuple[int, int, int],
+    font_label: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    font_value: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    font_sub: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+) -> None:
+    draw.text((x, y), label, fill=vc.COLOR_MUTED, font=font_label)
+    draw.text((x, y + 34), value, fill=value_color, font=font_value)
+    draw.text((x, y + 92), sub, fill=vc.COLOR_FAINT, font=font_sub)
 
 
 def _draw_week_chart(
@@ -52,87 +83,102 @@ def _draw_week_chart(
     box: tuple[int, int, int, int],
     *,
     font_title: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    font_value: ImageFont.FreeTypeFont | ImageFont.ImageFont,
     font_small: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    font_micro: ImageFont.FreeTypeFont | ImageFont.ImageFont,
 ) -> None:
-    x0, y0, x1, y1 = box
-    pad = 36
-    chart_left = x0 + pad + 8
-    chart_right = x1 - pad
-    chart_bottom = y1 - pad - 28
-
-    title_x = x0 + pad
-    draw.text((title_x, y0 + pad), "Пн–Пт", fill=vc.COLOR_TEXT, font=font_title)
-    draw.text(
-        (title_x, y0 + pad + 34),
-        "Занято и свободное время в рабочем окне",
-        fill=vc.COLOR_MUTED,
-        font=font_small,
+    x0, y0, x1, _ = box
+    _draw_section_label(
+        draw,
+        x=x0 + 32,
+        y=y0 + 39,
+        number="02",
+        title="ДНЕВНАЯ ОРБИТА",
+        subtitle="ДОЛЯ ВСТРЕЧ В РАБОЧЕМ ОКНЕ",
+        font_title=font_title,
+        font_micro=font_micro,
     )
 
-    leg_y = y0 + pad + 62
-    leg_x = chart_left
-    for color, name in (
-        (vc.COLOR_BUSY, "Занято"),
-        ((200, 230, 255), "Свободно"),
-    ):
-        draw.ellipse((leg_x, leg_y, leg_x + 12, leg_y + 12), fill=color)
-        draw.text((leg_x + 18, leg_y - 2), name, fill=vc.COLOR_MUTED, font=font_small)
-        leg_x += 18 + vc.text_width(draw, name, font_small) + 28
+    chart_left = x0 + 96
+    chart_right = x1 - 38
+    chart_top = y0 + 168
+    chart_bottom = y0 + 430
+    for ratio, label in ((1.0, "100"), (0.5, "50"), (0.0, "0")):
+        line_y = round(chart_bottom - (chart_bottom - chart_top) * ratio)
+        draw.line((chart_left, line_y, chart_right, line_y), fill=vc.COLOR_SEPARATOR, width=1)
+        draw.text(
+            (chart_left - 15, line_y),
+            label,
+            fill=vc.COLOR_FAINT,
+            font=font_micro,
+            anchor="rm",
+        )
 
-    chart_top = leg_y + 32
-
-    max_val = max(
-        (d.busy_minutes + d.free_minutes for d in report.current.days),
-        default=60,
-    )
-    max_val = max(max_val, 60)
-    n_days = len(report.current.days)
-    bar_area_w = chart_right - chart_left
-    group_w = bar_area_w / max(n_days, 1)
-    bar_w = min(44, int(group_w * 0.36))
-
-    for idx, day in enumerate(report.current.days):
-        cx = chart_left + group_w * idx + group_w / 2
-        total_h = chart_bottom - chart_top
-        busy_h = int(total_h * day.busy_minutes / max_val)
-        free_h = int(total_h * day.free_minutes / max_val)
-        bx0 = int(cx - bar_w / 2)
-        bx1 = int(cx + bar_w / 2)
-        if busy_h > 0:
+    days = report.current.days
+    group_width = (chart_right - chart_left) / max(1, len(days))
+    track_width = 58
+    for index, day in enumerate(days):
+        center_x = chart_left + group_width * index + group_width / 2
+        track = (
+            round(center_x - track_width / 2),
+            chart_top,
+            round(center_x + track_width / 2),
+            chart_bottom,
+        )
+        vc.rounded_rect(
+            draw,
+            track,
+            track_width // 2,
+            fill=vc.COLOR_FREE,
+            outline=vc.COLOR_SEPARATOR,
+        )
+        capacity = max(1, day.busy_minutes + day.free_minutes)
+        busy_height = round((chart_bottom - chart_top) * day.busy_minutes / capacity)
+        if day.busy_minutes:
+            busy_height = max(6, busy_height)
+            busy_box = (
+                track[0],
+                chart_bottom - busy_height,
+                track[2],
+                chart_bottom,
+            )
             vc.rounded_rect(
                 draw,
-                (bx0, chart_bottom - busy_h, bx1, chart_bottom),
-                min(10, bar_w // 4),
+                busy_box,
+                min(track_width // 2, busy_height // 2),
                 fill=vc.COLOR_BUSY,
             )
-        if free_h > 0:
-            top_free = chart_bottom - busy_h - free_h
-            vc.rounded_rect(
-                draw,
-                (bx0, top_free, bx1, chart_bottom - busy_h),
-                min(10, bar_w // 4),
-                fill=(200, 230, 255),
+
+        draw.text(
+            (center_x, chart_top - 48),
+            vc.hours_label(day.busy_minutes),
+            fill=vc.COLOR_TEXT,
+            font=font_value,
+            anchor="mt",
+        )
+        weekday = _WEEKDAY_LABELS[index] if index < len(_WEEKDAY_LABELS) else "—"
+        draw.text(
+            (center_x, chart_bottom + 29),
+            f"{weekday} · {day.plan_date.day:02d}",
+            fill=vc.COLOR_TEXT,
+            font=font_small,
+            anchor="mt",
+        )
+        draw.text(
+            (center_x, chart_bottom + 63),
+            f"{day.meetings_count} ВСТР.",
+            fill=vc.COLOR_MUTED,
+            font=font_micro,
+            anchor="mt",
+        )
+        if day.overlaps_count:
+            draw.ellipse(
+                (center_x - 4, chart_bottom + 93, center_x + 4, chart_bottom + 101),
+                fill=vc.COLOR_TREND_UP,
             )
-        label = _WEEKDAY_LABELS[idx] if idx < len(_WEEKDAY_LABELS) else ""
-        draw.text((cx, chart_bottom + 12), label, fill=vc.COLOR_MUTED, font=font_small, anchor="mt")
-        if day.meetings_count > 0:
-            meet = str(day.meetings_count)
-            draw.text(
-                (cx, chart_bottom + 36),
-                meet,
-                fill=vc.COLOR_ACCENT,
-                font=font_small,
-                anchor="mt",
-            )
-
-    draw.line(
-        [chart_left, chart_bottom, chart_right, chart_bottom],
-        fill=vc.COLOR_SEPARATOR,
-        width=2,
-    )
 
 
-def _draw_sparkline_card(
+def _draw_quarter_chart(
     draw: ImageDraw.ImageDraw,
     img,
     values: Sequence[int],
@@ -142,241 +188,302 @@ def _draw_sparkline_card(
     trend_label: str,
     trend_color: tuple[int, int, int],
     font_title: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    font_value: ImageFont.FreeTypeFont | ImageFont.ImageFont,
     font_small: ImageFont.FreeTypeFont | ImageFont.ImageFont,
-    font_badge: ImageFont.FreeTypeFont | ImageFont.ImageFont,
-) -> None:
-    x0, y0, x1, y1 = box
-    pad = 36
-    left = x0 + pad
-    right = x1 - pad
-    bottom = y1 - pad - 20
-
-    header_y = y0 + pad
-    draw.text((left, header_y), "13 недель", fill=vc.COLOR_TEXT, font=font_title)
-    draw.text(
-        (left, header_y + 34),
-        "Суммарные часы встреч по неделям",
-        fill=vc.COLOR_MUTED,
-        font=font_small,
+    font_micro: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+) -> ImageDraw.ImageDraw:
+    x0, y0, x1, _ = box
+    _draw_section_label(
+        draw,
+        x=x0 + 32,
+        y=y0 + 39,
+        number="03",
+        title="КВАРТАЛЬНАЯ ТРАЕКТОРИЯ",
+        subtitle="13 НЕДЕЛЬ · ЧАСЫ ВСТРЕЧ",
+        font_title=font_title,
+        font_micro=font_micro,
     )
 
     badge_text = f"{trend_arrow}  {trend_label}"
-
-    def _lighten(c: int) -> int:
-        return min(255, c + (255 - c) * 85 // 100)
-
-    pill_fill: tuple[int, int, int] = (
-        _lighten(trend_color[0]),
-        _lighten(trend_color[1]),
-        _lighten(trend_color[2]),
-    )
-    badge_pad_x, badge_pad_y = 18, 10
-    badge_tw = vc.text_width(draw, badge_text, font_badge)
-    badge_th = int(getattr(font_badge, "size", 16)) + 4
-    badge_w = badge_tw + badge_pad_x * 2
-    badge_h = badge_th + badge_pad_y * 2
-    badge_x = right - badge_w
+    badge_width = vc.text_width(draw, badge_text, font_micro) + 32
     vc.draw_pill(
         draw,
-        (badge_x, header_y),
+        (x1 - 32 - badge_width, y0 + 30),
         badge_text,
-        fill=pill_fill,
+        fill=vc.COLOR_PILL_BG,
         text_color=trend_color,
-        font=font_badge,
-        pad_x=badge_pad_x,
-        pad_y=badge_pad_y,
+        font=font_micro,
+        pad_x=16,
+        pad_y=8,
+        outline=vc.COLOR_SEPARATOR,
     )
 
-    top_chart = max(header_y + 96, header_y + badge_h + 24)
+    left = x0 + 37
+    right = x1 - 37
+    top = y0 + 155
+    bottom = y0 + 370
+    current = values[-1] if values else 0
+    draw.text(
+        (right, top - 42),
+        f"СЕЙЧАС  {vc.hours_label(current)}",
+        fill=vc.COLOR_TEXT,
+        font=font_value,
+        anchor="ra",
+    )
 
-    if len(values) < 2:
-        return
+    for ratio in (0.0, 0.5, 1.0):
+        line_y = round(bottom - (bottom - top) * ratio)
+        draw.line((left, line_y, right, line_y), fill=vc.COLOR_SEPARATOR, width=1)
 
-    max_v = max(values) or 1
+    if not values:
+        draw.text(
+            ((left + right) // 2, (top + bottom) // 2),
+            "НЕТ ДАННЫХ",
+            fill=vc.COLOR_MUTED,
+            font=font_small,
+            anchor="mm",
+        )
+        return draw
+
+    max_value = max(values) or 1
     points: list[tuple[float, float]] = []
-    for i, v in enumerate(values):
-        x = left + (right - left) * i / (len(values) - 1)
-        y = bottom - (bottom - top_chart) * v / max_v
+    for index, value in enumerate(values):
+        x = left if len(values) == 1 else left + (right - left) * index / (len(values) - 1)
+        y = bottom - (bottom - top) * value / max_value
         points.append((x, y))
 
-    area = [(left, bottom), *points, (right, bottom)]
-    fill_rgba = (*vc.COLOR_SPARK_FILL, 28)
     Image, ImageDraw, _ = vc.pil()
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    odraw = ImageDraw.Draw(overlay)
-    odraw.polygon(area, fill=fill_rgba)
-    img_rgba = img.convert("RGBA")
-    img_rgba = Image.alpha_composite(img_rgba, overlay)
+    overlay_draw = ImageDraw.Draw(overlay)
+    area = [(left, bottom), *points, (right, bottom)]
+    overlay_draw.polygon(area, fill=(*vc.COLOR_SPARK_FILL, 32))
+    img_rgba = Image.alpha_composite(img.convert("RGBA"), overlay)
     img.paste(img_rgba.convert("RGB"))
     draw = ImageDraw.Draw(img)
 
-    for i in range(len(points) - 1):
-        draw.line([points[i], points[i + 1]], fill=vc.COLOR_ACCENT, width=4)
-    last = points[-1]
-    r = 8
-    draw.ellipse([last[0] - r, last[1] - r, last[0] + r, last[1] + r], fill=vc.COLOR_ACCENT)
-    draw.line([left, bottom, right, bottom], fill=vc.COLOR_SEPARATOR, width=2)
+    draw.line(points, fill=vc.COLOR_ACCENT, width=4, joint="curve")
+    for index, (point_x, point_y) in enumerate(points):
+        radius = 7 if index == len(points) - 1 else 3
+        draw.ellipse(
+            (point_x - radius, point_y - radius, point_x + radius, point_y + radius),
+            fill=vc.COLOR_ACCENT,
+        )
 
-    last_h = vc.hours_label(values[-1])
+    draw.text((left, bottom + 25), "−12", fill=vc.COLOR_FAINT, font=font_micro, anchor="mt")
     draw.text(
-        (right, top_chart - 8),
-        f"Сейчас {last_h}",
-        fill=vc.COLOR_MUTED,
-        font=font_small,
-        anchor="rt",
+        ((left + right) // 2, bottom + 25),
+        "−6",
+        fill=vc.COLOR_FAINT,
+        font=font_micro,
+        anchor="mt",
     )
+    draw.text((right, bottom + 25), "0", fill=vc.COLOR_ACCENT, font=font_micro, anchor="mt")
+    return draw
 
 
 def render_analytics_card(report: AnalyticsReport) -> bytes:
-    Image, ImageDraw, _ = vc.pil()
-    img = Image.new("RGB", (vc.CARD_WIDTH, CARD_HEIGHT), vc.COLOR_BG)
+    _, ImageDraw, _ = vc.pil()
+    img = vc.create_card_canvas(CARD_HEIGHT)
     draw = ImageDraw.Draw(img)
-
-    font_eyebrow = vc.load_font(20)
-    font_title = vc.load_font(48, bold=True)
-    font_sub = vc.load_font(26)
-    font_stat_value = vc.load_font(40, bold=True)
-    font_stat_label = vc.load_font(18)
-    font_stat_sub = vc.load_font(22)
-    font_ring_pct = vc.load_font(56, bold=True)
-    font_ring_label = vc.load_font(22)
-    font_card_title = vc.load_font(30, bold=True)
-    font_small = vc.load_font(20)
-    font_badge = vc.load_font(24, bold=True)
-    font_footer = vc.load_font(20)
-
-    vc.paste_brand_logo(img)
-    draw = ImageDraw.Draw(img)
-
-    y = vc.MARGIN
-    draw.text(
-        (vc.MARGIN, y),
-        "ЧАЙКА · ПЛАНОВАЯ НАГРУЗКА НЕДЕЛИ",
-        fill=vc.COLOR_MUTED,
-        font=font_eyebrow,
+    vc.draw_technical_grid(
+        draw,
+        (vc.MARGIN, 40, vc.CARD_WIDTH - vc.MARGIN, CARD_HEIGHT - 46),
     )
-    y += 32
-    week_label = format_week_range_label(report.current.week_start)
-    draw.text((vc.MARGIN, y), week_label, fill=vc.COLOR_TEXT, font=font_title)
-    y += font_title.size + 16
 
+    font_display_lg = vc.load_font(66, family="display")
+    load_percent_size = 82 if report.current.load_percent >= 100 else 92
+    font_display_pct = vc.load_font(load_percent_size, family="display")
+    font_display_metric = vc.load_font(43, family="display")
+    font_section = vc.load_font(29, family="display")
+    font_mono_bold = vc.load_font(20, family="mono", bold=True)
+    font_mono = vc.load_font(18, family="mono")
+    font_small = vc.load_font(17, family="mono")
+    font_micro = vc.load_font(15, family="mono")
+    font_day_value = vc.load_font(21, family="display")
+
+    vc.paste_brand_logo(img, y=42, target_width=176, tint=vc.COLOR_ACCENT)
+    draw = ImageDraw.Draw(img)
+
+    iso_year, iso_week, _ = report.current.week_start.isocalendar()
+    draw.text(
+        (vc.MARGIN, 55),
+        "ЧАЙКА / НЕДЕЛЬНАЯ АНАЛИТИКА",
+        fill=vc.COLOR_MUTED,
+        font=font_mono,
+    )
+    draw.text(
+        (vc.MARGIN, 94),
+        format_week_range_label(report.current.week_start).upper(),
+        fill=vc.COLOR_TEXT,
+        font=font_display_lg,
+    )
+    draw.text(
+        (vc.MARGIN, 180),
+        f"W{iso_week:02d}  /  {iso_year}  /  LOCAL TIME",
+        fill=vc.COLOR_FAINT,
+        font=font_micro,
+    )
+    draw.line(
+        (vc.MARGIN, 218, vc.CARD_WIDTH - vc.MARGIN, 218),
+        fill=vc.COLOR_SEPARATOR,
+        width=1,
+    )
+    vc.draw_reference_mark(draw, vc.MARGIN, 218, color=vc.COLOR_ACCENT)
+    vc.draw_reference_mark(draw, vc.CARD_WIDTH - vc.MARGIN, 218)
+
+    hero_box = (vc.MARGIN, 250, vc.CARD_WIDTH - vc.MARGIN, 638)
+    draw = vc.draw_surface_card(
+        img,
+        draw,
+        hero_box,
+        fill=vc.COLOR_SURFACE_STRONG,
+    )
+    draw.text((96, 283), "01", fill=vc.COLOR_ACCENT, font=font_micro)
+    draw.text((144, 275), "НЕДЕЛЯ", fill=vc.COLOR_TEXT, font=font_section)
+    vc.draw_load_ring(
+        draw,
+        272,
+        456,
+        122,
+        report.current.load_percent,
+        font_pct=font_display_pct,
+        font_label=font_micro,
+    )
+    draw.line((458, 286, 458, 601), fill=vc.COLOR_SEPARATOR, width=1)
+
+    overlaps = report.current.total_overlaps
+    overlap_sub = f"{overlaps} ПЕРЕС." if overlaps else "БЕЗ ПЕРЕСЕЧЕНИЙ"
+    _draw_metric(
+        draw,
+        x=500,
+        y=337,
+        label="ЗАНЯТО",
+        value=vc.hours_label(report.current.total_busy),
+        sub="В РАБОЧЕМ ОКНЕ",
+        value_color=vc.COLOR_ACCENT,
+        font_label=font_micro,
+        font_value=font_display_metric,
+        font_sub=font_micro,
+    )
+    _draw_metric(
+        draw,
+        x=716,
+        y=337,
+        label="СВОБОДНО",
+        value=vc.hours_label(report.current.total_free),
+        sub="ДОСТУПНЫЙ РЕЗЕРВ",
+        value_color=vc.COLOR_TREND_DOWN,
+        font_label=font_micro,
+        font_value=font_display_metric,
+        font_sub=font_micro,
+    )
+    _draw_metric(
+        draw,
+        x=952,
+        y=337,
+        label="ВСТРЕЧИ",
+        value=str(report.current.total_meetings),
+        sub=overlap_sub,
+        value_color=vc.COLOR_TEXT,
+        font_label=font_micro,
+        font_value=font_display_metric,
+        font_sub=font_micro,
+    )
+    draw.line((500, 503, 1100, 503), fill=vc.COLOR_SEPARATOR, width=1)
     delta_text, delta_color = _week_delta_badge(report)
     vc.draw_pill(
         draw,
-        (vc.MARGIN, y),
+        (500, 531),
         delta_text,
-        fill=(240, 240, 245),
+        fill=vc.COLOR_PILL_BG,
         text_color=delta_color,
-        font=font_sub,
-        pad_x=20,
-        pad_y=12,
+        font=font_small,
+        pad_x=16,
+        pad_y=8,
+        max_width=405,
+        outline=vc.COLOR_SEPARATOR,
     )
-    y += 56
-
-    hero_h = 280
-    hero_box = (vc.MARGIN, y, vc.CARD_WIDTH - vc.MARGIN, y + hero_h)
-    draw = vc.draw_surface_card(img, draw, hero_box)
-
-    ring_cx = vc.MARGIN + 48 + 110
-    ring_cy = y + hero_h // 2
-    vc.draw_load_ring(
-        draw,
-        ring_cx,
-        ring_cy,
-        100,
-        report.current.load_percent,
-        font_pct=font_ring_pct,
-        font_label=font_ring_label,
+    draw.text(
+        (1100, 544),
+        f"ПРОШЛАЯ / {report.previous.load_percent}%",
+        fill=vc.COLOR_MUTED,
+        font=font_small,
+        anchor="ra",
     )
 
-    stats_left = vc.MARGIN + 300
-    stats_top = y + 36
-    meetings_sub = vc.meetings_label(report.current.total_meetings)
-    if report.current.total_overlaps:
-        meetings_sub += f" · {format_overlap_count_ru(report.current.total_overlaps)}"
-    vc.draw_stat_row(
-        draw,
-        stats_left,
-        stats_top,
-        label="Встречи",
-        value=vc.hours_label(report.current.total_busy),
-        sub=meetings_sub,
-        font_label=font_stat_label,
-        font_value=font_stat_value,
-        font_sub=font_stat_sub,
-        accent=vc.COLOR_ACCENT,
-    )
-    mid = stats_top + 108
-    vc.draw_stat_row(
-        draw,
-        stats_left,
-        mid,
-        label="Свободно",
-        value=vc.hours_label(report.current.total_free),
-        sub=f"Было {report.previous.load_percent}% → сейчас {report.current.load_percent}%",
-        font_label=font_stat_label,
-        font_value=font_stat_value,
-        font_sub=font_stat_sub,
-        accent=vc.COLOR_FREE,
-    )
-
-    y += hero_h + 28
-
-    week_h = 560
-    week_box = (vc.MARGIN, y, vc.CARD_WIDTH - vc.MARGIN, y + week_h)
+    week_box = (vc.MARGIN, 676, vc.CARD_WIDTH - vc.MARGIN, 1242)
     draw = vc.draw_surface_card(img, draw, week_box)
     _draw_week_chart(
         draw,
         report,
         week_box,
-        font_title=font_card_title,
+        font_title=font_section,
+        font_value=font_day_value,
         font_small=font_small,
+        font_micro=font_micro,
     )
-    y += week_h + 28
 
-    spark_h = 480
+    quarter_box = (vc.MARGIN, 1278, vc.CARD_WIDTH - vc.MARGIN, 1730)
+    draw = vc.draw_surface_card(img, draw, quarter_box)
     trend_arrow, trend_label, trend_color = _trend_badge(report.trend)
-    spark_box = (vc.MARGIN, y, vc.CARD_WIDTH - vc.MARGIN, y + spark_h)
-    draw = vc.draw_surface_card(img, draw, spark_box)
-    _draw_sparkline_card(
+    draw = _draw_quarter_chart(
         draw,
         img,
         report.quarter_weekly_busy,
-        spark_box,
+        quarter_box,
         trend_arrow=trend_arrow,
         trend_label=trend_label,
         trend_color=trend_color,
-        font_title=font_card_title,
+        font_title=font_section,
+        font_value=font_mono_bold,
         font_small=font_small,
-        font_badge=font_badge,
+        font_micro=font_micro,
     )
-    y += spark_h + 24
 
-    wd = report.workday
-    footer = f"Рабочий день {wd.workday_start}–{wd.workday_end}"
+    footer_y = 1770
+    draw.line(
+        (vc.MARGIN, footer_y, vc.CARD_WIDTH - vc.MARGIN, footer_y),
+        fill=vc.COLOR_SEPARATOR,
+        width=1,
+    )
+    vc.draw_reference_mark(draw, vc.MARGIN, footer_y)
+    vc.draw_reference_mark(draw, vc.CARD_WIDTH - vc.MARGIN, footer_y)
+    workday = report.workday
     draw.text(
-        (vc.CARD_WIDTH // 2, y),
-        footer,
+        (vc.MARGIN, footer_y + 30),
+        f"РАБОЧЕЕ ОКНО / {workday.workday_start}—{workday.workday_end}",
         fill=vc.COLOR_MUTED,
-        font=font_footer,
-        anchor="mt",
+        font=font_small,
     )
     draw.text(
-        (vc.CARD_WIDTH // 2, y + 28),
-        "План Пн–Пт целиком, включая будущие встречи",
+        (vc.CARD_WIDTH - vc.MARGIN, footer_y + 30),
+        "ПН—ПТ / ВКЛЮЧАЯ БУДУЩИЕ ВСТРЕЧИ",
         fill=vc.COLOR_MUTED,
-        font=font_footer,
-        anchor="mt",
+        font=font_small,
+        anchor="ra",
     )
-    if report.quality.unverified_partstat_events:
+    quality_count = report.quality.unverified_partstat_events
+    if quality_count:
         draw.text(
-            (vc.CARD_WIDTH // 2, y + 56),
-            "Статус участия не проверен: "
-            + format_event_count_ru(report.quality.unverified_partstat_events),
-            fill=vc.COLOR_TREND_UP,
-            font=font_footer,
-            anchor="mt",
+            (vc.MARGIN, footer_y + 77),
+            f"△ КАЧЕСТВО ДАННЫХ / СТАТУС УЧАСТИЯ НЕ ПРОВЕРЕН: {quality_count}",
+            fill=vc.COLOR_WARNING,
+            font=font_small,
         )
+    else:
+        draw.text(
+            (vc.MARGIN, footer_y + 77),
+            "CALDAV / WEEKLY LOAD SYSTEM",
+            fill=vc.COLOR_FAINT,
+            font=font_micro,
+        )
+    draw.text(
+        (vc.CARD_WIDTH - vc.MARGIN, footer_y + 77),
+        "SATELLITE—03",
+        fill=vc.COLOR_FAINT,
+        font=font_micro,
+        anchor="ra",
+    )
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)

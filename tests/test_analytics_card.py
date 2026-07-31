@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import io
+from dataclasses import replace
 from datetime import date
+from pathlib import Path
+
+from PIL import Image
 
 from satellite.analytics.render_card import render_analytics_card
 from satellite.calendar.period_stats import (
+    AnalyticsDataQuality,
     AnalyticsReport,
     DaySlice,
     WeekSummary,
@@ -56,6 +62,9 @@ def test_render_produces_valid_png():
     png = render_analytics_card(_report())
     assert len(png) > 5000
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    with Image.open(io.BytesIO(png)) as image:
+        assert image.size == (1200, 1920)
+        assert image.mode == "RGB"
 
 
 def test_render_with_overlap_summary_produces_valid_png():
@@ -95,5 +104,70 @@ def test_render_with_overlap_summary_produces_valid_png():
 
 
 def test_selected_fonts_cover_cyrillic_arrows_and_dashes():
-    assert vc._font_supports_required_glyphs(vc.load_font(24))
-    assert vc._font_supports_required_glyphs(vc.load_font(24, bold=True))
+    fonts = (
+        (vc.FONT_DISPLAY_PATH, vc.load_font(24, family="display")),
+        (vc.FONT_MONO_REGULAR_PATH, vc.load_font(24, family="mono")),
+        (vc.FONT_MONO_BOLD_PATH, vc.load_font(24, family="mono", bold=True)),
+    )
+    for expected_path, font in fonts:
+        assert expected_path.is_file()
+        assert Path(font.path).resolve() == expected_path.resolve()
+        assert vc._font_supports_required_glyphs(font)
+
+
+def test_render_handles_zero_load_and_zero_quarter():
+    report = _report()
+    days = tuple(
+        replace(day, busy_minutes=0, free_minutes=480, meetings_count=0)
+        for day in report.current.days
+    )
+    current = replace(
+        report.current,
+        days=days,
+        total_busy=0,
+        total_free=2400,
+        load_percent=0,
+        total_meetings=0,
+    )
+    empty = replace(
+        report,
+        current=current,
+        quarter_weekly_busy=(0,) * 13,
+    )
+
+    png = render_analytics_card(empty)
+
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_render_handles_full_load_overlaps_and_quality_warning():
+    report = _report()
+    days = tuple(
+        replace(
+            day,
+            busy_minutes=480,
+            free_minutes=0,
+            meetings_count=12,
+            overlaps_count=3,
+        )
+        for day in report.current.days
+    )
+    current = replace(
+        report.current,
+        days=days,
+        total_busy=2400,
+        total_free=0,
+        load_percent=100,
+        total_meetings=60,
+    )
+    dense = replace(
+        report,
+        current=current,
+        quarter_weekly_busy=tuple(index * 180 for index in range(13)),
+        trend="up",
+        quality=AnalyticsDataQuality(unverified_partstat_events=120),
+    )
+
+    png = render_analytics_card(dense)
+
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"

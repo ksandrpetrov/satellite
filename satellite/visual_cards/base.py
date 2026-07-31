@@ -2,35 +2,52 @@
 
 from __future__ import annotations
 
+from math import cos, radians, sin
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from PIL import Image as PILImage
     from PIL import ImageDraw
 
 CARD_WIDTH = 1200
-MARGIN = 56
+MARGIN = 64
 CARD_RADIUS = 28
 
-LOGO_PATH = Path(__file__).resolve().parent.parent / "analytics" / "assets" / "logo.png"
-LOGO_TARGET_WIDTH = 200
+_PACKAGE_DIR = Path(__file__).resolve().parent
+ASSET_DIR = _PACKAGE_DIR / "assets"
+FONT_DIR = ASSET_DIR / "fonts"
+LOGO_PATH = _PACKAGE_DIR.parent / "analytics" / "assets" / "logo.png"
+LOGO_TARGET_WIDTH = 184
 
-COLOR_BG = (245, 245, 247)
-COLOR_SURFACE = (255, 255, 255)
-COLOR_TEXT = (29, 29, 31)
-COLOR_MUTED = (134, 134, 139)
-COLOR_SEPARATOR = (229, 229, 234)
-COLOR_ACCENT = (0, 122, 255)
-COLOR_FREE = (52, 199, 89)
-COLOR_BUSY = (0, 122, 255)
-COLOR_RING_TRACK = (229, 229, 234)
-COLOR_TREND_UP = (255, 59, 48)
-COLOR_TREND_DOWN = (52, 199, 89)
-COLOR_TREND_FLAT = (134, 134, 139)
-COLOR_SPARK_FILL = (0, 122, 255)
-COLOR_SHADOW = (0, 0, 0, 18)
-COLOR_PILL_BG = (240, 240, 245)
+FONT_DISPLAY_PATH = FONT_DIR / "Tektur-Medium.ttf"
+FONT_MONO_REGULAR_PATH = FONT_DIR / "GeistMono-Regular.ttf"
+FONT_MONO_BOLD_PATH = FONT_DIR / "GeistMono-Bold.ttf"
+
+# «Орбитальный ритм»: холодная телеметрия с редкими сигнальными цветами.
+COLOR_BG_TOP = (5, 14, 23)
+COLOR_BG = (7, 18, 29)
+COLOR_SURFACE = (10, 27, 42)
+COLOR_SURFACE_STRONG = (12, 34, 51)
+COLOR_TEXT = (239, 247, 251)
+COLOR_MUTED = (143, 164, 181)
+COLOR_FAINT = (86, 112, 133)
+COLOR_SEPARATOR = (26, 56, 76)
+COLOR_GRID = (12, 37, 55)
+COLOR_ACCENT = (54, 214, 255)
+COLOR_ACCENT_SOFT = (25, 83, 108)
+COLOR_FREE = (34, 61, 80)
+COLOR_BUSY = COLOR_ACCENT
+COLOR_RING_TRACK = (29, 58, 78)
+COLOR_TREND_UP = (255, 108, 105)
+COLOR_TREND_DOWN = (128, 229, 177)
+COLOR_TREND_FLAT = (155, 174, 188)
+COLOR_WARNING = (255, 199, 92)
+COLOR_SPARK_FILL = COLOR_ACCENT
+COLOR_SHADOW = (0, 0, 0, 0)
+COLOR_PILL_BG = (16, 43, 61)
+
+FontFamily = Literal["sans", "display", "mono"]
 
 
 def pil():
@@ -39,13 +56,64 @@ def pil():
     return Image, ImageDraw, ImageFont
 
 
-_LOGO_CACHE: PILImage.Image | None = None
+def create_card_canvas(height: int):
+    """Create the canonical dark canvas with a restrained vertical gradient."""
+    Image, _, _ = pil()
+    img = Image.new("RGB", (CARD_WIDTH, height), COLOR_BG)
+    pixels = img.load()
+    denominator = max(1, height - 1)
+    for y in range(height):
+        ratio = y / denominator
+        color = tuple(
+            round(COLOR_BG_TOP[index] + (COLOR_BG[index] - COLOR_BG_TOP[index]) * ratio)
+            for index in range(3)
+        )
+        for x in range(CARD_WIDTH):
+            pixels[x, y] = color
+    return img
 
 
-def load_brand_logo() -> PILImage.Image | None:
-    global _LOGO_CACHE
-    if _LOGO_CACHE is not None:
-        return _LOGO_CACHE
+def draw_technical_grid(
+    draw: ImageDraw.ImageDraw,
+    box: tuple[int, int, int, int],
+    *,
+    step: int = 64,
+) -> None:
+    """Draw a quiet coordinate field behind the foreground composition."""
+    x0, y0, x1, y1 = box
+    x = x0
+    while x <= x1:
+        draw.line((x, y0, x, y1), fill=COLOR_GRID, width=1)
+        x += step
+    y = y0
+    while y <= y1:
+        draw.line((x0, y, x1, y), fill=COLOR_GRID, width=1)
+        y += step
+
+
+def draw_reference_mark(
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    *,
+    size: int = 8,
+    color: tuple[int, int, int] = COLOR_FAINT,
+) -> None:
+    draw.line((x - size, y, x + size, y), fill=color, width=1)
+    draw.line((x, y - size, x, y + size), fill=color, width=1)
+
+
+_LOGO_CACHE: dict[tuple[int, tuple[int, int, int] | None], PILImage.Image] = {}
+
+
+def load_brand_logo(
+    *,
+    target_width: int = LOGO_TARGET_WIDTH,
+    tint: tuple[int, int, int] | None = None,
+) -> PILImage.Image | None:
+    key = (target_width, tint)
+    if key in _LOGO_CACHE:
+        return _LOGO_CACHE[key]
     if not LOGO_PATH.exists():
         return None
     Image, _, _ = pil()
@@ -53,23 +121,48 @@ def load_brand_logo() -> PILImage.Image | None:
         logo = Image.open(LOGO_PATH).convert("RGBA")
     except OSError:
         return None
-    ratio = LOGO_TARGET_WIDTH / logo.width
-    new_size = (LOGO_TARGET_WIDTH, max(1, round(logo.height * ratio)))
-    _LOGO_CACHE = logo.resize(new_size, Image.LANCZOS)
-    return _LOGO_CACHE
+    ratio = target_width / logo.width
+    new_size = (target_width, max(1, round(logo.height * ratio)))
+    logo = logo.resize(new_size, Image.Resampling.LANCZOS)
+    if tint is not None:
+        alpha = logo.getchannel("A")
+        tinted = Image.new("RGBA", logo.size, (*tint, 0))
+        tinted.putalpha(alpha)
+        logo = tinted
+    _LOGO_CACHE[key] = logo
+    return logo
 
 
-def paste_brand_logo(img) -> None:
-    logo = load_brand_logo()
+def paste_brand_logo(
+    img,
+    *,
+    x: int | None = None,
+    y: int = 44,
+    target_width: int = LOGO_TARGET_WIDTH,
+    tint: tuple[int, int, int] | None = COLOR_ACCENT,
+) -> None:
+    logo = load_brand_logo(target_width=target_width, tint=tint)
     if logo is None:
         return
-    x = CARD_WIDTH - MARGIN - logo.width
-    y = MARGIN - 12
-    img.paste(logo, (x, y), logo)
+    left = CARD_WIDTH - MARGIN - logo.width if x is None else x
+    img.paste(logo, (left, y), logo)
 
 
-def load_font(size: int, *, bold: bool = False):
+def load_font(
+    size: int,
+    *,
+    bold: bool = False,
+    family: FontFamily = "sans",
+):
     _, _, ImageFont = pil()
+    bundled: tuple[Path, ...]
+    if family == "display":
+        bundled = (FONT_DISPLAY_PATH,)
+    elif family == "mono":
+        bundled = (FONT_MONO_BOLD_PATH if bold else FONT_MONO_REGULAR_PATH,)
+    else:
+        bundled = ()
+
     regular = (
         "/System/Library/Fonts/Supplemental/SF-Pro-Text-Regular.otf",
         "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -85,7 +178,20 @@ def load_font(size: int, *, bold: bool = False):
         "/System/Library/Fonts/Helvetica.ttc",
         "arialbd.ttf",
     )
-    paths = heavy if bold else regular
+    mono = (
+        "/System/Library/Fonts/Supplemental/Courier New.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    )
+    mono_bold = (
+        "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+    )
+    fallback: tuple[str, ...]
+    if family == "mono":
+        fallback = mono_bold if bold else mono
+    else:
+        fallback = heavy if bold else regular
+    paths: tuple[str | Path, ...] = (*bundled, *fallback)
     for path in paths:
         try:
             font = ImageFont.truetype(path, size)
@@ -104,7 +210,8 @@ def _font_supports_required_glyphs(font) -> bool:
         return mask.size, bytes(mask)
 
     missing = signature(chr(0x10FFFF))
-    return all(signature(char) != missing for char in "Ая–→−·")
+    required = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯая–—→−·↑↓"
+    return all(signature(char) != missing for char in required)
 
 
 def hours_label(minutes: int) -> str:
@@ -135,9 +242,14 @@ def rounded_rect(
     *,
     fill: tuple[int, int, int],
     outline: tuple[int, int, int] | None = None,
+    width: int = 1,
 ) -> None:
     draw.rounded_rectangle(
-        box, radius=radius, fill=fill, outline=outline, width=1 if outline else 0
+        box,
+        radius=radius,
+        fill=fill,
+        outline=outline,
+        width=width if outline else 0,
     )
 
 
@@ -147,22 +259,10 @@ def draw_surface_card(
     box: tuple[int, int, int, int],
     *,
     radius: int = CARD_RADIUS,
+    fill: tuple[int, int, int] = COLOR_SURFACE,
 ) -> ImageDraw.ImageDraw:
-    Image, ImageDraw, _ = pil()
-    x0, y0, x1, y1 = box
-    height = img.size[1]
-    shadow = Image.new("RGBA", (CARD_WIDTH, height), (0, 0, 0, 0))
-    sdraw = ImageDraw.Draw(shadow)
-    sdraw.rounded_rectangle(
-        (x0 + 2, y0 + 6, x1 + 2, y1 + 6),
-        radius=radius,
-        fill=COLOR_SHADOW,
-    )
-    img_rgba = img.convert("RGBA")
-    img_rgba = Image.alpha_composite(img_rgba, shadow)
-    img.paste(img_rgba.convert("RGB"))
-    draw = ImageDraw.Draw(img)
-    rounded_rect(draw, box, radius, fill=COLOR_SURFACE)
+    del img  # kept in the signature for callers shared with earlier card renderers
+    rounded_rect(draw, box, radius, fill=fill, outline=COLOR_SEPARATOR)
     return draw
 
 
@@ -182,6 +282,7 @@ def draw_pill(
     pad_x: int = 18,
     pad_y: int = 10,
     max_width: int | None = None,
+    outline: tuple[int, int, int] | None = None,
 ) -> tuple[int, int, int, int]:
     label = text
     if max_width is not None:
@@ -190,10 +291,16 @@ def draw_pill(
         if len(label) < len(text):
             label = (label or text[:1]) + "…"
     tw = text_width(draw, label, font)
-    th = font.size + 4
+    th = int(getattr(font, "size", 16)) + 4
     x, y = xy
     box = (x, y, x + tw + pad_x * 2, y + th + pad_y * 2)
-    rounded_rect(draw, box, (th + pad_y * 2) // 2, fill=fill)
+    rounded_rect(
+        draw,
+        box,
+        (th + pad_y * 2) // 2,
+        fill=fill,
+        outline=outline,
+    )
     draw.text((x + pad_x, y + pad_y), label, fill=text_color, font=font)
     return box
 
@@ -209,12 +316,29 @@ def draw_load_ring(
     font_label,
 ) -> None:
     bbox = (cx - radius, cy - radius, cx + radius, cy + radius)
-    draw.arc(bbox, start=270, end=270 + 360, fill=COLOR_RING_TRACK, width=22)
-    sweep = max(4, int(360 * min(100, max(0, percent)) / 100))
+    draw.arc(bbox, start=270, end=630, fill=COLOR_RING_TRACK, width=18)
+    sweep = int(360 * min(100, max(0, percent)) / 100)
     if sweep > 0:
-        draw.arc(bbox, start=270, end=270 + sweep, fill=COLOR_ACCENT, width=22)
-    draw.text((cx, cy - 28), f"{percent}%", fill=COLOR_TEXT, font=font_pct, anchor="mm")
-    draw.text((cx, cy + 22), "загрузка", fill=COLOR_MUTED, font=font_label, anchor="mm")
+        draw.arc(bbox, start=270, end=270 + max(4, sweep), fill=COLOR_ACCENT, width=18)
+    for index in range(36):
+        angle = index * 10
+        if angle % 30:
+            continue
+        rad = radians(angle - 90)
+        outer = radius + 24
+        inner = radius + 15
+        draw.line(
+            (
+                cx + inner * cos(rad),
+                cy + inner * sin(rad),
+                cx + outer * cos(rad),
+                cy + outer * sin(rad),
+            ),
+            fill=COLOR_FAINT,
+            width=2,
+        )
+    draw.text((cx, cy - 15), f"{percent}%", fill=COLOR_TEXT, font=font_pct, anchor="mm")
+    draw.text((cx, cy + 48), "ЗАГРУЗКА", fill=COLOR_MUTED, font=font_label, anchor="mm")
 
 
 def draw_stat_row(
@@ -231,10 +355,10 @@ def draw_stat_row(
     accent: tuple[int, int, int] | None = None,
 ) -> int:
     draw.text((left, top), label.upper(), fill=COLOR_MUTED, font=font_label)
-    y = top + 28
+    y = top + int(getattr(font_label, "size", 18)) + 12
     draw.text((left, y), value, fill=accent or COLOR_TEXT, font=font_value)
-    y += font_value.size + 8
+    y += int(getattr(font_value, "size", 36)) + 10
     if sub:
         draw.text((left, y), sub, fill=COLOR_MUTED, font=font_sub)
-        y += font_sub.size + 6
+        y += int(getattr(font_sub, "size", 18)) + 6
     return y
