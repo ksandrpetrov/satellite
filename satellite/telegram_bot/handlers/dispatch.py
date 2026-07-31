@@ -42,6 +42,7 @@ from .calendar_sources import (
 )
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import notify_handler_failure, safe_answer_callback, send
+from .meeting_exclusions import route_meeting_exclusions_callback
 from .plan import handle_plan
 from .routing import (
     CalendarSourcesCommand,
@@ -266,6 +267,7 @@ _CALLBACK_ROUTERS: list[CallbackRouter] = [
     route_create_callback,
     route_manage_events_callback,
     route_settings_hub_callback,
+    route_meeting_exclusions_callback,
     route_invitations_callback,
     route_settings_callback,
     route_calendar_sources_callback,

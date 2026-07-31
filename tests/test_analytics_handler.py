@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
+from satellite.calendar.event_exclusions import EventExclusionPolicy, EventTitleOverride
 from satellite.calendar.providers.base import (
     CalendarNotConnectedError,
     CalendarProviderError,
@@ -75,11 +76,15 @@ def _ctx(tmp_path: Path, *, build_side_effect):
     ctx.telegram.delete_message = MagicMock(return_value=True)
     ctx.telegram.answer_callback_query = MagicMock(return_value=True)
     ctx.calendar_service = MagicMock()
+    ctx.meeting_exclusions = MagicMock()
+    ctx.meeting_exclusions.policy_for_user = MagicMock(return_value=EventExclusionPolicy())
     return ctx, users
 
 
-def _run_analytics_callback(ctx, *, build_side_effect, monkeypatch):
-    def fake_build(**_kwargs):
+def _run_analytics_callback(ctx, *, build_side_effect, monkeypatch, captured_kwargs=None):
+    def fake_build(**kwargs):
+        if captured_kwargs is not None:
+            captured_kwargs.update(kwargs)
         if isinstance(build_side_effect, Exception):
             raise build_side_effect
         return build_side_effect
@@ -146,6 +151,23 @@ def test_successful_run_sends_photo_and_rich_caption(tmp_path: Path, monkeypatch
     ctx.telegram.send_rich_message.assert_called_once()
     payload = ctx.telegram.send_rich_message.call_args[0][1]
     assert payload["html"] == "<h3>cap</h3>"
+
+
+def test_analytics_handler_passes_user_exclusion_policy(tmp_path: Path, monkeypatch):
+    ctx, _users = _ctx(tmp_path, build_side_effect=None)
+    policy = EventExclusionPolicy([EventTitleOverride("Weekly Sync", excluded=True)])
+    ctx.meeting_exclusions.policy_for_user.return_value = policy
+    captured: dict = {}
+
+    _run_analytics_callback(
+        ctx,
+        build_side_effect=(b"\x89PNG\x00", "caption", "<h3>cap</h3>"),
+        monkeypatch=monkeypatch,
+        captured_kwargs=captured,
+    )
+
+    ctx.meeting_exclusions.policy_for_user.assert_called_once_with(1)
+    assert captured["exclusion_policy"] is policy
 
 
 def test_send_photo_failure_replaces_loading_message(tmp_path: Path, monkeypatch):

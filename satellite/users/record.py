@@ -77,6 +77,7 @@ class UserRecord:
     resolved_by_admin_id: int | None = None
     calendar_provider: str | None = None
     encrypted_credentials: str | None = None
+    encrypted_event_title_overrides: str | None = None
     calendar_status: str = CALENDAR_DISCONNECTED
     primary_calendar_url: str | None = None
     enabled_calendar_urls: tuple[str, ...] = ()
@@ -112,6 +113,7 @@ class UserRecord:
             "resolved_by_admin_id": self.resolved_by_admin_id,
             "calendar_provider": self.calendar_provider,
             "encrypted_credentials": self.encrypted_credentials,
+            "encrypted_event_title_overrides": self.encrypted_event_title_overrides,
             "calendar_status": self.calendar_status,
             "primary_calendar_url": self.primary_calendar_url,
             "enabled_calendar_urls": list(self.enabled_calendar_urls),
@@ -148,6 +150,10 @@ class UserRecord:
             resolved_by_admin_id=_coerce_optional_int(raw.get("resolved_by_admin_id")),
             calendar_provider=(raw.get("calendar_provider") or None),
             encrypted_credentials=(raw.get("encrypted_credentials") or None),
+            encrypted_event_title_overrides=_parse_optional_encrypted_blob(
+                raw.get("encrypted_event_title_overrides"),
+                field_name="encrypted_event_title_overrides",
+            ),
             calendar_status=calendar_status,
             primary_calendar_url=(raw.get("primary_calendar_url") or None),
             enabled_calendar_urls=_parse_enabled_calendar_urls(raw.get("enabled_calendar_urls")),
@@ -171,6 +177,14 @@ def _coerce_optional_int(raw: object) -> int | None:
         except ValueError:
             return None
     return None
+
+
+def _parse_optional_encrypted_blob(raw: object, *, field_name: str) -> str | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError(f"{field_name} must be a string or null")
+    return raw or None
 
 
 def _normalize_calendar_url_list(urls: Iterable[str]) -> tuple[str, ...]:

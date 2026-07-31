@@ -6,6 +6,7 @@ from datetime import tzinfo
 from typing import Literal
 
 from .constants import SYSTEM_EVENT_TITLE_PHRASES
+from .event_exclusions import EventExclusionPolicy, default_is_excluded
 from .events import (
     Event,
     is_all_day_event,
@@ -48,7 +49,13 @@ def is_unconfirmed_for_analytics(event: Event, login: str) -> bool:
     return False
 
 
-def classify_event_kind(event: Event, tz: tzinfo, *, login: str) -> EventKind | None:
+def classify_event_kind(
+    event: Event,
+    tz: tzinfo,
+    *,
+    login: str,
+    exclusion_policy: EventExclusionPolicy | None = None,
+) -> EventKind | None:
     """Возвращает kind или None, если событие полностью исключается из аналитики."""
     if is_cancelled_event(event):
         return None
@@ -56,6 +63,13 @@ def classify_event_kind(event: Event, tz: tzinfo, *, login: str) -> EventKind | 
         return None
     if is_unconfirmed_for_analytics(event, login):
         return None
+    if exclusion_policy is not None:
+        title = _event_title(event)
+        if exclusion_policy.is_excluded(title):
+            return None
+        if default_is_excluded(title) and not is_all_day_event(event, tz):
+            # Явный include или выключенный default для встроенного title-правила.
+            return "meeting"
     if is_system_event(event, tz):
         return "system"
     return "meeting"
@@ -66,10 +80,19 @@ def filter_meetings_for_analytics(
     *,
     tz: tzinfo,
     login: str,
+    exclusion_policy: EventExclusionPolicy | None = None,
 ) -> list[Event]:
     """Оставляет только подтверждённые timed-встречи (не системные)."""
     out: list[Event] = []
     for event in events:
-        if classify_event_kind(event, tz, login=login) == "meeting":
+        if (
+            classify_event_kind(
+                event,
+                tz,
+                login=login,
+                exclusion_policy=exclusion_policy,
+            )
+            == "meeting"
+        ):
             out.append(event)
     return out

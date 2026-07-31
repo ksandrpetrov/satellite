@@ -11,6 +11,7 @@ from .constants import (
     ANALYTICS_WORKDAY_9_18,
     DEFAULT_ANALYTICS_WORKDAY,
 )
+from .event_exclusions import EventExclusionPolicy
 from .event_kinds import filter_meetings_for_analytics
 from .events import Event, event_occurs_on
 from .stats import WorkdayOptions, calculate_day_stats, normalize_caldav_event
@@ -81,9 +82,15 @@ def _day_slice(
     tz: tzinfo,
     login: str,
     options: WorkdayOptions,
+    exclusion_policy: EventExclusionPolicy | None = None,
 ) -> DaySlice:
     day_events = [ev for ev in events if event_occurs_on(ev, plan_date, tz)]
-    meetings = filter_meetings_for_analytics(day_events, tz=tz, login=login)
+    meetings = filter_meetings_for_analytics(
+        day_events,
+        tz=tz,
+        login=login,
+        exclusion_policy=exclusion_policy,
+    )
     normalized = []
     for ev in meetings:
         ne = normalize_caldav_event(ev, plan_date, tz, login=login)
@@ -111,9 +118,17 @@ def build_week_summary(
     tz: tzinfo,
     login: str,
     options: WorkdayOptions,
+    exclusion_policy: EventExclusionPolicy | None = None,
 ) -> WeekSummary:
     days = tuple(
-        _day_slice(events, week_start + timedelta(days=offset), tz=tz, login=login, options=options)
+        _day_slice(
+            events,
+            week_start + timedelta(days=offset),
+            tz=tz,
+            login=login,
+            options=options,
+            exclusion_policy=exclusion_policy,
+        )
         for offset in range(WORK_WEEK_DAYS)
     )
     total_busy = sum(d.busy_minutes for d in days)
@@ -153,6 +168,7 @@ def build_analytics_report(
     tz: tzinfo,
     login: str,
     options: WorkdayOptions | None = None,
+    exclusion_policy: EventExclusionPolicy | None = None,
 ) -> AnalyticsReport:
     opts = options or WorkdayOptions()
     current_start, _ = week_bounds(reference_date)
@@ -161,13 +177,34 @@ def build_analytics_report(
         current_start - timedelta(days=7 * offset) for offset in range(QUARTER_WEEKS - 1, -1, -1)
     ]
     quarter_busy = tuple(
-        build_week_summary(events, ws, tz=tz, login=login, options=opts).total_busy
+        build_week_summary(
+            events,
+            ws,
+            tz=tz,
+            login=login,
+            options=opts,
+            exclusion_policy=exclusion_policy,
+        ).total_busy
         for ws in quarter_starts
     )
     return AnalyticsReport(
         reference_date=reference_date,
-        current=build_week_summary(events, current_start, tz=tz, login=login, options=opts),
-        previous=build_week_summary(events, previous_start, tz=tz, login=login, options=opts),
+        current=build_week_summary(
+            events,
+            current_start,
+            tz=tz,
+            login=login,
+            options=opts,
+            exclusion_policy=exclusion_policy,
+        ),
+        previous=build_week_summary(
+            events,
+            previous_start,
+            tz=tz,
+            login=login,
+            options=opts,
+            exclusion_policy=exclusion_policy,
+        ),
         quarter_weekly_busy=quarter_busy,
         workday=opts,
         trend=_quarter_trend(quarter_busy),

@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from satellite.calendar.event_exclusions import EventExclusionPolicy, EventTitleOverride
 from satellite.calendar.providers.base import (
     CalendarNotConnectedError,
     CalendarProviderError,
@@ -96,6 +97,22 @@ def test_plan_aliases_call_plan_builder_with_correct_target_date(
     expected_today = date(2026, 5, 22)
     assert kwargs["reference_date"] == expected_today
     assert kwargs["target_date"] == date.fromordinal(expected_today.toordinal() + expected_offset)
+
+
+def test_plan_passes_user_exclusion_policy_to_builder(
+    approved_user_store: UserStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixed_now = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
+    freeze_now(monkeypatch, module="satellite.telegram_bot.handlers.plan", now=fixed_now)
+    ctx = _build_ctx(approved_user_store)
+    policy = EventExclusionPolicy([EventTitleOverride("Weekly Sync", excluded=True)])
+    ctx.meeting_exclusions.policy_for_user.return_value = policy
+
+    handle_message(ctx, make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID))
+
+    ctx.meeting_exclusions.policy_for_user.assert_called_once_with(USER_ID)
+    assert ctx.plan_builder().build_plan_bundle.call_args.kwargs["exclusion_policy"] is policy
 
 
 def test_plan_does_not_run_for_unknown_user(tmp_path: Path) -> None:

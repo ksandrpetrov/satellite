@@ -7,9 +7,9 @@
    подэкран «Календарь», чтобы деструктивный «Отключить» не висел в одной
    строке с диагностической «Проверить» (была реальная ловушка по дрожанию
    пальца) и чтобы главный экран оставался коротким.
-2. Подэкран ``settings_calendar_menu`` — четыре действия с календарём:
-   выбор календарей в плане, проверка соединения, переподключение через
-   Web App, отключение.
+2. Подэкран ``settings_calendar_menu`` — действия с календарём: приглашения,
+   выбор календарей в плане, исключения встреч, проверка соединения,
+   переподключение через Web App и отключение.
 3. Подэкран ``settings_disconnect_confirm`` — двухшаговый disconnect:
    сначала «точно?», и только после явного подтверждения зовём
    ``calendar_service.disconnect``. Это снимает риск случайного нажатия
@@ -48,6 +48,7 @@ from ...messages_ru import (
     CB_SETTINGS_DISCONNECT,
     CB_SETTINGS_DISCONNECT_CONFIRM,
     CB_SETTINGS_INVITATIONS,
+    CB_SETTINGS_MEETING_EXCLUSIONS,
     CB_SETTINGS_WEATHER_TOGGLE,
     ERR_SETTINGS_SAVE_FAILED_TEXT,
     SETTINGS_HUB_CLOSED_TEXT,
@@ -91,6 +92,7 @@ from .delivery import (
     send_rich_or_html,
     webapp_connect_url,
 )
+from .meeting_exclusions import open_meeting_exclusions_from_settings
 from .settings import show_digest_settings_screen, show_pending_digest_settings_screen
 from .settings_actions import toggle_weather_in_plan
 
@@ -431,6 +433,7 @@ _SETTINGS_HUB_ROUTES: dict[str, Callable[[HandlerContext, IncomingCallback], Non
     CB_SETTINGS_CLOSE: _close_settings_hub,
     CB_SETTINGS_CALENDARS: _open_calendar_sources_from_callback,
     CB_SETTINGS_INVITATIONS: open_invitations_from_settings,
+    CB_SETTINGS_MEETING_EXCLUSIONS: open_meeting_exclusions_from_settings,
     CB_SETTINGS_CHECK: _check_calendar_from_callback,
     CB_SETTINGS_DISCONNECT: show_settings_disconnect_confirm,
     CB_SETTINGS_DISCONNECT_CONFIRM: _disconnect_calendar_from_callback,

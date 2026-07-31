@@ -103,12 +103,14 @@ def build_plan_bundle_for_user(
     target_date = resolve_target_date(mode, today_local)
     record = ctx.users.get(telegram_user_id)
     weather_in_plan = record.weather_in_plan_enabled if record is not None else True
+    exclusion_policy = ctx.meeting_exclusions.policy_for_user(telegram_user_id)
     return ctx.plan_builder().build_plan_bundle(
         telegram_user_id=telegram_user_id,
         target_date=target_date,
         reference_date=today_local,
         on_progress=on_progress,
         weather_in_plan_enabled=weather_in_plan,
+        exclusion_policy=exclusion_policy,
     )
 
 

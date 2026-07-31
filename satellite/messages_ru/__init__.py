@@ -16,6 +16,7 @@ from .calendar_ui import *  # noqa: F403
 from .digest_ui import *  # noqa: F403
 from .duration import *  # noqa: F403
 from .identity import *  # noqa: F403
+from .meeting_exclusions_ui import *  # noqa: F403
 from .meetings_ui import *  # noqa: F403
 from .plan_strings import *  # noqa: F403
 from .settings_ui import *  # noqa: F403

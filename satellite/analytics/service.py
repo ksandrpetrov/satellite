@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta, tzinfo
 
+from ..calendar.event_exclusions import EventExclusionPolicy
 from ..calendar.period_stats import (
     QUARTER_WEEKS,
     build_analytics_report,
@@ -24,6 +25,7 @@ def build_week_analytics(
     tz: tzinfo,
     calendar_service: UserCalendarService,
     users: UserStore,
+    exclusion_policy: EventExclusionPolicy | None = None,
 ) -> tuple[bytes, str, str]:
     connected = calendar_service.require_connection(telegram_user_id)
     login = connected.context.login
@@ -46,6 +48,7 @@ def build_week_analytics(
         tz=tz,
         login=login,
         options=options,
+        exclusion_policy=exclusion_policy,
     )
     png = render_analytics_card(report)
     caption = build_analytics_caption(report)

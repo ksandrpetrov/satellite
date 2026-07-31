@@ -1,6 +1,7 @@
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from satellite.calendar.event_exclusions import EventExclusionPolicy, EventTitleOverride
 from satellite.calendar.events import (
     build_upcoming_events_groups,
     event_duration_minutes,
@@ -243,6 +244,81 @@ def test_filter_events_for_user_keeps_lunch_when_flag_off():
         hide_lunch=False,
     )
     assert len(visible) == 1
+    assert hidden_lunch == []
+
+
+def test_filter_events_for_user_applies_exact_normalized_title_exclusion():
+    target = date(2026, 5, 11)
+    events = [
+        _ev(
+            summary="  Weekly   Sync ",
+            dtstart=datetime(2026, 5, 11, 10, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 11, 11, 0, tzinfo=TZ).isoformat(),
+        ),
+        _ev(
+            summary="Weekly Sync extended",
+            dtstart=datetime(2026, 5, 11, 12, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 11, 13, 0, tzinfo=TZ).isoformat(),
+        ),
+    ]
+    policy = EventExclusionPolicy([EventTitleOverride("weekly sync", excluded=True)])
+
+    visible, hidden_lunch = filter_events_for_user(
+        events,
+        target,
+        tz=TZ,
+        login="me@mail.ru",
+        hide_all_day=True,
+        hide_lunch=True,
+        exclusion_policy=policy,
+    )
+
+    assert [ev["summary"] for ev in visible] == ["Weekly Sync extended"]
+    assert hidden_lunch == []
+
+
+def test_filter_events_for_user_keeps_excluded_meal_for_footer():
+    target = date(2026, 5, 11)
+    meal = _ev(
+        summary="🍕 Обед",
+        dtstart=datetime(2026, 5, 11, 13, 0, tzinfo=TZ).isoformat(),
+        dtend=datetime(2026, 5, 11, 14, 0, tzinfo=TZ).isoformat(),
+    )
+
+    visible, hidden_lunch = filter_events_for_user(
+        [meal],
+        target,
+        tz=TZ,
+        login="me@mail.ru",
+        hide_all_day=False,
+        hide_lunch=False,
+        exclusion_policy=EventExclusionPolicy(),
+    )
+
+    assert visible == []
+    assert hidden_lunch == [meal]
+
+
+def test_filter_events_for_user_explicit_meal_include_overrides_legacy_hide():
+    target = date(2026, 5, 11)
+    meal = _ev(
+        summary="🍕 Обед",
+        dtstart=datetime(2026, 5, 11, 13, 0, tzinfo=TZ).isoformat(),
+        dtend=datetime(2026, 5, 11, 14, 0, tzinfo=TZ).isoformat(),
+    )
+    policy = EventExclusionPolicy([EventTitleOverride("🍕 Обед", excluded=False)])
+
+    visible, hidden_lunch = filter_events_for_user(
+        [meal],
+        target,
+        tz=TZ,
+        login="me@mail.ru",
+        hide_all_day=False,
+        hide_lunch=True,
+        exclusion_policy=policy,
+    )
+
+    assert visible == [meal]
     assert hidden_lunch == []
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC
 
+from satellite.calendar.event_exclusions import EventExclusionPolicy, EventTitleOverride
 from satellite.calendar.event_kinds import (
     classify_event_kind,
     filter_meetings_for_analytics,
@@ -82,3 +83,48 @@ def test_filter_meetings_drops_system():
     out = filter_meetings_for_analytics(events, tz=TZ, login="u@test")
     assert len(out) == 1
     assert out[0]["summary"] == "Планирование"
+
+
+def test_explicit_include_turns_builtin_system_title_into_meeting():
+    event = _ev("Focus Time")
+    policy = EventExclusionPolicy([EventTitleOverride("focus time", excluded=False)])
+
+    assert (
+        classify_event_kind(
+            event,
+            TZ,
+            login="u@test",
+            exclusion_policy=policy,
+        )
+        == "meeting"
+    )
+
+
+def test_disabled_meal_default_counts_meal_in_analytics():
+    event = _ev("🍕 Обед")
+    policy = EventExclusionPolicy(exclude_meals_by_default=False)
+
+    assert (
+        classify_event_kind(
+            event,
+            TZ,
+            login="u@test",
+            exclusion_policy=policy,
+        )
+        == "meeting"
+    )
+
+
+def test_explicit_exclusion_drops_regular_meeting_from_analytics():
+    event = _ev("Weekly Sync")
+    policy = EventExclusionPolicy([EventTitleOverride("weekly sync", excluded=True)])
+
+    assert (
+        classify_event_kind(
+            event,
+            TZ,
+            login="u@test",
+            exclusion_policy=policy,
+        )
+        is None
+    )

@@ -3,6 +3,8 @@
 Хранилище никогда не получает токены в открытом виде: они проходят через
 ``TokenVault.encrypt`` и сохраняются в ``UserRecord.encrypted_credentials``
 как base64-строка. Расшифровка делается ровно на время выполнения CalDAV-операции.
+Тем же ключом отдельный типизированный API шифрует пользовательские исключения
+названий встреч; открытые названия в ``users.json`` не попадают.
 
 Ключ берётся из env-переменной ``TOKEN_ENCRYPTION_KEY`` — urlsafe base64
 длиной 32 байта (``cryptography.fernet.Fernet.generate_key()``). При отсутствии
@@ -42,13 +44,28 @@ class ProviderCredentials:
         return not (self.login.strip() and self.secret.strip())
 
 
+@dataclass(frozen=True)
+class EventTitleOverridePayload:
+    """Одно явное состояние title внутри зашифрованного payload."""
+
+    title: str
+    excluded: bool
+
+
+@dataclass(frozen=True)
+class EventTitleOverridesPayload:
+    """Типизированный payload персональных исключений встреч."""
+
+    overrides: tuple[EventTitleOverridePayload, ...] = ()
+
+
 class TokenVault:
     """Симметричное шифрование credentials через Fernet.
 
-    Inputs/outputs — только ``ProviderCredentials`` и base64-blob. Класс
-    специально не принимает «голый str» в encrypt и не возвращает его из
-    decrypt: это исключает случайный leak через логирование промежуточных
-    значений.
+    Inputs/outputs — только типизированные payload и base64-blob. Класс
+    специально не принимает «голый str» в encrypt-методах и не возвращает
+    расшифрованную строку: это исключает случайный leak через логирование
+    промежуточных значений.
     """
 
     def __init__(self, encryption_key: str) -> None:
@@ -88,3 +105,47 @@ class TokenVault:
         login = str(data.get("login") or "")
         secret = str(data.get("secret") or "")
         return ProviderCredentials(login=login, secret=secret)
+
+    def encrypt_event_title_overrides(self, payload: EventTitleOverridesPayload) -> str:
+        """Шифрует список title override без generic string API."""
+        raw = json.dumps(
+            {
+                "version": 1,
+                "overrides": [
+                    {"title": item.title, "excluded": item.excluded} for item in payload.overrides
+                ],
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        return self._fernet.encrypt(raw).decode("ascii")
+
+    def decrypt_event_title_overrides(self, blob: str) -> EventTitleOverridesPayload:
+        """Расшифровывает и строго валидирует payload исключений."""
+        try:
+            raw = self._fernet.decrypt((blob or "").encode("ascii"))
+        except (InvalidToken, ValueError) as exc:
+            raise TokenDecryptError(
+                "Failed to decrypt stored event-title overrides (key rotated or data corrupted)."
+            ) from exc
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise TokenDecryptError(
+                "Decrypted event-title override payload is not valid JSON."
+            ) from exc
+        if not isinstance(data, dict) or data.get("version") != 1:
+            raise TokenDecryptError("Decrypted event-title override payload is invalid.")
+        raw_overrides = data.get("overrides")
+        if not isinstance(raw_overrides, list):
+            raise TokenDecryptError("Decrypted event-title overrides must be a JSON array.")
+
+        overrides: list[EventTitleOverridePayload] = []
+        for item in raw_overrides:
+            if not isinstance(item, dict):
+                raise TokenDecryptError("Decrypted event-title override entry is invalid.")
+            title = item.get("title")
+            excluded = item.get("excluded")
+            if not isinstance(title, str) or not title.strip() or not isinstance(excluded, bool):
+                raise TokenDecryptError("Decrypted event-title override entry is invalid.")
+            overrides.append(EventTitleOverridePayload(title=title, excluded=excluded))
+        return EventTitleOverridesPayload(overrides=tuple(overrides))

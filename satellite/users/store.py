@@ -264,6 +264,30 @@ class UserStore(JsonStoreBase[UserRecord]):
                 return existing
         return self._update_locked(telegram_user_id, weather_in_plan_enabled=enabled)
 
+    def set_encrypted_event_title_overrides(
+        self,
+        telegram_user_id: int,
+        *,
+        blob: str | None,
+    ) -> UserRecord:
+        normalized_blob = (blob or "").strip() or None
+        now_iso = self._now_iso()
+        with self._lock:
+            existing = self._items.get(telegram_user_id)
+            if existing is None:
+                raise KeyError(telegram_user_id)
+            if existing.encrypted_event_title_overrides == normalized_blob:
+                return existing
+            updated = replace(
+                existing,
+                encrypted_event_title_overrides=normalized_blob,
+                updated_at=now_iso,
+            )
+            candidate = dict(self._items)
+            candidate[telegram_user_id] = updated
+            self._commit_items_locked(candidate)
+        return updated
+
     def clear_calendar_connection(self, telegram_user_id: int) -> UserRecord:
         return self._update_locked_with(
             telegram_user_id,

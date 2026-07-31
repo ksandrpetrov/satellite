@@ -28,6 +28,7 @@ PURE_DOMAIN = (
     "satellite/digest_utils.py",
     "satellite/invitations_view.py",
     "satellite/logging_setup.py",
+    "satellite/meeting_exclusions.py",
     "satellite/messages_ru",
     "satellite/plan_service.py",
     "satellite/presentation",

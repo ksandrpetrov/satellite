@@ -7,6 +7,7 @@ from datetime import tzinfo
 
 from ...calendar.user_calendar_service import UserCalendarService
 from ...config import AdminConfig, PlanConfig, WeatherConfig, WebAppConfig
+from ...meeting_exclusions import MeetingExclusionService
 from ...plan_service import PlanBuilder
 from ...subscriptions import SubscriptionStore
 from ...users import UserStore
@@ -35,6 +36,7 @@ class HandlerContext:
     weather_client: WeatherForecastClient | None
     digest_state: DigestStateStore
     calendar_state: CalendarStateStore
+    meeting_exclusions: MeetingExclusionService
     _plan_builder: PlanBuilder
 
     def plan_builder(self) -> PlanBuilder:

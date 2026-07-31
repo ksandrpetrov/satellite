@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, timedelta
 
+from satellite.calendar.event_exclusions import EventExclusionPolicy, EventTitleOverride
 from satellite.calendar.period_stats import (
     build_analytics_report,
     build_week_summary,
@@ -86,3 +87,43 @@ def test_previous_week_comparison():
     ]
     report = build_analytics_report(events, ref, tz=TZ, login=LOGIN)
     assert report.current.total_busy > report.previous.total_busy
+
+
+def test_explicit_exclusion_is_applied_to_current_and_quarter_stats():
+    ref = date(2026, 5, 14)
+    current_mon, _ = week_bounds(ref)
+    oldest_mon = current_mon - timedelta(weeks=12)
+    events = [
+        _caldav_ev("Weekly Placeholder", current_mon, 10, 12),
+        _caldav_ev("Weekly Placeholder", oldest_mon, 10, 13),
+    ]
+    policy = EventExclusionPolicy([EventTitleOverride(" weekly   placeholder ", excluded=True)])
+
+    report = build_analytics_report(
+        events,
+        ref,
+        tz=TZ,
+        login=LOGIN,
+        exclusion_policy=policy,
+    )
+
+    assert report.current.total_busy == 0
+    assert report.current.days[0].meetings_count == 0
+    assert report.quarter_weekly_busy == (0,) * 13
+
+
+def test_explicit_include_counts_builtin_system_title_in_analytics():
+    ref = date(2026, 5, 14)
+    current_mon, _ = week_bounds(ref)
+    policy = EventExclusionPolicy([EventTitleOverride("Focus Time", excluded=False)])
+
+    report = build_analytics_report(
+        [_caldav_ev("focus time", current_mon, 10, 11)],
+        ref,
+        tz=TZ,
+        login=LOGIN,
+        exclusion_policy=policy,
+    )
+
+    assert report.current.total_busy == 60
+    assert report.current.days[0].meetings_count == 1

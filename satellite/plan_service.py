@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, tzinfo
 
+from .calendar.event_exclusions import EventExclusionPolicy
 from .calendar.events import filter_events_for_user
 from .calendar.stats import DayCalendarStats, NormalizedEvent, WorkdayOptions
 from .calendar.user_calendar_service import UserCalendarService
@@ -59,6 +60,7 @@ class PlanBuilder:
         reference_date: date,
         on_progress: Callable[[str], None] | None = None,
         weather_in_plan_enabled: bool = True,
+        exclusion_policy: EventExclusionPolicy | None = None,
     ) -> PlanTextBundle:
         fallback, weather_line, stats, meal_footer = self._build_plan_parts(
             telegram_user_id=telegram_user_id,
@@ -66,6 +68,7 @@ class PlanBuilder:
             reference_date=reference_date,
             on_progress=on_progress,
             weather_in_plan_enabled=weather_in_plan_enabled,
+            exclusion_policy=exclusion_policy,
         )
         rich = render_digest_rich_from_stats(
             stats,
@@ -83,6 +86,7 @@ class PlanBuilder:
         reference_date: date,
         on_progress: Callable[[str], None] | None = None,
         weather_in_plan_enabled: bool = True,
+        exclusion_policy: EventExclusionPolicy | None = None,
     ) -> str:
         fallback, _, _, _ = self._build_plan_parts(
             telegram_user_id=telegram_user_id,
@@ -90,6 +94,7 @@ class PlanBuilder:
             reference_date=reference_date,
             on_progress=on_progress,
             weather_in_plan_enabled=weather_in_plan_enabled,
+            exclusion_policy=exclusion_policy,
         )
         return fallback
 
@@ -101,6 +106,7 @@ class PlanBuilder:
         reference_date: date,
         on_progress: Callable[[str], None] | None,
         weather_in_plan_enabled: bool,
+        exclusion_policy: EventExclusionPolicy | None = None,
     ) -> tuple[str, str | None, DayCalendarStats, tuple[NormalizedEvent, ...]]:
         started_at = time.monotonic()
         cfg = self.weather_config
@@ -134,6 +140,7 @@ class PlanBuilder:
             login=login,
             hide_all_day=self.plan_config.hide_all_day_events,
             hide_lunch=self.plan_config.hide_lunch_events,
+            exclusion_policy=exclusion_policy,
         )
         stats, meal_footer = prepare_seagull_stats(
             visible,

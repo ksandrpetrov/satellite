@@ -33,6 +33,7 @@ from .calendar.user_calendar_service import UserCalendarService
 from .config import DigestConfig, PlanConfig, WeatherConfig
 from .digest_utils import DIGEST_MODE_TODAY, resolve_target_date
 from .invitations_view import load_pending_invitations_screen
+from .meeting_exclusions import MeetingExclusionService
 from .plan_service import PlanBuilder
 from .presentation.delivery import deliver_rich_or_html
 from .subscriptions import (
@@ -74,6 +75,7 @@ class DigestScheduler:
         subscriptions: SubscriptionStore,
         users: UserStore,
         calendar_service: UserCalendarService,
+        meeting_exclusions: MeetingExclusionService,
         telegram: TelegramClient,
         stop_event: threading.Event | None = None,
         tick_interval_sec: float = _DEFAULT_TICK_SEC,
@@ -88,6 +90,7 @@ class DigestScheduler:
         self._subscriptions = subscriptions
         self._users = users
         self._calendar_service = calendar_service
+        self._meeting_exclusions = meeting_exclusions
         self._telegram = telegram
         self._plan_builder = PlanBuilder(
             calendar_service=calendar_service,
@@ -338,11 +341,13 @@ class DigestScheduler:
         user_record = self._users.get(telegram_user_id)
         weather_in_plan = user_record.weather_in_plan_enabled if user_record is not None else True
         try:
+            exclusion_policy = self._meeting_exclusions.policy_for_user(telegram_user_id)
             plan_bundle = self._plan_builder.build_plan_bundle(
                 telegram_user_id=telegram_user_id,
                 target_date=target_date,
                 reference_date=today,
                 weather_in_plan_enabled=weather_in_plan,
+                exclusion_policy=exclusion_policy,
             )
         except (CalendarNotConnectedError, CalendarProviderError) as exc:
             log.error(

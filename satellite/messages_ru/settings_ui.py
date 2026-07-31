@@ -22,6 +22,7 @@ CB_SETTINGS_ANALYTICS = "settings_analytics"
 CB_SETTINGS_CALENDAR_MENU = "settings_calendar_menu"
 CB_SETTINGS_CALENDARS = "settings_calendars"
 CB_SETTINGS_INVITATIONS = "settings_invitations"
+CB_SETTINGS_MEETING_EXCLUSIONS = "settings_meeting_exclusions"
 # «⬅️ В календарь» с экрана приглашений, открытого из хаба настроек
 CB_SETTINGS_CALENDAR_BACK = "settings_cal_back"
 CB_SETTINGS_CHECK = "settings_check"
@@ -49,6 +50,7 @@ ANALYTICS_BUSY_TOAST = "Уже строю отчёт — подожди немн
 
 BUTTON_ANALYTICS = "📊 Аналитика недели"
 BUTTON_CALENDAR_MENU = "📅 Календарь"
+BUTTON_MEETING_EXCLUSIONS = "🚫 Исключения встреч"
 
 
 def settings_hub_status_bits(
@@ -89,7 +91,9 @@ SETTINGS_HUB_TITLE_PLAIN = "⚙️ Настройки Чайки"
 SETTINGS_HUB_INTRO = (
     "Здесь живут дайджесты, погода в плане, аналитика и календарь. Выбери, что настроить."
 )
-SETTINGS_CALENDAR_MENU_BODY = "Управление подключением, приглашения и выбор календарей для плана."
+SETTINGS_CALENDAR_MENU_BODY = (
+    "Управление подключением, приглашениями, исключениями встреч и выбором календарей для плана."
+)
 
 
 def settings_hub_text(
@@ -225,6 +229,12 @@ def build_settings_calendar_menu_keyboard(*, webapp_url: str) -> dict:
     rows: list[list[dict[str, str | dict[str, str]]]] = [
         [{"text": BUTTON_INVITATIONS, "callback_data": CB_SETTINGS_INVITATIONS}],
         [{"text": BUTTON_CALENDAR_SOURCES, "callback_data": CB_SETTINGS_CALENDARS}],
+        [
+            {
+                "text": BUTTON_MEETING_EXCLUSIONS,
+                "callback_data": CB_SETTINGS_MEETING_EXCLUSIONS,
+            }
+        ],
         [{"text": BUTTON_CHECK_CALENDAR, "callback_data": CB_SETTINGS_CHECK}],
     ]
     if webapp_url:

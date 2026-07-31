@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
+from satellite.calendar.event_exclusions import EventExclusionPolicy, EventTitleOverride
 from satellite.config import DigestConfig
 from satellite.digest_utils import (
     is_digest_day_allowed,
@@ -290,6 +291,8 @@ def _make_scheduler(
     telegram.send_message = MagicMock(return_value={"message_id": 1})
     telegram.send_rich_message = MagicMock(return_value={"message_id": 1})
     calendar_service = MagicMock()
+    meeting_exclusions = MagicMock()
+    meeting_exclusions.policy_for_user = MagicMock(return_value=EventExclusionPolicy())
     digest_config = DigestConfig(mode="tomorrow")
     plan_config = MagicMock()
     scheduler = DigestScheduler(
@@ -299,6 +302,7 @@ def _make_scheduler(
         subscriptions=store,
         users=users,
         calendar_service=calendar_service,
+        meeting_exclusions=meeting_exclusions,
         telegram=telegram,
         tick_interval_sec=30.0,
         max_parallel_deliveries=max_parallel_deliveries,
@@ -321,6 +325,20 @@ def test_daily_digest_targets_today_when_global_mode_is_tomorrow(tmp_path: Path)
     call = scheduler._plan_builder.build_plan_bundle.call_args
     assert call.kwargs["target_date"] == date(2026, 5, 11)
     assert call.kwargs["reference_date"] == date(2026, 5, 11)
+
+
+def test_daily_digest_passes_user_exclusion_policy_to_plan_builder(tmp_path: Path):
+    now = _at(2026, 5, 11, 9, 0)
+    scheduler, store, _telegram = _make_scheduler(tmp_path=tmp_path, now=now)
+    policy = EventExclusionPolicy([EventTitleOverride("Weekly Sync", excluded=True)])
+    scheduler._meeting_exclusions.policy_for_user.return_value = policy
+    store.subscribe(1, "alice")
+
+    assert scheduler.tick() == 1
+
+    scheduler._meeting_exclusions.policy_for_user.assert_called_once_with(1)
+    call = scheduler._plan_builder.build_plan_bundle.call_args
+    assert call.kwargs["exclusion_policy"] is policy
 
 
 def test_tick_sends_only_to_users_whose_scheduled_time_has_arrived(tmp_path: Path):

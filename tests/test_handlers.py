@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from satellite.calendar.event_exclusions import EventExclusionPolicy
 from satellite.calendar.providers.base import CalendarProviderError
 from satellite.digest_utils import resolve_target_date
 from satellite.messages_ru import (
@@ -105,6 +106,8 @@ def _enable_draft_telegram(telegram: MagicMock) -> None:
 def _plan_handler_context() -> MagicMock:
     ctx = _access_ctx(approved=True, has_calendar=True)
     ctx.tz = ZoneInfo("UTC")
+    ctx.meeting_exclusions = MagicMock()
+    ctx.meeting_exclusions.policy_for_user = MagicMock(return_value=EventExclusionPolicy())
     ctx.plan_config = MagicMock()
     ctx.weather_config = MagicMock()
     ctx.weather_config.enabled = False

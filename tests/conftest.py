@@ -87,9 +87,13 @@ def _reset_action_guards():
     from satellite.telegram_bot.handlers import plan as _plan
     from satellite.telegram_bot.handlers import settings_hub as _settings_hub
     from satellite.telegram_bot.handlers.calendar_view import clear_calendar_list_cache
+    from satellite.telegram_bot.handlers.meeting_exclusions import (
+        reset_meeting_exclusion_cache,
+    )
 
     reset_event_token_cache()
     clear_calendar_list_cache()
+    reset_meeting_exclusion_cache()
     _foreign.clear_foreign_list_cache()
 
     for guard in (
@@ -302,6 +306,12 @@ def make_ctx(
     ctx.tz = ZoneInfo(tz) if isinstance(tz, str) else tz
     ctx.telegram = telegram if telegram is not None else make_fake_telegram()
     ctx.calendar_service = calendar_service if calendar_service is not None else MagicMock()
+    ctx.meeting_exclusions = MagicMock()
+    exclusion_policy = MagicMock()
+    exclusion_policy.is_excluded = MagicMock(return_value=False)
+    exclusion_policy.default_is_excluded = MagicMock(return_value=False)
+    ctx.meeting_exclusions.policy_for_user = MagicMock(return_value=exclusion_policy)
+    ctx.meeting_exclusions.list_overrides = MagicMock(return_value=())
     ctx.subscriptions = subscriptions if subscriptions is not None else MagicMock()
     ctx.weather_config = MagicMock()
     ctx.weather_client = None

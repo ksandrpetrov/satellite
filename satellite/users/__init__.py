@@ -13,6 +13,8 @@ JSON-store ``logs/users.json`` хранит per-user статус доступа
 - ``access_request_status`` — состояние последней заявки на доступ;
 - ``calendar_provider`` / ``encrypted_credentials`` — связка с провайдером
   (только зашифрованный blob, никаких сырых токенов);
+- ``encrypted_event_title_overrides`` — зашифрованные персональные правила
+  исключения встреч (названия открытым текстом в store не попадают);
 - ``calendar_status`` — последнее известное состояние подключения;
 - ``primary_calendar_url`` — служебный URL календаря (display name НЕ храним —
   это PII по событиям пользователя);

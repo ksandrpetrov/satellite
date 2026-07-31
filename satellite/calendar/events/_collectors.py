@@ -12,6 +12,7 @@ from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Any
 
 from ..duration_format import format_duration_long_ru
+from ..event_exclusions import EventExclusionPolicy
 from ..time_utils import merge_intervals, sum_minutes
 from ._filters import (
     event_index_marker,
@@ -296,6 +297,7 @@ def filter_events_for_user(
     login: str,
     hide_all_day: bool,
     hide_lunch: bool,
+    exclusion_policy: EventExclusionPolicy | None = None,
 ) -> tuple[list[Event], list[Event]]:
     """Возвращает (видимые события, скрытые «🍕+приём пищи») на указанный день.
 
@@ -314,7 +316,19 @@ def filter_events_for_user(
             continue
         if hide_all_day and is_all_day_event(event, tz):
             continue
-        if hide_lunch and is_lunch_event(event):
+        is_meal = is_lunch_event(event)
+        if exclusion_policy is not None:
+            title = str(event.get("summary") or event.get("title") or "")
+            if exclusion_policy.is_excluded(title):
+                if is_meal:
+                    hidden_lunch.append(event)
+                continue
+            if is_meal and exclusion_policy.default_is_excluded(title):
+                # Явный include встроенного meal-правила сильнее legacy
+                # HIDE_LUNCH_EVENTS: пользователь попросил считать его встречей.
+                visible.append(event)
+                continue
+        if hide_lunch and is_meal:
             hidden_lunch.append(event)
             continue
         visible.append(event)

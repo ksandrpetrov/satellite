@@ -15,6 +15,7 @@ from ...messages_ru import (
     digest_days_screen_text,
     digest_settings_screen_text,
     digest_time_screen_text,
+    meeting_exclusions_screen_text,
     pending_digest_days_screen_text,
     pending_digest_settings_screen_text,
     settings_hub_status_bits,
@@ -80,6 +81,37 @@ def settings_disconnect_confirm_bundle(*, reply_markup: dict | None = None) -> S
         ]
     )
     return ScreenBundle(rich_html=rich, fallback_html=fallback, reply_markup=reply_markup)
+
+
+def meeting_exclusions_bundle(
+    *,
+    week_count: int,
+    saved_outside_week_count: int,
+    page: int,
+    page_count: int,
+    truncated: bool = False,
+    reply_markup: dict | None = None,
+) -> ScreenBundle:
+    fallback = meeting_exclusions_screen_text(
+        week_count=week_count,
+        saved_outside_week_count=saved_outside_week_count,
+        page=page,
+        page_count=page_count,
+        truncated=truncated,
+    )
+    return ScreenBundle(
+        rich_html=fallback,
+        fallback_html=fallback,
+        reply_markup=reply_markup,
+    )
+
+
+def meeting_exclusions_error_bundle(
+    text: str,
+    *,
+    reply_markup: dict | None = None,
+) -> ScreenBundle:
+    return ScreenBundle(rich_html=text, fallback_html=text, reply_markup=reply_markup)
 
 
 def digest_settings_bundle(

@@ -6,6 +6,7 @@ import time
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+from satellite.calendar.event_exclusions import EventExclusionPolicy, EventTitleOverride
 from satellite.config import PlanConfig, WeatherConfig
 from satellite.plan_service import PlanBuilder
 from satellite.weather.client import WeatherForecastClient
@@ -75,6 +76,68 @@ def test_plan_builder_filters_cancelled_and_lunch_and_renders_footer():
     assert "[SMB] Demo" not in text
     assert "10:00–10:30</b> — 🍕 Обед" not in text
     assert "🍕 Обед: 13:00 – 14:00" in text
+
+
+def test_plan_builder_exclusion_removes_event_from_schedule_and_metrics():
+    events = [
+        _caldav_ev("Ignore me", 10, 0, 11, 0),
+        _caldav_ev("Keep me", 15, 0, 16, 0),
+    ]
+    builder = PlanBuilder(
+        calendar_service=_FakeCalendarService(events=events),
+        plan_config=PlanConfig(),
+        tz=TZ,
+    )
+    policy = EventExclusionPolicy([EventTitleOverride(" ignore   ME ", excluded=True)])
+
+    text = builder.build_text(
+        telegram_user_id=7,
+        target_date=date(2026, 5, 11),
+        reference_date=date(2026, 5, 11),
+        exclusion_policy=policy,
+    )
+
+    assert "Ignore me" not in text
+    assert "Keep me" in text
+    assert "👨‍💻 Занято: 1 ч" in text
+
+
+def test_plan_builder_excluded_meal_stays_in_footer():
+    builder = PlanBuilder(
+        calendar_service=_FakeCalendarService(events=[_caldav_ev("🍕 Обед", 13, 0, 14, 0)]),
+        plan_config=PlanConfig(hide_lunch_events=False),
+        tz=TZ,
+    )
+
+    text = builder.build_text(
+        telegram_user_id=7,
+        target_date=date(2026, 5, 11),
+        reference_date=date(2026, 5, 11),
+        exclusion_policy=EventExclusionPolicy(),
+    )
+
+    assert "<b>13:00–14:00</b> — 🍕 Обед" not in text
+    assert "🍕 Обед: 13:00 – 14:00" in text
+    assert "👨‍💻 Занято: 0 мин" in text
+
+
+def test_plan_builder_explicit_meal_include_makes_it_visible():
+    builder = PlanBuilder(
+        calendar_service=_FakeCalendarService(events=[_caldav_ev("🍕 Обед", 13, 0, 14, 0)]),
+        plan_config=PlanConfig(hide_lunch_events=True),
+        tz=TZ,
+    )
+    policy = EventExclusionPolicy([EventTitleOverride("🍕 Обед", excluded=False)])
+
+    text = builder.build_text(
+        telegram_user_id=7,
+        target_date=date(2026, 5, 11),
+        reference_date=date(2026, 5, 11),
+        exclusion_policy=policy,
+    )
+
+    assert "<b>13:00–14:00</b> — 🍕 Обед" in text
+    assert "👨‍💻 Занято: 1 ч" in text
 
 
 def test_plan_builder_skips_weather_when_user_disabled():

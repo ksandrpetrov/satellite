@@ -82,12 +82,14 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
 
         def build() -> tuple[bytes, str, str]:
             today = datetime.now(tz=ctx.tz).date()
+            exclusion_policy = ctx.meeting_exclusions.policy_for_user(user_id)
             return build_week_analytics(
                 telegram_user_id=user_id,
                 reference_date=today,
                 tz=ctx.tz,
                 calendar_service=ctx.calendar_service,
                 users=ctx.users,
+                exclusion_policy=exclusion_policy,
             )
 
         try:

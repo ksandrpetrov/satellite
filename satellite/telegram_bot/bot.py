@@ -15,6 +15,7 @@ from ..backup import snapshot_all
 from ..calendar.operation_log import CalendarOperationLog
 from ..calendar.user_calendar_service import UserCalendarService
 from ..config import Settings
+from ..meeting_exclusions import MeetingExclusionService
 from ..plan_service import PlanBuilder
 from ..scheduler import DigestScheduler
 from ..security.token_vault import TokenVault
@@ -70,6 +71,11 @@ class TelegramBot:
             operation_log=self._operation_log,
             cache_ttl_sec=settings.bot.caldav_cache_ttl_sec,
         )
+        self._meeting_exclusions = MeetingExclusionService(
+            self._users,
+            self._token_vault,
+            exclude_meals_by_default=settings.plan.hide_lunch_events,
+        )
         self._offset_store = OffsetStore(logs_dir / "telegram-offset.json")
         self._offset_tracker = OffsetTracker(self._offset_store)
         self._weather_client: WeatherForecastClient | None = (
@@ -114,6 +120,7 @@ class TelegramBot:
             subscriptions=self._subscriptions,
             users=self._users,
             calendar_service=self._calendar_service,
+            meeting_exclusions=self._meeting_exclusions,
             telegram=self._telegram,
             stop_event=self._stop_event,
             weather_config=settings.weather,
@@ -226,6 +233,7 @@ class TelegramBot:
             weather_client=self._weather_client,
             digest_state=self._digest_state,
             calendar_state=self._calendar_state,
+            meeting_exclusions=self._meeting_exclusions,
             _plan_builder=self._plan_builder,
         )
 
