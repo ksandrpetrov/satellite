@@ -25,15 +25,17 @@ class OffsetStore:
         with self._lock:
             return self._offset
 
-    def update(self, new_offset: int) -> None:
-        """Записывает новое значение, если оно больше текущего. Атомарно."""
+    def update(self, new_offset: int) -> bool:
+        """Атомарно записывает растущий offset; память меняет только после диска."""
         with self._lock:
             if new_offset <= self._offset:
-                return
+                return True
+            if not self._save_locked(new_offset):
+                return False
             self._offset = new_offset
-            self._save_locked(new_offset)
+            return True
 
-    def reset(self, new_offset: int) -> None:
+    def reset(self, new_offset: int) -> bool:
         """Принудительно выставляет offset (в т.ч. вниз). Используется, когда
         обнаружено, что сохранённое значение не соответствует реальности
         (например, поменялся бот-токен, и старый offset из файла не сходится
@@ -43,9 +45,11 @@ class OffsetStore:
             new_offset = 0
         with self._lock:
             if new_offset == self._offset:
-                return
+                return True
+            if not self._save_locked(new_offset):
+                return False
             self._offset = new_offset
-            self._save_locked(new_offset)
+            return True
 
     def _load(self) -> int:
         try:
@@ -58,7 +62,7 @@ class OffsetStore:
             log.warning("Failed to load offset from %s: %s; starting from 0", self._path, exc)
             return 0
 
-    def _save_locked(self, value: int) -> None:
+    def _save_locked(self, value: int) -> bool:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             fd, tmp_path = tempfile.mkstemp(
@@ -80,3 +84,5 @@ class OffsetStore:
                 raise
         except OSError as exc:
             log.error("Failed to persist offset to %s: %s", self._path, exc)
+            return False
+        return True

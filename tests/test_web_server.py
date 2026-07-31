@@ -444,3 +444,27 @@ def test_init_data_invalid_signature_returns_401(started_server):
     bad = _make_init_data(700, token="wrong-token")
     status, _ = _http("GET", base + "/api/calendar/status", init_data=bad)
     assert status == 401
+
+
+def test_start_rolls_back_http_server_when_thread_start_fails(tmp_path, monkeypatch):
+    users = UserStore(tmp_path / "users.json")
+    httpd = MagicMock()
+    thread = MagicMock()
+    thread.start.side_effect = RuntimeError("thread unavailable")
+    monkeypatch.setattr("satellite.web.server.ThreadingHTTPServer", MagicMock(return_value=httpd))
+    monkeypatch.setattr("satellite.web.server.threading.Thread", MagicMock(return_value=thread))
+    server = WebAppServer(
+        config=WebAppServerConfig(
+            host="127.0.0.1", port=12345, bot_token=BOT_TOKEN, tz_name="Europe/Moscow"
+        ),
+        calendar_service=MagicMock(),
+        users=users,
+    )
+
+    with pytest.raises(RuntimeError, match="thread unavailable"):
+        server.start()
+
+    httpd.shutdown.assert_not_called()
+    httpd.server_close.assert_called_once_with()
+    assert server._httpd is None
+    assert server._thread is None

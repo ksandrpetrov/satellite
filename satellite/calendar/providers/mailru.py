@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
-import time
+import threading
 from dataclasses import dataclass
 from datetime import date, tzinfo
 
@@ -40,7 +41,15 @@ DEFAULT_CALDAV_URL = "https://calendar.mail.ru/"
 class _CachedServicePair:
     plain: CalDAVService
     invitations: CalDAVService
-    cached_at: float
+    credentials_fingerprint: str
+    caldav_url: str
+
+    def close(self) -> None:
+        for label, service in (("plain", self.plain), ("invitations", self.invitations)):
+            try:
+                service.close()
+            except Exception:  # noqa: BLE001 - один service не мешает закрыть второй
+                log.exception("Failed to close Mail.ru CalDAV service kind=%s", label)
 
 
 class MailruCalendarProvider:
@@ -49,6 +58,14 @@ class MailruCalendarProvider:
     def __init__(self, *, cache_ttl_sec: int = 300) -> None:
         self._cache_ttl_sec = cache_ttl_sec
         self._service_instances: dict[str, _CachedServicePair] = {}
+        self._service_instances_lock = threading.Lock()
+
+    def close(self) -> None:
+        with self._service_instances_lock:
+            pairs = tuple(self._service_instances.values())
+            self._service_instances.clear()
+        for pair in pairs:
+            pair.close()
 
     def validate_credentials(
         self,
@@ -303,27 +320,41 @@ class MailruCalendarProvider:
         caldav_url: str | None = None,
     ) -> _CachedServicePair:
         key = credentials.login.strip().casefold()
-        now = time.monotonic()
-        pair = self._service_instances.get(key)
-        if pair is not None and (now - pair.cached_at) < self._cache_ttl_sec:
-            return pair
         seed = (caldav_url or DEFAULT_CALDAV_URL).strip()
-        plain = CalDAVService(
-            caldav_url=seed,
-            login=credentials.login.strip(),
-            app_password=credentials.secret,
-            cache_ttl_sec=self._cache_ttl_sec,
-            partstat_refresh_limit=0,
-        )
-        invitations = CalDAVService(
-            caldav_url=seed,
-            login=credentials.login.strip(),
-            app_password=credentials.secret,
-            cache_ttl_sec=self._cache_ttl_sec,
-            partstat_refresh_limit=INVITATIONS_PARTSTAT_REFRESH_LIMIT,
-            partstat_refresh_timeout_sec=INVITATIONS_PARTSTAT_REFRESH_TIMEOUT_SEC,
-            partstat_refresh_budget_sec=INVITATIONS_PARTSTAT_REFRESH_BUDGET_SEC,
-        )
-        pair = _CachedServicePair(plain=plain, invitations=invitations, cached_at=now)
-        self._service_instances[key] = pair
+        seed_key = seed.rstrip("/")
+        fingerprint = hashlib.sha256(f"{key}\0{credentials.secret}".encode()).hexdigest()
+        replaced: _CachedServicePair | None = None
+        with self._service_instances_lock:
+            pair = self._service_instances.get(key)
+            if pair is not None and pair.credentials_fingerprint == fingerprint:
+                # После connect callers передают только credentials. Отсутствие
+                # caldav_url означает «сохрани endpoint этой credential-сессии».
+                if caldav_url is None or pair.caldav_url == seed_key:
+                    return pair
+            plain = CalDAVService(
+                caldav_url=seed,
+                login=credentials.login.strip(),
+                app_password=credentials.secret,
+                cache_ttl_sec=self._cache_ttl_sec,
+                partstat_refresh_limit=0,
+            )
+            invitations = CalDAVService(
+                caldav_url=seed,
+                login=credentials.login.strip(),
+                app_password=credentials.secret,
+                cache_ttl_sec=self._cache_ttl_sec,
+                partstat_refresh_limit=INVITATIONS_PARTSTAT_REFRESH_LIMIT,
+                partstat_refresh_timeout_sec=INVITATIONS_PARTSTAT_REFRESH_TIMEOUT_SEC,
+                partstat_refresh_budget_sec=INVITATIONS_PARTSTAT_REFRESH_BUDGET_SEC,
+            )
+            replaced = pair
+            pair = _CachedServicePair(
+                plain=plain,
+                invitations=invitations,
+                credentials_fingerprint=fingerprint,
+                caldav_url=seed_key,
+            )
+            self._service_instances[key] = pair
+        if replaced is not None:
+            replaced.close()
         return pair

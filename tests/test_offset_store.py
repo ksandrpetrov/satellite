@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 from pathlib import Path
 
@@ -21,6 +22,46 @@ def test_offset_store_persists_atomically(tmp_path: Path):
 
     store.update(10)
     assert store.offset == 10
+
+
+def test_offset_store_write_failure_keeps_memory_and_disk_unchanged(tmp_path: Path, monkeypatch):
+    path = tmp_path / "offset.json"
+    store = OffsetStore(path)
+    assert store.update(5) is True
+
+    monkeypatch.setattr(os, "replace", lambda *_args: (_ for _ in ()).throw(OSError("disk")))
+
+    assert store.update(10) is False
+    assert store.offset == 5
+    assert json.loads(path.read_text())["offset"] == 5
+    assert store.reset(1) is False
+    assert store.offset == 5
+
+
+def test_offset_tracker_retries_completed_prefix_after_write_failure(tmp_path: Path, monkeypatch):
+    path = tmp_path / "offset.json"
+    store = OffsetStore(path)
+    tracker = OffsetTracker(store)
+    real_replace = os.replace
+    fail_once = True
+
+    def flaky_replace(src, dst):
+        nonlocal fail_once
+        if fail_once:
+            fail_once = False
+            raise OSError("disk")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", flaky_replace)
+    assert tracker.mark_dispatched(1) is True
+    assert tracker.mark_dispatched(2) is True
+
+    tracker.mark_completed(1)
+    assert tracker.offset == 0
+
+    tracker.mark_completed(2)
+    assert tracker.offset == 3
+    assert json.loads(path.read_text())["offset"] == 3
 
 
 def test_offset_store_load_from_corrupt_file(tmp_path: Path):

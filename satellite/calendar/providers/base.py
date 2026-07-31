@@ -79,6 +79,10 @@ Event = dict[str, Any]
 class CalendarProvider(Protocol):
     provider_id: str
 
+    def close(self) -> None:
+        """Закрывает owned сетевые ресурсы. Повторный вызов безопасен."""
+        ...
+
     def validate_credentials(
         self,
         credentials: ProviderCredentials,

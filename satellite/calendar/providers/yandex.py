@@ -20,6 +20,9 @@ PROVIDER_ID = "yandex"
 class YandexCalendarProvider:
     provider_id = PROVIDER_ID
 
+    def close(self) -> None:
+        return
+
     def validate_credentials(
         self,
         credentials: ProviderCredentials,

@@ -54,6 +54,17 @@ class UserCalendarService:
         self._lock = threading.Lock()
         self._provider_cache: dict[str, CalendarProvider] = {}
 
+    def close(self) -> None:
+        """Закрывает кэшированные провайдеры после остановки всех callers."""
+        with self._lock:
+            providers = tuple(self._provider_cache.values())
+            self._provider_cache.clear()
+        for provider in providers:
+            try:
+                provider.close()
+            except Exception:  # noqa: BLE001 - один provider не мешает закрыть остальные
+                log.exception("Failed to close calendar provider %s", provider.provider_id)
+
     def require_connection(self, telegram_user_id: int) -> ConnectedCalendar:
         record = self._users.get(telegram_user_id)
         if record is None or not record.has_calendar:

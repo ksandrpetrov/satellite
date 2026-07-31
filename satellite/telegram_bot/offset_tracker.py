@@ -130,8 +130,15 @@ class OffsetTracker:
             if update_id in self._pending:
                 self._pending[update_id] = True
             advance_to = self._compute_next_offset_locked()
-        if advance_to is not None:
-            self._store.update(advance_to)
+            if advance_to is None:
+                return
+            # Не выбрасываем completed prefix до durable commit. При ошибке
+            # следующий completion снова попробует сохранить тот же watermark.
+            if not self._store.update(advance_to):
+                return
+            for uid in tuple(self._pending):
+                if uid < advance_to and self._pending[uid]:
+                    del self._pending[uid]
 
     def _compute_next_offset_locked(self) -> int | None:
         if not self._pending:
@@ -140,7 +147,6 @@ class OffsetTracker:
         for uid in sorted(self._pending):
             if self._pending[uid]:
                 advance_to = uid + 1
-                del self._pending[uid]
             else:
                 break
         return advance_to

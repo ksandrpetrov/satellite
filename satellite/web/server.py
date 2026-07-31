@@ -109,13 +109,23 @@ class WebAppServer:
         if self._thread is not None and self._thread.is_alive():
             return
         handler = self._make_handler()
-        self._httpd = ThreadingHTTPServer((self._config.host, self._config.port), handler)
-        self._thread = threading.Thread(
-            target=self._httpd.serve_forever,
+        httpd = ThreadingHTTPServer((self._config.host, self._config.port), handler)
+        thread = threading.Thread(
+            target=httpd.serve_forever,
             name="satellite-webapp",
             daemon=True,
         )
-        self._thread.start()
+        self._httpd = httpd
+        self._thread = thread
+        try:
+            thread.start()
+        except Exception:
+            # ``shutdown()`` здесь вызывать нельзя: serve_forever ещё не
+            # стартовал, и BaseServer.shutdown заблокируется навсегда.
+            httpd.server_close()
+            self._httpd = None
+            self._thread = None
+            raise
         log.info(
             "WebApp server started on http://%s:%s",
             self._config.host,

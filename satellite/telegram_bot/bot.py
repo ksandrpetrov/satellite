@@ -147,9 +147,9 @@ class TelegramBot:
         self._log_persistence_summary()
         self._verify_encryption_key_against_existing_users()
         self._register_identity_safely()
-        self._webapp.start()
-        self._scheduler.start()
         try:
+            self._webapp.start()
+            self._scheduler.start()
             self._main_loop()
         finally:
             self.shutdown()
@@ -192,6 +192,7 @@ class TelegramBot:
                     "handler worker pool",
                     lambda: self._executor.shutdown(wait=True, cancel_futures=False),
                 ),
+                ("calendar service", self._calendar_service.close),
                 ("Telegram client", self._telegram.close),
             ]
             if self._weather_client is not None:

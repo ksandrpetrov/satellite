@@ -115,6 +115,7 @@ class _DiscoveryResult:
     calendars: list[CalendarHandle]
     cached_at: float
     auth_username: str
+    client: Any | None = None
 
 
 @dataclass(frozen=True)

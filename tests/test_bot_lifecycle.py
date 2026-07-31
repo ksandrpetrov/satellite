@@ -21,6 +21,7 @@ def _bare_bot() -> TelegramBot:
     bot._scheduler = MagicMock()
     bot._webapp = MagicMock()
     bot._executor = MagicMock()
+    bot._calendar_service = MagicMock()
     bot._telegram = MagicMock()
     bot._weather_client = MagicMock()
     return bot
@@ -32,6 +33,7 @@ def _bare_bot() -> TelegramBot:
         ("_scheduler", "stop"),
         ("_webapp", "stop"),
         ("_executor", "shutdown"),
+        ("_calendar_service", "close"),
         ("_telegram", "close"),
         ("_weather_client", "close"),
     ],
@@ -50,6 +52,7 @@ def test_shutdown_failure_does_not_skip_other_resources(
     bot._scheduler.stop.assert_called_once_with()
     bot._webapp.stop.assert_called_once_with()
     bot._executor.shutdown.assert_called_once_with(wait=True, cancel_futures=False)
+    bot._calendar_service.close.assert_called_once_with()
     bot._telegram.close.assert_called_once_with()
     bot._weather_client.close.assert_called_once_with()
     assert bot._stop_event.is_set()
@@ -65,7 +68,50 @@ def test_shutdown_is_idempotent() -> None:
     bot._scheduler.stop.assert_called_once_with()
     bot._webapp.stop.assert_called_once_with()
     bot._executor.shutdown.assert_called_once_with(wait=True, cancel_futures=False)
+    bot._calendar_service.close.assert_called_once_with()
     bot._telegram.close.assert_called_once_with()
+
+
+def _prepare_run(bot: TelegramBot) -> None:
+    bot._settings = MagicMock()
+    bot._settings.bot.workers = 2
+    bot._settings.bot.long_poll_timeout_sec = 30
+    bot._settings.bot.caldav_cache_ttl_sec = 300
+    bot._settings.digest.mode = "today"
+    bot._settings.webapp.base_url = "https://example.test"
+    bot._install_signal_handlers = MagicMock()
+    bot._log_persistence_summary = MagicMock()
+    bot._verify_encryption_key_against_existing_users = MagicMock()
+    bot._register_identity_safely = MagicMock()
+    bot._main_loop = MagicMock()
+
+
+def test_run_cleans_up_when_webapp_start_fails() -> None:
+    bot = _bare_bot()
+    _prepare_run(bot)
+    bot._webapp.start.side_effect = RuntimeError("bind failed")
+
+    with pytest.raises(RuntimeError, match="bind failed"):
+        bot.run()
+
+    bot._scheduler.start.assert_not_called()
+    bot._webapp.stop.assert_called_once_with()
+    bot._scheduler.stop.assert_called_once_with()
+    bot._calendar_service.close.assert_called_once_with()
+
+
+def test_run_cleans_up_when_scheduler_start_fails() -> None:
+    bot = _bare_bot()
+    _prepare_run(bot)
+    bot._scheduler.start.side_effect = RuntimeError("thread failed")
+
+    with pytest.raises(RuntimeError, match="thread failed"):
+        bot.run()
+
+    bot._webapp.start.assert_called_once_with()
+    bot._webapp.stop.assert_called_once_with()
+    bot._scheduler.stop.assert_called_once_with()
+    bot._calendar_service.close.assert_called_once_with()
     bot._weather_client.close.assert_called_once_with()
 
 

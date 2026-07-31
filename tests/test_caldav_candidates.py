@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -708,3 +709,27 @@ def test_enrich_invitations_skips_get_when_report_already_needs_action(monkeypat
         prioritize_from=date(2026, 5, 20),
         invitation_verify=True,
     )
+
+
+def test_discovery_uses_finite_timeout_and_close_is_idempotent(monkeypatch):
+    principal = MagicMock()
+    principal.get_calendars.return_value = []
+    client = MagicMock()
+    client.get_principal.return_value = principal
+    factory = MagicMock(return_value=client)
+    monkeypatch.setattr("satellite.calendar.caldav_client.DAVClient", factory)
+    service = CalDAVService(
+        caldav_url="https://calendar.example/",
+        login="me@example.com",
+        app_password="secret",
+        request_timeout_sec=0.25,
+    )
+
+    calendars, endpoint = service.list_calendars()
+    service.close()
+    service.close()
+
+    assert calendars == []
+    assert endpoint == "https://calendar.example"
+    assert factory.call_args.kwargs["timeout"] == 1
+    client.close.assert_called_once_with()

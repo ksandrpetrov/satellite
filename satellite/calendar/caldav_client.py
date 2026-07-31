@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from datetime import UTC, date, datetime, tzinfo
+from math import ceil
 from typing import Any, cast
 from uuid import uuid4
 
@@ -70,6 +71,7 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
         partstat_refresh_timeout_sec: float = _PARTSTAT_REFRESH_TIMEOUT_SEC,
         partstat_refresh_budget_sec: float = _PARTSTAT_REFRESH_BUDGET_SEC,
         partstat_update_timeout_sec: float = _PARTSTAT_UPDATE_TIMEOUT_SEC,
+        request_timeout_sec: float = 20.0,
     ) -> None:
         self._caldav_url = caldav_url
         self._login = login
@@ -79,13 +81,35 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
         self._partstat_refresh_timeout_sec = max(0.1, float(partstat_refresh_timeout_sec))
         self._partstat_refresh_budget_sec = max(0.0, float(partstat_refresh_budget_sec))
         self._partstat_update_timeout_sec = max(3.0, float(partstat_update_timeout_sec))
+        # caldav.DAVClient принимает timeout только целым числом секунд.
+        self._request_timeout_sec = max(1, ceil(float(request_timeout_sec)))
         self._discovery_lock = threading.Lock()
         self._partstat_cache_lock = threading.Lock()
+        self._close_lock = threading.Lock()
+        self._closed = False
         # _cache читается без блокировки — присваивание атомарно под GIL.
         self._cache: _DiscoveryResult | None = None
         self._partstat_cache: dict[str, tuple[list[str], str | None] | None] = {}
         # Keep-alive пул: PARTSTAT GET/PUT идут пачками, новый TLS на каждый — дорого.
         self._http = _new_http_session()
+
+    def close(self) -> None:
+        """Идемпотентно закрывает owned HTTP-сессии."""
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+            cached = self._cache
+            self._cache = None
+            try:
+                self._http.close()
+            except Exception:  # noqa: BLE001 - закрываем остальные owned resources
+                log.exception("Failed to close CalDAV HTTP session")
+            if cached is not None and cached.client is not None:
+                try:
+                    cached.client.close()
+                except Exception:  # noqa: BLE001 - shutdown остаётся best-effort
+                    log.exception("Failed to close CalDAV discovery client")
 
     # --- HTTP choke points (единственные точки для requests + monkeypatch в тестах) ---
 
@@ -328,11 +352,13 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
         errors: list[str] = []
         for candidate in candidates:
             for username in login_variants_for_caldav(self._login):
+                client: DAVClient | None = None
                 try:
                     client = DAVClient(
                         url=candidate,
                         username=username,
                         password=self._app_password,
+                        timeout=self._request_timeout_sec,
                     )
                     principal = client.get_principal()
                     # Sync DAVClient: runtime — list; stubs — list | Coroutine.
@@ -349,8 +375,14 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
                         calendars=handles,
                         cached_at=time.monotonic(),
                         auth_username=username,
+                        client=client,
                     )
                 except Exception as exc:  # noqa: BLE001 - server-specific errors vary
+                    if client is not None:
+                        try:
+                            client.close()
+                        except Exception:  # noqa: BLE001 - сохраняем исходную discovery-ошибку
+                            log.warning("Failed to close rejected CalDAV client", exc_info=True)
                     user_label = "email" if username == self._login else "local-part"
                     errors.append(f"{candidate} ({user_label}) -> {exc.__class__.__name__}: {exc}")
         details = "\n".join(errors[-8:])
@@ -380,10 +412,13 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
 
     def _dav_client(self) -> DAVClient:
         result = self._ensure_discovery()
+        if result.client is not None:
+            return cast(DAVClient, result.client)
         return DAVClient(
             url=result.endpoint,
             username=result.auth_username,
             password=self._app_password,
+            timeout=self._request_timeout_sec,
         )
 
     def _get_event_object(self, event_url: str) -> Any:

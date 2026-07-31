@@ -39,6 +39,7 @@ class FakeProvider:
     provider_id = PROVIDER_MAILRU
 
     def __init__(self) -> None:
+        self.close_calls = 0
         self.validate_calls = 0
         self.list_calendars_calls = 0
         self.list_events_calls = 0
@@ -46,6 +47,9 @@ class FakeProvider:
             connected=True, provider_id=PROVIDER_MAILRU, status="connected"
         )
         self.raise_on_list_events: Exception | None = None
+
+    def close(self) -> None:
+        self.close_calls += 1
 
     def validate_credentials(
         self,
@@ -218,3 +222,14 @@ def test_fetch_events_for_day_resolves_connection_once(
     assert login == LOGIN
     assert calls == [USER_ID]  # ровно один require_connection
     assert fake_provider.list_events_calls == 1
+
+
+def test_close_closes_cached_providers_once(
+    service: UserCalendarService, fake_provider: FakeProvider
+) -> None:
+    service._provider_cache[PROVIDER_MAILRU] = fake_provider
+
+    service.close()
+    service.close()
+
+    assert fake_provider.close_calls == 1

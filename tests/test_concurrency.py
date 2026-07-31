@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import threading
 
+import pytest
+
 from satellite.telegram_bot.concurrency import ChatLockManager
 
 
@@ -69,6 +71,21 @@ def test_chat_lock_manager_is_threadsafe():
         t.join()
 
     assert len({id(lk) for lk in locks_per_thread}) == 1
+
+
+def test_chat_lock_manager_uses_bounded_stripes():
+    mgr = ChatLockManager(stripes=4)
+
+    for chat_id in range(10_000):
+        mgr.acquire(chat_id)
+
+    assert len(mgr._locks) == 4
+    assert mgr.acquire(1) is mgr.acquire(5)
+
+
+def test_chat_lock_manager_rejects_non_positive_stripes():
+    with pytest.raises(ValueError, match="positive"):
+        ChatLockManager(stripes=0)
 
 
 def test_inflight_tracker_add_if_absent_returns_true_first_time():
