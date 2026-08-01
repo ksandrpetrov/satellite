@@ -1,11 +1,10 @@
-"""Регрессия handlers.analytics: непредвиденная ошибка не оставляет «🌀 сводит неделю…».
+"""Регрессии handlers.analytics: без текстового preview, ошибки доходят до пользователя.
 
 Когда `build_week_analytics` падает с любой ошибкой за пределами
 `CalendarProviderError`/`CalendarNotConnectedError` (пример из прода —
 ``ModuleNotFoundError: No module named 'PIL'``), пользователь не должен
-видеть оба сообщения: и зависший «Чайка сводит неделю по календарю…», и
-generic-ошибку диспетчера. Хендлер обязан подменить loading-сообщение и
-проглотить исключение.
+остаться без ответа. Хендлер обязан остановить `upload_photo`, отправить
+generic-ошибку и проглотить исключение.
 """
 
 from __future__ import annotations
@@ -151,6 +150,13 @@ def test_successful_run_sends_photo_and_rich_caption(tmp_path: Path, monkeypatch
     ctx.telegram.send_rich_message.assert_called_once()
     payload = ctx.telegram.send_rich_message.call_args[0][1]
     assert payload["html"] == "<h3>cap</h3>"
+    ctx.telegram.send_message_draft.assert_not_called()
+    ctx.telegram.send_rich_message_draft.assert_not_called()
+    ctx.telegram.send_chat_action.assert_called_once_with(
+        900,
+        "upload_photo",
+        message_thread_id=None,
+    )
 
 
 def test_analytics_handler_passes_user_exclusion_policy(tmp_path: Path, monkeypatch):

@@ -321,19 +321,23 @@ state (`handlers/digest_state`).
   `<spoiler>`, `<sub>`, `<sup>`, `<code>`).
 - Legacy HTML (`<b>`, `<blockquote>`) остаётся для fallback и callback-edit при
   отказе API.
-- Потоковая доставка: `sendRichMessageDraft` → `sendRichMessage` (см. ниже).
+- Потоковая доставка текстовых отчётов: `sendRichMessageDraft` →
+  `sendRichMessage` (см. ниже).
 - Цветные inline-кнопки (`style`: `primary` / `success` / `danger`) — приглашения,
   manage, create, дайджест, админ; хелпер `styled_button` в [`buttons.py`](../satellite/messages_ru/buttons.py).
 
 ## Streaming delivery
 
-План дня (`/today`, `/tomorrow`, …), `/upcoming`, `/invitations`, `/manage` и
-недельная аналитика используют `streaming_delivery.open_streaming_reply`: rich-
-черновик через `sendRichMessageDraft` (или legacy `sendMessageDraft`), финал —
-`finish` → `sendRichMessage` + fallback HTML (текст + inline-клавиатура) или
-`sendPhoto` без подписи + отдельное rich-сообщение с таблицей (аналитика).
-При ошибке CalDAV/сборки
-черновик заменяется безопасным текстом (`ERR_*` из `messages_ru`).
+План дня (`/today`, `/tomorrow`, …), `/upcoming`, `/invitations` и `/manage`
+используют `streaming_delivery.open_streaming_reply`: rich-черновик через
+`sendRichMessageDraft` (или legacy `sendMessageDraft`), финал — `finish` →
+`sendRichMessage` + fallback HTML (текст + inline-клавиатура). Недельная
+аналитика открывает ту же сессию с `use_draft=False`: во время сборки виден
+только `sendChatAction("upload_photo")`, затем приходят PNG без подписи и
+отдельное rich-сообщение с таблицей.
+При ошибке CalDAV/сборки текстовый черновик заменяется безопасным текстом;
+в аналитике останавливается `upload_photo` и отправляется такое же обычное
+сообщение (`ERR_*` из `messages_ru`).
 
 **Rich-draft UX:**
 
@@ -343,7 +347,8 @@ state (`handlers/digest_state`).
 - Промежуточные статусы — `stream.push_status(...)` (тот же `<tg-thinking>`).
 - Финал rich-ответа — block-stagger typewriter: hero-блоки целиком, затем по
   одному блоку (`reveal_mode="auto"` по умолчанию для rich).
-- Аналитика: `sendChatAction("upload_photo")` на время сборки PNG.
+- Аналитика: без текстового preview; `sendChatAction("upload_photo")` на время
+  сборки PNG.
 
 Повтор команды или кнопки открытия, пока первый запрос ещё идёт или сразу после
 успеха, блокируется `ActionGuard` в

@@ -44,6 +44,12 @@ class StreamingReply:
     1. ``open`` — обычный ``sendMessage`` с loading-текстом, запоминаем id.
     2. ``push`` — ``editMessageText`` того же сообщения.
     3. ``finish`` — ``edit_or_send_message`` (правка → или новое сообщение).
+
+    Action-only (``use_draft=False``):
+
+    1. ``open`` — только фоновый ``sendChatAction`` без сообщения-превью.
+    2. ``push`` — no-op.
+    3. ``finish`` — обычный ``sendMessage``; ``dismiss`` только гасит action.
     """
 
     def __init__(
@@ -89,12 +95,17 @@ class StreamingReply:
         disable_web_page_preview: bool = True,
         chat_action: str | None = "typing",
         rich: bool = False,
+        use_draft: bool = True,
     ) -> StreamingReply:
         """Старт сессии: пробует черновик, иначе loading-сообщение.
 
         ``initial_text=""`` (по умолчанию) показывает нативный «Thinking…»
         placeholder из Bot API 10.0. Если ботом-серверу < 10.0, мы повторяем
         старт с непустым текстом (см. ``_try_start_draft``).
+
+        ``use_draft=False`` не создаёт ни draft, ни legacy loading-сообщение:
+        остаётся только ``chat_action``. Это режим для бинарного результата
+        вроде PNG, где текстовый preview не является частью финального ответа.
         """
         resolved_draft_id = (
             draft_id
@@ -113,6 +124,9 @@ class StreamingReply:
             disable_web_page_preview=disable_web_page_preview,
             rich=rich,
         )
+        if not use_draft:
+            session._start_typing(chat_action)
+            return session
         clipped = _clip_text(initial_text, rich=rich)
         draft_start = (
             rich_thinking_status(DEFAULT_THINKING_TEXT) if rich and not clipped else clipped

@@ -36,11 +36,13 @@ def open_streaming_reply(
     disable_web_page_preview: bool = True,
     chat_action: str | None = "typing",
     rich: bool = False,
+    use_draft: bool = True,
 ) -> StreamingReply:
     """Удобная фабрика (без ``HandlerContext`` — меньше связности).
 
     Пустой ``initial_text`` (по умолчанию) → нативный «Thinking…» placeholder
     из Bot API 10.0; на старых серверах автоматически заменяется на «⏳».
+    ``use_draft=False`` оставляет только ``chat_action`` без preview-сообщения.
     """
     return StreamingReply.open(
         telegram,
@@ -52,4 +54,5 @@ def open_streaming_reply(
         disable_web_page_preview=disable_web_page_preview,
         chat_action=chat_action,
         rich=rich,
+        use_draft=use_draft,
     )

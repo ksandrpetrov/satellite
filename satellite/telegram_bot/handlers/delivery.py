@@ -70,11 +70,13 @@ def open_streaming_reply(
     message_thread_id: int | None = None,
     chat_action: str | None = "typing",
     rich: bool = False,
+    use_draft: bool = True,
 ) -> StreamingReply:
     """Потоковый ответ: ``sendMessageDraft`` с fallback на loading+edit.
 
     Пустой ``initial_text`` (по умолчанию) → нативный «Thinking…» из Bot API
     10.0; на старых серверах сервис подставит ``⏳`` placeholder.
+    ``use_draft=False`` оставляет только ``chat_action`` без preview-сообщения.
     """
     return _open_streaming_reply(
         ctx.telegram,
@@ -84,6 +86,7 @@ def open_streaming_reply(
         message_thread_id=message_thread_id,
         chat_action=chat_action,
         rich=rich,
+        use_draft=use_draft,
     )
 
 

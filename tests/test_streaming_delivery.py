@@ -60,6 +60,34 @@ def test_legacy_when_draft_disabled_uses_edit_or_send() -> None:
     )
 
 
+def test_action_only_mode_skips_preview_and_sends_final_message() -> None:
+    """Бинарный результат ждём через chat action, без текстового draft/loading."""
+    tg = _telegram()
+    tg.send_chat_action = MagicMock(return_value=True)
+
+    stream = open_streaming_reply(
+        tg,
+        350,
+        "этот текст не должен появиться",
+        chat_action="upload_photo",
+        use_draft=False,
+    )
+
+    tg.send_message_draft.assert_not_called()
+    tg.send_message.assert_not_called()
+    tg.send_chat_action.assert_called_once_with(
+        350,
+        "upload_photo",
+        message_thread_id=None,
+    )
+
+    stream.finish("ошибка", typewriter=False)
+
+    tg.send_message.assert_called_once()
+    assert tg.send_message.call_args[0][1] == "ошибка"
+    tg.edit_message_text.assert_not_called()
+
+
 def test_push_throttles_rapid_small_updates() -> None:
     tg = _telegram()
     stream = open_streaming_reply(tg, 400, "start", draft_id=1)

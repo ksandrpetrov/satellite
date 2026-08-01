@@ -10,7 +10,6 @@ from ...calendar.constants import ANALYTICS_WORKDAY_10_19
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from ...messages_ru import (
     ANALYTICS_BUSY_TOAST,
-    ANALYTICS_FETCH_STATUS,
     ANALYTICS_SAVED_TOAST,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     ERR_GENERIC_HANDLER_TEXT,
@@ -74,10 +73,8 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         stream = open_streaming_reply(
             ctx,
             cb.chat_id,
-            initial_text=ANALYTICS_FETCH_STATUS,
-            draft_id=cb.update_id,
             chat_action="upload_photo",
-            rich=True,
+            use_draft=False,
         )
 
         def build() -> tuple[bytes, str, str]:
@@ -101,7 +98,7 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
             log.error("Analytics failed user_id=%s: %s", cb.user_id, exc.error_code)
             stream.finish(ERR_CALDAV_UNAVAILABLE_TEXT, rich=False, typewriter=False)
             return
-        except Exception:  # noqa: BLE001 - не оставляем «сводит неделю…» висеть в чате
+        except Exception:  # noqa: BLE001 - не оставляем upload_photo без финального ответа
             log.exception("Analytics build failed user_id=%s", cb.user_id)
             stream.finish(ERR_GENERIC_HANDLER_TEXT, rich=False, typewriter=False)
             return
@@ -122,13 +119,13 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
             )
             stream.finish(ERR_GENERIC_HANDLER_TEXT, rich=False, typewriter=False)
             return
+        stream.dismiss()
         deliver_rich_or_html(
             ctx.telegram,
             cb.chat_id,
             rich_html=rich_caption,
             fallback_html=caption,
         )
-        stream.dismiss()
         sent = True
         log.info("Sent weekly analytics user_id=%s chat_id=%s", cb.user_id, cb.chat_id)
     finally:
