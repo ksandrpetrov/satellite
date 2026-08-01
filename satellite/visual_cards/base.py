@@ -24,28 +24,39 @@ FONT_DISPLAY_PATH = FONT_DIR / "Tektur-Medium.ttf"
 FONT_MONO_REGULAR_PATH = FONT_DIR / "GeistMono-Regular.ttf"
 FONT_MONO_BOLD_PATH = FONT_DIR / "GeistMono-Bold.ttf"
 
-# «Орбитальный ритм»: холодная телеметрия с редкими сигнальными цветами.
-COLOR_BG_TOP = (5, 14, 23)
-COLOR_BG = (7, 18, 29)
-COLOR_SURFACE = (10, 27, 42)
-COLOR_SURFACE_STRONG = (12, 34, 51)
-COLOR_TEXT = (239, 247, 251)
-COLOR_MUTED = (143, 164, 181)
-COLOR_FAINT = (86, 112, 133)
-COLOR_SEPARATOR = (26, 56, 76)
-COLOR_GRID = (12, 37, 55)
-COLOR_ACCENT = (54, 214, 255)
-COLOR_ACCENT_SOFT = (25, 83, 108)
-COLOR_FREE = (34, 61, 80)
-COLOR_BUSY = COLOR_ACCENT
-COLOR_RING_TRACK = (29, 58, 78)
-COLOR_TREND_UP = (255, 108, 105)
-COLOR_TREND_DOWN = (128, 229, 177)
-COLOR_TREND_FLAT = (155, 174, 188)
-COLOR_WARNING = (255, 199, 92)
+# «Светлая орбита»: воздушное поле с одним глубоким контрастным якорем.
+COLOR_BG_TOP = (251, 253, 253)
+COLOR_BG = (241, 246, 248)
+COLOR_SURFACE = (255, 255, 255)
+COLOR_SURFACE_STRONG = (246, 250, 251)
+COLOR_TEXT = (20, 48, 64)
+COLOR_MUTED = (91, 117, 132)
+COLOR_FAINT = (133, 155, 166)
+COLOR_SEPARATOR = (216, 229, 234)
+COLOR_GRID = (232, 240, 243)
+COLOR_ACCENT = (0, 112, 153)
+COLOR_ACCENT_BRIGHT = (48, 201, 238)
+COLOR_ACCENT_SOFT = (203, 235, 245)
+COLOR_FREE = (230, 240, 244)
+COLOR_BUSY = (41, 180, 220)
+COLOR_RING_TRACK = (205, 222, 230)
+COLOR_TREND_UP = (190, 63, 67)
+COLOR_TREND_DOWN = (24, 126, 88)
+COLOR_TREND_FLAT = (93, 117, 131)
+COLOR_WARNING = (166, 105, 0)
 COLOR_SPARK_FILL = COLOR_ACCENT
 COLOR_SHADOW = (0, 0, 0, 0)
-COLOR_PILL_BG = (16, 43, 61)
+COLOR_PILL_BG = (235, 243, 246)
+
+COLOR_HERO_SURFACE = (14, 48, 68)
+COLOR_HERO_TEXT = (242, 249, 252)
+COLOR_HERO_MUTED = (158, 184, 198)
+COLOR_HERO_FAINT = (111, 148, 167)
+COLOR_HERO_SEPARATOR = (43, 81, 101)
+COLOR_HERO_PILL = (23, 65, 87)
+COLOR_HERO_ACCENT = (54, 214, 255)
+COLOR_HERO_SUCCESS = (128, 229, 177)
+COLOR_HERO_DANGER = (255, 108, 105)
 
 FontFamily = Literal["sans", "display", "mono"]
 
@@ -57,7 +68,7 @@ def pil():
 
 
 def create_card_canvas(height: int):
-    """Create the canonical dark canvas with a restrained vertical gradient."""
+    """Create the canonical light canvas with a restrained vertical gradient."""
     Image, _, _ = pil()
     img = Image.new("RGB", (CARD_WIDTH, height), COLOR_BG)
     pixels = img.load()
@@ -260,9 +271,10 @@ def draw_surface_card(
     *,
     radius: int = CARD_RADIUS,
     fill: tuple[int, int, int] = COLOR_SURFACE,
+    outline: tuple[int, int, int] = COLOR_SEPARATOR,
 ) -> ImageDraw.ImageDraw:
     del img  # kept in the signature for callers shared with earlier card renderers
-    rounded_rect(draw, box, radius, fill=fill, outline=COLOR_SEPARATOR)
+    rounded_rect(draw, box, radius, fill=fill, outline=outline)
     return draw
 
 
@@ -314,12 +326,17 @@ def draw_load_ring(
     *,
     font_pct,
     font_label,
+    accent: tuple[int, int, int] = COLOR_ACCENT,
+    track: tuple[int, int, int] = COLOR_RING_TRACK,
+    text_color: tuple[int, int, int] = COLOR_TEXT,
+    muted_color: tuple[int, int, int] = COLOR_MUTED,
+    tick_color: tuple[int, int, int] = COLOR_FAINT,
 ) -> None:
     bbox = (cx - radius, cy - radius, cx + radius, cy + radius)
-    draw.arc(bbox, start=270, end=630, fill=COLOR_RING_TRACK, width=18)
+    draw.arc(bbox, start=270, end=630, fill=track, width=18)
     sweep = int(360 * min(100, max(0, percent)) / 100)
     if sweep > 0:
-        draw.arc(bbox, start=270, end=270 + max(4, sweep), fill=COLOR_ACCENT, width=18)
+        draw.arc(bbox, start=270, end=270 + max(4, sweep), fill=accent, width=18)
     for index in range(36):
         angle = index * 10
         if angle % 30:
@@ -334,11 +351,11 @@ def draw_load_ring(
                 cx + outer * cos(rad),
                 cy + outer * sin(rad),
             ),
-            fill=COLOR_FAINT,
+            fill=tick_color,
             width=2,
         )
-    draw.text((cx, cy - 15), f"{percent}%", fill=COLOR_TEXT, font=font_pct, anchor="mm")
-    draw.text((cx, cy + 48), "ЗАГРУЗКА", fill=COLOR_MUTED, font=font_label, anchor="mm")
+    draw.text((cx, cy - 15), f"{percent}%", fill=text_color, font=font_pct, anchor="mm")
+    draw.text((cx, cy + 48), "ЗАГРУЗКА", fill=muted_color, font=font_label, anchor="mm")
 
 
 def draw_stat_row(

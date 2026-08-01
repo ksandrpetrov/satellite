@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageStat
 
 from satellite.analytics.render_card import render_analytics_card
 from satellite.calendar.period_stats import (
@@ -65,6 +65,18 @@ def test_render_produces_valid_png():
     with Image.open(io.BytesIO(png)) as image:
         assert image.size == (1200, 1920)
         assert image.mode == "RGB"
+
+
+def test_default_card_is_light_with_one_dark_anchor():
+    png = render_analytics_card(_report())
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        histogram = image.histogram()
+        pixel_count = image.width * image.height
+        dark_ratio = sum(histogram[:64]) / pixel_count
+        average_luminance = ImageStat.Stat(image).mean[0]
+
+    assert average_luminance >= 170
+    assert dark_ratio < 0.30
 
 
 def test_render_with_overlap_summary_produces_valid_png():

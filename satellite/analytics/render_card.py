@@ -34,12 +34,12 @@ def _week_delta_badge(report: AnalyticsReport) -> tuple[str, tuple[int, int, int
     delta_min = report.current.total_busy - report.previous.total_busy
     pct_delta = report.current.load_percent - report.previous.load_percent
     if abs(delta_min) < 30:
-        return "КАК НА ПРОШЛОЙ НЕДЕЛЕ", vc.COLOR_TREND_FLAT
+        return "КАК НА ПРОШЛОЙ НЕДЕЛЕ", vc.COLOR_HERO_MUTED
     sign = "+" if delta_min > 0 else "−"
     text = f"{sign}{vc.hours_label(abs(delta_min))} ВСТРЕЧ"
     if pct_delta:
         text += f"  /  {pct_delta:+d}% ЗАГРУЗКИ"
-    color = vc.COLOR_TREND_UP if delta_min > 0 else vc.COLOR_TREND_DOWN
+    color = vc.COLOR_HERO_DANGER if delta_min > 0 else vc.COLOR_HERO_SUCCESS
     return text, color
 
 
@@ -71,10 +71,12 @@ def _draw_metric(
     font_label: ImageFont.FreeTypeFont | ImageFont.ImageFont,
     font_value: ImageFont.FreeTypeFont | ImageFont.ImageFont,
     font_sub: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    label_color: tuple[int, int, int],
+    sub_color: tuple[int, int, int],
 ) -> None:
-    draw.text((x, y), label, fill=vc.COLOR_MUTED, font=font_label)
+    draw.text((x, y), label, fill=label_color, font=font_label)
     draw.text((x, y + 34), value, fill=value_color, font=font_value)
-    draw.text((x, y + 92), sub, fill=vc.COLOR_FAINT, font=font_sub)
+    draw.text((x, y + 92), sub, fill=sub_color, font=font_sub)
 
 
 def _draw_week_chart(
@@ -256,7 +258,7 @@ def _draw_quarter_chart(
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     overlay_draw = ImageDraw.Draw(overlay)
     area = [(left, bottom), *points, (right, bottom)]
-    overlay_draw.polygon(area, fill=(*vc.COLOR_SPARK_FILL, 32))
+    overlay_draw.polygon(area, fill=(*vc.COLOR_SPARK_FILL, 22))
     img_rgba = Image.alpha_composite(img.convert("RGBA"), overlay)
     img.paste(img_rgba.convert("RGB"))
     draw = ImageDraw.Draw(img)
@@ -336,10 +338,11 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
         img,
         draw,
         hero_box,
-        fill=vc.COLOR_SURFACE_STRONG,
+        fill=vc.COLOR_HERO_SURFACE,
+        outline=vc.COLOR_HERO_SEPARATOR,
     )
-    draw.text((96, 283), "01", fill=vc.COLOR_ACCENT, font=font_micro)
-    draw.text((144, 275), "НЕДЕЛЯ", fill=vc.COLOR_TEXT, font=font_section)
+    draw.text((96, 283), "01", fill=vc.COLOR_HERO_ACCENT, font=font_micro)
+    draw.text((144, 275), "НЕДЕЛЯ", fill=vc.COLOR_HERO_TEXT, font=font_section)
     vc.draw_load_ring(
         draw,
         272,
@@ -348,8 +351,13 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
         report.current.load_percent,
         font_pct=font_display_pct,
         font_label=font_micro,
+        accent=vc.COLOR_HERO_ACCENT,
+        track=vc.COLOR_HERO_SEPARATOR,
+        text_color=vc.COLOR_HERO_TEXT,
+        muted_color=vc.COLOR_HERO_MUTED,
+        tick_color=vc.COLOR_HERO_FAINT,
     )
-    draw.line((458, 286, 458, 601), fill=vc.COLOR_SEPARATOR, width=1)
+    draw.line((458, 286, 458, 601), fill=vc.COLOR_HERO_SEPARATOR, width=1)
 
     overlaps = report.current.total_overlaps
     overlap_sub = f"{overlaps} ПЕРЕС." if overlaps else "БЕЗ ПЕРЕСЕЧЕНИЙ"
@@ -360,10 +368,12 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
         label="ЗАНЯТО",
         value=vc.hours_label(report.current.total_busy),
         sub="В РАБОЧЕМ ОКНЕ",
-        value_color=vc.COLOR_ACCENT,
+        value_color=vc.COLOR_HERO_ACCENT,
         font_label=font_micro,
         font_value=font_display_metric,
         font_sub=font_micro,
+        label_color=vc.COLOR_HERO_MUTED,
+        sub_color=vc.COLOR_HERO_FAINT,
     )
     _draw_metric(
         draw,
@@ -372,10 +382,12 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
         label="СВОБОДНО",
         value=vc.hours_label(report.current.total_free),
         sub="ДОСТУПНЫЙ РЕЗЕРВ",
-        value_color=vc.COLOR_TREND_DOWN,
+        value_color=vc.COLOR_HERO_SUCCESS,
         font_label=font_micro,
         font_value=font_display_metric,
         font_sub=font_micro,
+        label_color=vc.COLOR_HERO_MUTED,
+        sub_color=vc.COLOR_HERO_FAINT,
     )
     _draw_metric(
         draw,
@@ -384,29 +396,31 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
         label="ВСТРЕЧИ",
         value=str(report.current.total_meetings),
         sub=overlap_sub,
-        value_color=vc.COLOR_TEXT,
+        value_color=vc.COLOR_HERO_TEXT,
         font_label=font_micro,
         font_value=font_display_metric,
         font_sub=font_micro,
+        label_color=vc.COLOR_HERO_MUTED,
+        sub_color=vc.COLOR_HERO_FAINT,
     )
-    draw.line((500, 503, 1100, 503), fill=vc.COLOR_SEPARATOR, width=1)
+    draw.line((500, 503, 1100, 503), fill=vc.COLOR_HERO_SEPARATOR, width=1)
     delta_text, delta_color = _week_delta_badge(report)
     vc.draw_pill(
         draw,
         (500, 531),
         delta_text,
-        fill=vc.COLOR_PILL_BG,
+        fill=vc.COLOR_HERO_PILL,
         text_color=delta_color,
         font=font_small,
         pad_x=16,
         pad_y=8,
         max_width=405,
-        outline=vc.COLOR_SEPARATOR,
+        outline=vc.COLOR_HERO_SEPARATOR,
     )
     draw.text(
         (1100, 544),
         f"ПРОШЛАЯ / {report.previous.load_percent}%",
-        fill=vc.COLOR_MUTED,
+        fill=vc.COLOR_HERO_MUTED,
         font=font_small,
         anchor="ra",
     )
