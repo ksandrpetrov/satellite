@@ -68,9 +68,7 @@ pathspec==1.1.1
 pillow==12.3.0
     # via -r requirements.in
 platformdirs==4.11.0
-    # via
-    #   python-discovery
-    #   virtualenv
+    # via virtualenv
 pluggy==1.6.0
     # via pytest
 pre-commit==4.6.1
@@ -86,7 +84,7 @@ python-dateutil==2.9.0.post0
     #   caldav
     #   icalendar
     #   recurring-ical-events
-python-discovery==1.5.0
+python-discovery==1.5.1
     # via virtualenv
 python-dotenv==1.2.2
     # via -r requirements.in
