@@ -316,8 +316,7 @@ python telegram_test_command.py                   # make run
 Опционально: `pre-commit install` подтянет ruff/ruff-format/mypy в git-hook
 (см. [`.pre-commit-config.yaml`](.pre-commit-config.yaml)).
 
-Сервер: **systemd** — `sudo bash scripts/install-server.sh`;
-**Docker (prod)** — `make deploy` (см. [docs/operations.md](docs/operations.md#запуск-на-сервере),
+Сервер: **Docker (prod)** — `make deploy` (см. [docs/operations.md](docs/operations.md#запуск-на-сервере),
 [deploy/README.md](deploy/README.md));
 **Docker (local)** — `make env && make docker-up` (см. корневой `docker-compose.yml`).
 
@@ -333,8 +332,6 @@ TLS и reverse proxy на 443 — ваш существующий nginx на х�
 | Скрипт | Назначение |
 |--------|------------|
 | [`scripts/install.sh`](scripts/install.sh) | venv, зависимости, `.env` + Fernet, `logs/` |
-| [`scripts/install-server.sh`](scripts/install-server.sh) | systemd на VPS (`/opt/satellite`) |
-| [`scripts/bootstrap-server.sh`](scripts/bootstrap-server.sh) | apt + clone + `install-server.sh` на чистом хосте |
 | [`scripts/diagnose_caldav.py`](scripts/diagnose_caldav.py) | CalDAV с сервера без Telegram (см. troubleshooting) |
 | [`scripts/diagnose_invitation.py`](scripts/diagnose_invitation.py) | PARTSTAT / pending без Telegram (`--user-id`, `--summary`, опц. `--accept`; lookback 14 д — как в боте) |
 | [`scripts/ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) | Rolling deploy: trim секретов SSH/host → stop/disable legacy `satellite-bot.service` → детект legacy `logs/users.json` vs пустой volume → `SATELLITE_IMAGE` в `.env` → `compose pull/up` → wait healthy + host `/healthz` → опц. [`smoke-prod.sh`](scripts/smoke-prod.sh) |
@@ -402,9 +399,9 @@ production, ngrok/Cloudflare Tunnel в dev). Проксируйте `/connect` �
 ### Сохранность данных между деплоями
 
 `logs/` и `.env` не коммитятся и не трогаются ни одним из скриптов
-([`scripts/install.sh`](scripts/install.sh) / [`scripts/install-server.sh`](scripts/install-server.sh) / `make deploy`).
-Стандартный апдейт-цикл (`git pull && systemctl restart satellite-bot.service`
-или `make deploy`) сохраняет per-user настройки: `users.json` и
+([`scripts/install.sh`](scripts/install.sh) / `make deploy`).
+Стандартный апдейт-цикл (`make deploy` или push в `main`) сохраняет
+per-user настройки: `users.json` и
 `subscriptions.json` живут в `logs/`, на старте бот снапшотит их в
 `logs/backups/`. В журнале при старте появляется строка
 `Persistence loaded: users total=… approved=… connected=… subscriptions total=… active=… key_fingerprint=…` —
@@ -420,7 +417,7 @@ startup-снапшота процесс пишет `CRITICAL`, не запуск
 
 #### Миграция systemd → Docker (один раз)
 
-systemd-сетап ([`scripts/install-server.sh`](scripts/install-server.sh)) хранил
+Удалённый systemd-сетап (`scripts/install-server.sh`) хранил
 `users.json` / `subscriptions.json` / `backups/` в `/opt/satellite/logs/` **на хосте**.
 Docker-compose ([`deploy/docker-compose.yml`](deploy/docker-compose.yml)) маунтит
 именованный volume `satellite_satellite-logs` → `/app/logs`. При первом `compose up`

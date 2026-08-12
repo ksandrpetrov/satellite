@@ -105,52 +105,8 @@ make docker-smoke   # после docker build: импорты + /healthz в об
 
 ## Запуск на сервере
 
-Два варианта: **systemd** (Python на VPS + свой reverse proxy) или **Docker**
-(контейнер бота + внешний nginx на хосте, образ из GHCR). Подробнее — [docs/operations.md](docs/operations.md#запуск-на-сервере).
-
-### Развертывание одной командой (systemd)
-
-На чистом Debian/Ubuntu с systemd — клонирует репозиторий в `/opt/satellite`,
-ставит Python-окружение, генерирует `.env` с `TOKEN_ENCRYPTION_KEY`,
-регистрирует и запускает `satellite-bot.service`:
-
-```bash
-sudo GITHUB_TOKEN=ghp_xxxxxxxx bash -c 'set -euo pipefail
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -y && apt-get install -y git
-tmp=$(mktemp -d)
-trap "rm -rf \"$tmp\"" EXIT
-git clone --depth 1 -b main \
-  "https://x-access-token:${GITHUB_TOKEN}@github.com/ksandrpetrov/satellite.git" "$tmp"
-GITHUB_TOKEN="${GITHUB_TOKEN}" bash "$tmp/scripts/install-server.sh"'
-```
-
-Замените `ghp_xxxxxxxx` на реальный PAT — для приватного repo он обязателен,
-пароль GitHub по HTTPS не работает (`Password authentication is not supported`).
-Bootstrap клонирует репо во временный каталог, а сам `install-server.sh` уже
-кладёт код в `/opt/satellite` — это безопасно повторять при ошибках. Короче:
-`sudo GITHUB_TOKEN=ghp_xxx bash scripts/bootstrap-server.sh` (из клона репозитория).
-
-Подробности и troubleshooting: [docs/operations.md](docs/operations.md#запуск-на-сервере).
-
-Скрипт идемпотентен: следующий запуск делает `git pull` + переустановку
-зависимостей + `systemctl restart` (это же и обновление сервера). Существующий
-`.env` сохраняется.
-
-После первой установки:
-
-```bash
-sudo nano /opt/satellite/.env                     # TELEGRAM_BOT_TOKEN, ADMIN_TELEGRAM_IDS, WEBAPP_BASE_URL
-sudo systemctl restart satellite-bot.service
-journalctl -u satellite-bot.service -f
-```
-
-Если репозиторий уже на сервере — `sudo bash /opt/satellite/scripts/install-server.sh`.
-
-Перед production настройте reverse proxy на `WEBAPP_BASE_URL` →
-`WEBAPP_HOST:WEBAPP_PORT` (см. [docs/operations.md](docs/operations.md#reverse-proxy-для-web-app)).
-
-### Альтернатива: Docker (бот в контейнере, ваш nginx — снаружи)
+Поддерживаемый способ — **Docker**: контейнер бота + внешний nginx на хосте,
+образ из GHCR. Подробнее — [docs/operations.md](docs/operations.md#запуск-на-сервере).
 
 Первичный стек — одной командой после правки `deploy/ansible/inventory.yml` и
 `deploy/ansible/group_vars/all.yml`:
@@ -164,6 +120,13 @@ make deploy
 в образе, после rolling update — **smoke-prod** с публичного URL. Rolling update
 на сервер — автоматически по SSH. Подробности: [deploy/README.md](deploy/README.md),
 [docs/operations.md](docs/operations.md#docker), [docs/testing.md](docs/testing.md#smoke-образ-и-production-url).
+
+Перед production настройте reverse proxy на `WEBAPP_BASE_URL` →
+`WEBAPP_HOST:WEBAPP_PORT` (см. [docs/operations.md](docs/operations.md#reverse-proxy-для-web-app)).
+
+Старый systemd-путь (`scripts/install-server.sh`, unit `satellite-bot.service`)
+удалён; деплой сам гасит оставшийся на сервере unit — см.
+[docs/operations.md](docs/operations.md#запуск-на-сервере).
 
 ## Главное про конфиг
 
@@ -208,10 +171,9 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 | Покрытие сценариев | [docs/test-coverage-audit.md](docs/test-coverage-audit.md) |
 | Карта кода (агенты) | [AGENTS.md](AGENTS.md) |
 
-Скрипты установки и диагностики: `scripts/install.sh`, `install-server.sh`,
-`bootstrap-server.sh`, `diagnose_caldav.py`, `diagnose_invitation.py`,
-`ci-deploy-remote.sh`, `migrate-legacy-logs.sh`, `docker-smoke-image.sh`,
-`smoke-prod.sh` — см. [AGENTS.md](AGENTS.md#скрипты)
+Скрипты установки и диагностики: `scripts/install.sh`, `diagnose_caldav.py`,
+`diagnose_invitation.py`, `ci-deploy-remote.sh`, `migrate-legacy-logs.sh`,
+`docker-smoke-image.sh`, `smoke-prod.sh` — см. [AGENTS.md](AGENTS.md#скрипты)
 и [operations.md](docs/operations.md#запуск-на-сервере). Локально: `make docker-smoke`, `make smoke-prod`.
 
 CI/CD:

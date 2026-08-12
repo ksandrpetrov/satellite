@@ -52,7 +52,7 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 - `TOKEN_ENCRYPTION_KEY` — симметричный ключ Fernet для шифрования
   пользовательских CalDAV-credentials в `logs/users.json`.
 
-  Если вы ставили проект через `scripts/install.sh` или `scripts/install-server.sh`,
+  Если вы ставили проект через `scripts/install.sh` или `make env`,
   ключ уже сгенерирован и записан в `.env`. Если собираете `.env` руками:
 
   ```bash

@@ -8,13 +8,12 @@ DOCKER_IMAGE ?= satellite:dev
 UV ?= uv
 UV_VERSION ?= 0.11.32
 
-.PHONY: help install install-dev install-server deploy venv env fernet-key run test compile lint format format-check typecheck check lock lock-check check-uv clean update docker-build docker-up docker-down docker-logs docker-smoke smoke-prod
+.PHONY: help install install-dev deploy venv env fernet-key run test compile lint format format-check typecheck check lock lock-check check-uv clean docker-build docker-up docker-down docker-logs docker-smoke smoke-prod
 
 help:
 	@echo "Targets:"
 	@echo "  make install        bootstrap venv + runtime deps + .env (через scripts/install.sh)"
 	@echo "  make install-dev    то же из generated requirements-dev.txt"
-	@echo "  make install-server sudo установка на сервер (systemd) — scripts/install-server.sh"
 	@echo "  make deploy         Docker-деплой на сервер (Ansible; nginx — внешний на хосте)"
 	@echo "  make run            запустить бота через venv (long-polling)"
 	@echo "  make test           pytest"
@@ -23,7 +22,7 @@ help:
 	@echo "  make format         ruff format"
 	@echo "  make format-check   ruff format --check (как в CI)"
 	@echo "  make typecheck      mypy на satellite/ (см. pyproject.toml)"
-	@echo "  make check          lint + format-check + typecheck + compile + test"
+	@echo "  make check          lock-check + lint + format-check + typecheck + compile + test"
 	@echo "  make lock           обновить generated lock-файлы через uv $(UV_VERSION)"
 	@echo "  make lock-check     проверить соответствие lock-файлов requirements*.in"
 	@echo "  make env            создать .env из шаблона и сгенерировать TOKEN_ENCRYPTION_KEY"
@@ -34,7 +33,6 @@ help:
 	@echo "  make docker-logs    docker compose logs -f satellite"
 	@echo "  make docker-smoke   smoke собранного образа (import + /healthz)"
 	@echo "  make smoke-prod     проверка публичного URL (SATELLITE_BASE_URL)"
-	@echo "  make update         git pull + pip install -r requirements.txt"
 	@echo "  make clean          удалить venv и кэши"
 
 install:
@@ -42,9 +40,6 @@ install:
 
 install-dev:
 	bash scripts/install.sh --dev
-
-install-server:
-	sudo bash scripts/install-server.sh
 
 deploy:
 	cd deploy/ansible && ansible-playbook site.yml
@@ -85,7 +80,9 @@ format-check:
 typecheck:
 	$(VENV_PY) -m mypy satellite
 
-check: lint format-check typecheck compile test
+# Тот же набор, что в .github/workflows/_checks.yml — включая lock-check,
+# иначе зелёный локальный `make check` может уронить CI.
+check: lock-check lint format-check typecheck compile test
 
 check-uv:
 	@ACTUAL="$$($(UV) --version | awk '{print $$2}')"; \
@@ -108,9 +105,16 @@ lock: check-uv
 		--custom-compile-command "make lock" \
 		--output-file requirements-dev.txt
 
+# Проверяет, что локи соответствуют requirements*.in — НЕ «вышла ли новая
+# версия у транзитивной зависимости». Существующие локи копируются в TMP_DIR
+# до компиляции: uv сохраняет уже записанные пины, если output-file на месте.
+# Без этого шага резолв всегда брал бы свежайшее и проверка краснела бы от
+# любого апстрим-релиза, без единой правки в репозитории.
+# Обновление версий — осознанное, через `make lock` (там есть --upgrade).
 lock-check: check-uv
 	@TMP_DIR="$$(mktemp -d)"; \
 	trap 'rm -rf "$$TMP_DIR"' EXIT; \
+	cp requirements.txt requirements-dev.txt "$$TMP_DIR/"; \
 	$(UV) pip compile requirements.in \
 		--universal \
 		--python-version 3.11 \
@@ -144,10 +148,6 @@ docker-smoke: docker-build
 smoke-prod:
 	bash scripts/smoke-prod.sh
 
-update:
-	git pull --ff-only
-	$(VENV_PIP) install -r requirements.txt
-
 clean:
-	rm -rf $(VENV) .pytest_cache .mypy_cache .ruff_cache
+	rm -rf $(VENV) .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

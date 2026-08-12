@@ -439,11 +439,8 @@ The bot logs operational failures but sends users only safe, non-technical messa
 
 ## Deployment (production)
 
-Один процесс long-polling на токен. Варианты установки:
+Один процесс long-polling на токен. Установка одна:
 
-- **systemd** — `scripts/install-server.sh`, код и `venv` в `/opt/satellite`,
-  `logs/` на диске хоста, Web App за внешним nginx/Caddy
-  (`WEBAPP_HOST=127.0.0.1`).
 - **Docker** — образ `ghcr.io/ksandrpetrov/satellite`, Ansible playbook
   (`make deploy`); внешний nginx на хосте терминирует TLS и проксирует
   `/connect`, `/api/calendar/*` на `127.0.0.1:<satellite_host_port>` (внутри

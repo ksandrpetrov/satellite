@@ -9,8 +9,8 @@
 
 - [Локальный запуск](#локальный-запуск)
 - [Запуск на сервере](#запуск-на-сервере)
-  - [systemd](#развертывание-одной-командой-systemd)
   - [Docker](#docker)
+  - [Ручная установка](#ручная-установка)
 - [Production-процесс](#production-процесс)
 - [Reverse proxy](#reverse-proxy-для-web-app)
 - [Runtime State](#runtime-state)
@@ -36,161 +36,26 @@ python telegram_test_command.py
 
 ## Запуск на сервере
 
-Два поддерживаемых варианта:
+Поддерживаемый способ один — **Docker** (`make deploy`): бот в контейнере,
+внешний nginx на хосте берёт TLS. Обновление — push в `main` →
+[deploy.yml](../.github/workflows/deploy.yml) (rolling update по SSH);
+стек и секреты — снова `make deploy`.
 
-| Вариант | Когда удобно | Обновление |
-|---------|--------------|------------|
-| **systemd** (`install-server.sh`) | один процесс Python на VPS, свой nginx/Caddy | повторный `install-server.sh` |
-| **Docker** (`make deploy`) | бот в контейнере, внешний nginx на хосте берёт TLS | push в `main` → [deploy.yml](../.github/workflows/deploy.yml) (rolling update по SSH); стек/секреты — снова `make deploy` |
+Не запускайте два процесса с одним `TELEGRAM_BOT_TOKEN`: они будут
+конкурировать за Telegram updates.
 
-Общее: один `TELEGRAM_BOT_TOKEN`, один каталог `logs/` с `users.json` и
-`subscriptions.json`. Не смешивайте два варианта на одном сервере с одним токеном.
-
-### Развертывание одной командой (systemd)
-
-На чистом Debian/Ubuntu с systemd (без предварительного клона репозитория).
-Скрипт берётся через `git clone`, а не через `curl` к
-`raw.githubusercontent.com` — для приватного репозитория raw-URL всегда даёт
-404, даже если `git clone` по SSH или с токеном работает.
-
-Приватный репозиторий — передайте **PAT** (`GITHUB_TOKEN` или
-`SATELLITE_GITHUB_TOKEN`). GitHub не принимает пароль по HTTPS:
-`fatal: Authentication failed ... Password authentication is not supported`.
-PAT создаётся в [GitHub → Settings → Developer settings → Personal access
-tokens](https://github.com/settings/tokens) (classic-токен с областью `repo`
-или fine-grained с правом read-only на репозиторий).
-
-> В команде ниже **замените `ghp_xxxxxxxx` на ваш реальный токен** (`ghp_…` или
-> `github_pat_…`). Не вставляйте плейсхолдер дословно.
-
-**Короткий путь** — [`scripts/bootstrap-server.sh`](../scripts/bootstrap-server.sh)
-(apt + clone в `/opt/satellite` + `install-server.sh`):
-
-```bash
-sudo GITHUB_TOKEN=ghp_xxxxxxxx bash scripts/bootstrap-server.sh
-```
-
-Запускайте из клона репозитория на сервере или после ручного `git clone` в
-`/opt/satellite`. Для приватного repo без предварительного клона используйте
-inline-команду ниже.
-
-Bootstrap-команда (клонирует репо во временный каталог, дальше всё делает
-`install-server.sh`; временный каталог удаляется автоматически по `trap`):
-
-```bash
-sudo GITHUB_TOKEN=ghp_xxxxxxxx bash -c 'set -euo pipefail
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -y && apt-get install -y git
-tmp=$(mktemp -d)
-trap "rm -rf \"$tmp\"" EXIT
-git clone --depth 1 -b main \
-  "https://x-access-token:${GITHUB_TOKEN}@github.com/ksandrpetrov/satellite.git" "$tmp"
-GITHUB_TOKEN="${GITHUB_TOKEN}" bash "$tmp/scripts/install-server.sh"'
-```
-
-Команду можно запускать повторно — `install-server.sh` идемпотентен: при
-наличии `/opt/satellite/.git` он делает `git pull --ff-only` вместо клона. Это
-же и обновление сервера.
-
-Если репозиторий уже на сервере (например, склонирован вручную или предыдущим
-запуском), достаточно одного шага без bootstrap:
-
-```bash
-sudo GITHUB_TOKEN=ghp_xxxxxxxx bash /opt/satellite/scripts/install-server.sh
-```
-
-SSH вместо PAT (для приватного repo нужен ключ, который добавлен в GitHub):
-
-```bash
-sudo apt update && sudo apt install -y git
-sudo git clone git@github.com:ksandrpetrov/satellite.git /opt/satellite
-sudo bash /opt/satellite/scripts/install-server.sh
-```
-
-Или передайте SSH-URL через переменную окружения:
-
-```bash
-sudo SATELLITE_REPO=git@github.com:ksandrpetrov/satellite.git \
-  bash /opt/satellite/scripts/install-server.sh
-```
-
-#### Если bootstrap уже падал
-
-- **`Password authentication is not supported`** — клон шёл без токена. Задайте
-  `GITHUB_TOKEN=ghp_…` перед `bash -c` и запустите команду заново.
-  Если в терминале сохранилась интерактивная подсказка `Username for ...` —
-  нажмите `Ctrl+C` и не вводите пароль GitHub: он не сработает.
-- **`fatal: destination path '/opt/satellite' already exists and is not an
-  empty directory`** — каталог остался от прошлой попытки и не содержит
-  валидного клона. Удалите и повторите:
-
-  ```bash
-  sudo rm -rf /opt/satellite
-  ```
-
-  Затем снова запустите bootstrap-команду выше. Скрипт сам решит: клонировать
-  заново или сделать `git pull`. Пустой каталог `/opt/satellite` (без
-  содержимого) скрипт удалит автоматически.
-- **`/opt/satellite/scripts/install-server.sh: No such file or directory`** —
-  в `/opt/satellite` нет клона репозитория (только пустой каталог или мусор).
-  Не запускайте `install-server.sh` напрямую — используйте bootstrap-команду
-  выше: она склонирует во временный каталог и оттуда запустит скрипт, который
-  сам положит код в `/opt/satellite`.
-
-Что делает скрипт (идемпотентно):
-
-1. ставит системные пакеты (`git`, `python3-venv`, `python3-pip`, `ca-certificates`);
-2. создаёт системного пользователя `satellite`;
-3. клонирует репозиторий в `/opt/satellite` (или делает `git pull --ff-only`,
-   если уже клонирован);
-4. поднимает `venv`, ставит prod-зависимости через `scripts/install.sh`;
-5. генерирует `.env` с автоматическим `TOKEN_ENCRYPTION_KEY` (существующий
-   `.env` не трогает);
-6. пишет unit `/etc/systemd/system/satellite-bot.service` и запускает его через
-   `systemctl enable --now`.
-
-После выполнения остаётся только:
-
-```bash
-sudo nano /opt/satellite/.env                     # TELEGRAM_BOT_TOKEN, ADMIN_TELEGRAM_IDS, WEBAPP_BASE_URL
-sudo systemctl restart satellite-bot.service
-journalctl -u satellite-bot.service -f
-```
-
-Та же команда — это и обновление: повторный запуск делает `git pull` +
-переустановку зависимостей + `systemctl restart`. Существующий `.env`
-сохраняется.
-
-Если репозиторий уже на сервере (например, склонирован вручную):
-
-```bash
-sudo bash /opt/satellite/scripts/install-server.sh
-```
-
-Переменные окружения, которыми можно управлять путём установки (все опциональные):
-
-| Переменная | Default | Назначение |
-|------------|---------|------------|
-| `SATELLITE_DIR` | `/opt/satellite` | Куда клонировать |
-| `SATELLITE_USER` | `satellite` | От кого запускать сервис |
-| `SATELLITE_GROUP` | `${SATELLITE_USER}` | Группа |
-| `SATELLITE_REPO` | `https://github.com/ksandrpetrov/satellite.git` | URL репозитория |
-| `SATELLITE_BRANCH` | `main` | Ветка |
-| `GITHUB_TOKEN` / `SATELLITE_GITHUB_TOKEN` | — | PAT для HTTPS-клона приватного repo |
-
-Пример с переопределением:
-
-```bash
-sudo SATELLITE_DIR=/srv/satellite SATELLITE_BRANCH=stable \
-  bash /opt/satellite/scripts/install-server.sh
-```
-
-> Reverse proxy для Web App настраивается отдельно — см. раздел
-> [Reverse proxy для Web App](#reverse-proxy-для-web-app) ниже.
+> **Про старый systemd-деплой.** До августа 2026 поддерживался второй путь —
+> `scripts/install-server.sh` ставил unit `satellite-bot.service` с venv в
+> `/opt/satellite`. Скрипты удалены. Если на сервере остался этот unit,
+> деплой погасит его сам: [`scripts/ci-deploy-remote.sh`](../scripts/ci-deploy-remote.sh)
+> и Ansible-плейбук делают `systemctl stop` + `disable` перед `compose up`.
+> Данные из `/opt/satellite/logs/` переносит
+> [`scripts/migrate-legacy-logs.sh`](../scripts/migrate-legacy-logs.sh) — см.
+> [«Миграция systemd → Docker»](#миграция-systemd--docker-logs-в-volume) ниже.
 
 ### Docker
 
-Альтернатива systemd: бот живёт в контейнере, образ собирает GitHub Actions
+Бот живёт в контейнере, образ собирает GitHub Actions
 и кладёт в GHCR, на сервере `docker compose up -d satellite` поднимает один
 контейнер на `127.0.0.1:<satellite_host_port>`. TLS и проксирование
 `/connect` / `/api/calendar/*` — ваш существующий nginx на хосте
@@ -400,7 +265,7 @@ bash scripts/install.sh
 # Впишите TELEGRAM_BOT_TOKEN, ADMIN_TELEGRAM_IDS, WEBAPP_BASE_URL.
 ```
 
-Проверка вручную перед systemd:
+Проверка вручную:
 
 ```bash
 cd /opt/satellite
@@ -409,81 +274,6 @@ python telegram_test_command.py
 ```
 
 В Telegram отправьте боту `/start`. Остановить тестовый запуск: `Ctrl+C`.
-
-### systemd (если ставили вручную)
-
-Создайте unit-файл `/etc/systemd/system/satellite-bot.service`:
-
-```ini
-[Unit]
-Description=Satellite Telegram calendar bot
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=satellite
-Group=satellite
-WorkingDirectory=/opt/satellite
-EnvironmentFile=/opt/satellite/.env
-ExecStart=/opt/satellite/venv/bin/python /opt/satellite/telegram_test_command.py
-Restart=always
-RestartSec=5
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Замените `User`/`Group` и пути, если проект лежит не в `/opt/satellite`.
-`.env` дополнительно читается процессом через `python-dotenv` из
-`WorkingDirectory`, так что обе конструкции (`EnvironmentFile` и dotenv) дают
-один и тот же набор переменных.
-
-Включить и запустить:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now satellite-bot.service
-sudo systemctl status satellite-bot.service
-```
-
-Остановить бота:
-
-```bash
-sudo systemctl stop satellite-bot.service
-```
-
-После изменения unit-файла:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart satellite-bot.service
-```
-
-Логи:
-
-```bash
-journalctl -u satellite-bot.service -f
-tail -f /opt/satellite/logs/bot.log
-```
-
-После обновления кода достаточно перезапустить сервис:
-
-```bash
-sudo systemctl restart satellite-bot.service
-```
-
-Полное «обновись и перезапустись» одной командой (идемпотентно: `git pull` +
-переустановка зависимостей + перезапуск сервиса, существующий `.env` не
-трогает):
-
-```bash
-sudo bash /opt/satellite/scripts/install-server.sh
-```
-
-Если бот не стартует с ошибкой про lock — уже работает другой процесс с тем же
-токеном. Найдите и остановите лишний: `pgrep -af telegram_test_command`.
 
 ## Production-процесс
 
@@ -571,15 +361,6 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://cassinilab.ru/healthz
 Если nginx не проксирует `X-Telegram-Init-Data`, актуальный клиент и сервер всё равно
 передают `initData` в query (`?initData=...`) — см. [troubleshooting.md](troubleshooting.md#web-app-сессия-telegram-недействительна--unauthorized).
 
-На чистом VPS вместо длинной bootstrap-команды из README можно:
-
-```bash
-sudo GITHUB_TOKEN=ghp_xxx bash scripts/bootstrap-server.sh
-```
-
-(скрипт из клона репозитория или после `curl` не сработает для приватного repo —
-сначала clone с PAT, затем `bash /opt/satellite/scripts/bootstrap-server.sh`).
-
 ## Runtime State
 
 ```text
@@ -630,48 +411,23 @@ Process-local checkpoint защищает от повторной отправк
 
 ## Обновление
 
-**Локально:**
+Docker-деплой на сервере обновляется сам: push в `main` → сборка образа в
+GHCR → rolling update по SSH ([deploy.yml](../.github/workflows/deploy.yml)).
+Стек и секреты пересобирает `make deploy`.
 
-```bash
-cd /path/to/satellite
-make update                       # git pull + pip install -r requirements.txt
-make test                         # опционально
-make run
-```
-
-Эквивалент без Makefile:
+Локально:
 
 ```bash
 git pull --ff-only
 source venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest
-python telegram_test_command.py
+make check
+make run
 ```
 
-**На сервере (systemd):**
-
-```bash
-sudo bash /opt/satellite/scripts/install-server.sh
-```
-
-Скрипт идемпотентен: подтянет код через `git pull --ff-only`, переустановит
-зависимости и перезапустит `satellite-bot.service`. Существующий `.env`
-сохраняется как есть.
-
-Быстрый ручной апдейт без `install-server.sh` (когда не нужно трогать
-systemd-unit и системные пакеты — только код и зависимости):
-
-```bash
-cd /opt/satellite && git pull
-source venv/bin/activate && pip install -r requirements.txt -q
-sudo systemctl restart satellite-bot.service
-```
-
-Для production достаточно `requirements.txt`; dev-зависимости нужны только
-для локальной разработки и CI. Оба файла generated: прямые пины меняют в
-`requirements.in` / `requirements-dev.in`, затем запускают `make lock`
-(`uv==0.11.32`). `make lock-check` проверяет, что locks не устарели.
+Прямые пины зависимостей меняют в `requirements.in` / `requirements-dev.in`,
+затем `make lock` (`uv==0.11.32`). `make lock-check` проверяет соответствие
+локов этим файлам и входит в `make check`.
 
 ## Наблюдение
 

@@ -133,7 +133,6 @@ flowchart LR
 | Скрипт | Документация |
 |--------|--------------|
 | `scripts/install.sh` | [README § Быстрый старт](../README.md#быстрый-старт) |
-| `scripts/install-server.sh`, `bootstrap-server.sh` | [operations.md § systemd](operations.md#развертывание-одной-командой-systemd) |
 | `scripts/migrate-legacy-logs.sh` | [operations.md § миграция](operations.md#миграция-systemd--docker-logs-в-volume) |
 | `scripts/diagnose_caldav.py` | [troubleshooting.md § CalDAV](troubleshooting.md#команда-работает-но-календарь-пустой) |
 | `scripts/diagnose_invitation.py` | [troubleshooting.md § invitations](troubleshooting.md#команда-работает-но-календарь-пустой) |

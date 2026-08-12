@@ -15,8 +15,8 @@ domain: cassinilab.ru
 
 # --- Порт бота на хосте ---
 # nginx должен проксировать на http://127.0.0.1:<satellite_host_port>.
-# Playbook останавливает legacy satellite-bot.service (systemd), если он был
-# установлен через scripts/install-server.sh — иначе 8080 уже занят.
+# Playbook останавливает legacy satellite-bot.service (systemd), если он
+# остался от удалённого systemd-деплоя — иначе 8080 уже занят.
 satellite_host_port: 8080
 
 # --- Образ бота ---

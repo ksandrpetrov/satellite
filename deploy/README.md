@@ -114,7 +114,7 @@ playbook сам сделает `docker compose down` и удалит `traefik/` 
 Подробнее: [operations.md — миграция](../docs/operations.md#миграция-со-стека-traefik).
 
 Если раньше бот работал через **systemd** (`satellite-bot.service` из
-`install-server.sh`), playbook **останавливает и отключает** этот unit, чтобы
+удалённого `install-server.sh`), playbook **останавливает и отключает** этот unit, чтобы
 освободить `127.0.0.1:8080` для Docker. Иначе `docker compose up` падает с
 `bind: address already in use`.
 

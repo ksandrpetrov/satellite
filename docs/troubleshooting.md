@@ -115,10 +115,10 @@ WEBAPP_BASE_URL=...
 - для `@vk.team` / Mailroom: email `имя@vk.team`, сервер `calendar.mail.ru`, токен с правом **Календарь**;
 - при ошибке «Токен не подошёл» проверьте CalDAV без Telegram:
 
-  **systemd** (`install-server.sh`, есть `venv/` и `scripts/`):
+  **Из клона репозитория** (есть `venv/` и `scripts/`):
 
   ```bash
-  cd /opt/satellite && source venv/bin/activate
+  source venv/bin/activate
   export CALDAV_LOGIN='ваш@vk.team'
   read -s CALDAV_APP_PASSWORD && export CALDAV_APP_PASSWORD
   # если на Mac был principal URL:
@@ -126,7 +126,7 @@ WEBAPP_BASE_URL=...
   python scripts/diagnose_caldav.py
   ```
 
-  **Docker** (`make deploy`): в `/opt/satellite` только `docker-compose.yml` и `.env` —
+  **На сервере** (`make deploy`): в `/opt/satellite` только `docker-compose.yml` и `.env` —
   `scripts/` в образ не попадает. Смотрите `docker compose logs satellite` и
   `docker compose exec satellite tail -f /app/logs/bot.log`; для скриптов — временный
   клон репозитория на сервере (`bash scripts/install.sh --dev` в отдельном каталоге)
