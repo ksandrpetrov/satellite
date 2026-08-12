@@ -39,6 +39,3 @@ htmlcov/
 .DS_Store
 ._*
 
-# Legacy / local artifacts
-calendar_archive.json
-user-calendar-map.json

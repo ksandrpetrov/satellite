@@ -2,7 +2,8 @@
 # webapp-портом. Подходит для запуска на ноуте за ngrok/cloudflared или на
 # VPS с уже настроенным reverse proxy.
 #
-# Production-стек (Ansible + контейнер бота, внешний nginx) — в deploy/docker-compose.yml.
+# Production-стек (Ansible + контейнер бота, внешний nginx) —
+# в deploy/ansible/templates/docker-compose.yml.j2.
 name: satellite-dev
 
 services:

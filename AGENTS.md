@@ -313,8 +313,9 @@ make smoke-prod                                   # curl публичного /h
 python telegram_test_command.py                   # make run
 ```
 
-Опционально: `pre-commit install` подтянет ruff/ruff-format/mypy в git-hook
-(см. [`.pre-commit-config.yaml`](.pre-commit-config.yaml)).
+Опционально: `pre-commit install` подтянет ruff + ruff-format в git-hook
+(см. [`.pre-commit-config.yaml`](.pre-commit-config.yaml)). Mypy туда не
+входит — он гоняется на реальных зависимостях в `make check` и CI.
 
 Сервер: **Docker (prod)** — `make deploy` (см. [docs/operations.md](docs/operations.md#запуск-на-сервере),
 [deploy/README.md](deploy/README.md));
@@ -419,7 +420,7 @@ startup-снапшота процесс пишет `CRITICAL`, не запуск
 
 Удалённый systemd-сетап (`scripts/install-server.sh`) хранил
 `users.json` / `subscriptions.json` / `backups/` в `/opt/satellite/logs/` **на хосте**.
-Docker-compose ([`deploy/docker-compose.yml`](deploy/docker-compose.yml)) маунтит
+Docker-compose ([`deploy/ansible/templates/docker-compose.yml.j2`](deploy/ansible/templates/docker-compose.yml.j2)) маунтит
 именованный volume `satellite_satellite-logs` → `/app/logs`. При первом `compose up`
 volume пустой — контейнер не видит legacy-данные, юзеры «пропадают».
 

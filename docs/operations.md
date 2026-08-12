@@ -241,7 +241,8 @@ make smoke-prod                          # с ноутбука (SATELLITE_BASE_U
 
 #### Локальный compose (без Ansible)
 
-Эталонный стек: [`deploy/docker-compose.yml`](../deploy/docker-compose.yml).
+Эталонный стек — шаблон, который Ansible рендерит на сервере:
+[`deploy/ansible/templates/docker-compose.yml.j2`](../deploy/ansible/templates/docker-compose.yml.j2).
 На сервере после Ansible живёт сгенерированная копия в `deploy_dir`. Для ручной
 отладки — `.env` по [`deploy/.env.example`](../deploy/.env.example).
 

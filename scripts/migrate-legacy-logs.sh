@@ -4,7 +4,7 @@
 # Когда нужен: один раз, при переходе с systemd (install-server.sh) на Docker
 # (deploy via Ansible / ci-deploy-remote.sh). systemd хранил per-user state
 # прямо в каталоге на хосте; Docker-compose маунтит именованный volume
-# (см. deploy/docker-compose.yml). Если просто запустить контейнер — он увидит
+# (см. deploy/ansible/templates/docker-compose.yml.j2). Если просто запустить контейнер — он увидит
 # **пустой** volume, начнёт новую жизнь и юзеры «пропадут».
 #
 # Скрипт безопасен: останавливает контейнер, делает rescue-копию текущего

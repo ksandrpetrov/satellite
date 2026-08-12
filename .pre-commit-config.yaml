@@ -1,5 +1,11 @@
-# Локальная и CI проверка стиля/типов перед коммитом. См. AGENTS.md → «make check».
-# Запуск: pre-commit install && pre-commit run --all-files
+# Быстрая проверка стиля перед коммитом. Запуск:
+#   pre-commit install && pre-commit run --all-files
+#
+# mypy тут намеренно НЕТ. pre-commit ставит хуки в изолированный venv без
+# caldav / icalendar / requests / Pillow, поэтому его пришлось бы гонять с
+# --ignore-missing-imports — то есть против другого окружения, чем
+# `make typecheck` и .github/workflows/_checks.yml, с другими вердиктами.
+# Типы — блокирующий гейт в `make check` и в CI, на реальных зависимостях.
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -8,11 +14,3 @@ repos:
       - id: ruff-check
         args: ["--fix"]
       - id: ruff-format
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.3.0
-    hooks:
-      - id: mypy
-        additional_dependencies: ["cryptography==49.0.0"]
-        args: ["--ignore-missing-imports"]
-        files: ^satellite/

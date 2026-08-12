@@ -294,7 +294,10 @@ CalDAV-словари в `calculate_day_stats` не подаём напряму�
 `pytest`). Mypy strict включён точечно для persistence, scheduler, dispatcher
 и bot lifecycle; остальной проект остаётся на базовом блокирующем режиме.
 Dev-зависимости устанавливаются из `requirements-dev.txt`; опционально
-`pre-commit install` (см. [`.pre-commit-config.yaml`](../.pre-commit-config.yaml)).
+`pre-commit install` — только ruff и ruff-format
+(см. [`.pre-commit-config.yaml`](../.pre-commit-config.yaml)). Mypy в хуках нет:
+pre-commit ставит их в изолированный venv без caldav/icalendar/requests, и
+вердикт расходился бы с `make typecheck` и CI.
 
 ```bash
 make lint        # ruff check satellite tests
