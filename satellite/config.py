@@ -34,16 +34,13 @@ DEFAULT_LOG_LEVEL = "INFO"
 DEFAULT_BOT_WORKERS = 4
 DEFAULT_BOT_LONG_POLL_SEC = 30
 DEFAULT_CALDAV_CACHE_TTL_SEC = 300
-DEFAULT_DIGEST_MODE = (
-    "today"  # today | tomorrow | day_after_tomorrow (legacy env; scheduler uses today)
-)
-ALLOWED_DIGEST_MODES = frozenset({"today", "tomorrow", "day_after_tomorrow"})
 DEFAULT_WEATHER_CACHE_TTL_MINUTES = 30
 
 DEFAULT_WEBAPP_HOST = "127.0.0.1"
 DEFAULT_WEBAPP_PORT = 8080
 
-# Значения-заглушки из .env.example — при require_* считаются «не настроено».
+# Плейсхолдеры, которые require_* считает «не настроено». Токен намеренно
+# отличается от .env.example (там `replace-me`) — см. docs/configuration.md.
 PLACEHOLDER_TELEGRAM_BOT_TOKEN = "123456:your-bot-token"
 PLACEHOLDER_WEBAPP_BASE_URL = "https://your-domain.example/connect"
 DEFAULT_WEBAPP_BASE_URL = "https://cassinilab.ru/connect"
@@ -107,13 +104,6 @@ def _parse_int(value: str | None, default: int) -> int:
         return default
 
 
-def parse_digest_mode(value: str | None, default: str = DEFAULT_DIGEST_MODE) -> str:
-    raw = (value or "").strip().lower()
-    if raw in ALLOWED_DIGEST_MODES:
-        return raw
-    return default
-
-
 @dataclass(frozen=True)
 class TelegramConfig:
     bot_token: str
@@ -131,18 +121,6 @@ class BotConfig:
     workers: int = DEFAULT_BOT_WORKERS
     long_poll_timeout_sec: int = DEFAULT_BOT_LONG_POLL_SEC
     caldav_cache_ttl_sec: int = DEFAULT_CALDAV_CACHE_TTL_SEC
-
-
-@dataclass(frozen=True)
-class DigestConfig:
-    """Глобальные параметры дайджеста (legacy).
-
-    Время и дни недели — в ``SubscriptionStore``. Авто-дайджест плана всегда
-    на сегодня (см. ``DigestScheduler._deliver_daily``); ``mode`` из env
-    оставлен для совместимости и логов.
-    """
-
-    mode: str = DEFAULT_DIGEST_MODE  # today | tomorrow | day_after_tomorrow
 
 
 @dataclass(frozen=True)
@@ -185,7 +163,6 @@ class Settings:
     telegram: TelegramConfig
     plan: PlanConfig
     bot: BotConfig
-    digest: DigestConfig
     security: SecurityConfig
     admin: AdminConfig
     webapp: WebAppConfig
@@ -198,9 +175,9 @@ class Settings:
 def _env_value_from_file(key: str, env_path: Path) -> str | None:
     """Значение из .env-файла (без записи в os.environ).
 
-    Нужно для совместимых env-ключей (``DIGEST_MODE`` и соседние): значение из
-    ``.env`` должно побеждать уже заданное окружение, потому что ``load_dotenv``
-    по умолчанию не перезаписывает переменные процесса.
+    Нужно для ``WEATHER_*``: значение из ``.env`` должно побеждать уже
+    заданное окружение, потому что ``load_dotenv`` по умолчанию не
+    перезаписывает переменные процесса.
     """
     if not env_path.is_file():
         return None
@@ -209,15 +186,6 @@ def _env_value_from_file(key: str, env_path: Path) -> str | None:
         return None
     stripped = str(raw).strip()
     return stripped or None
-
-
-def _load_digest_config(env_path: Path) -> DigestConfig:
-    return DigestConfig(
-        mode=parse_digest_mode(
-            _env_value_from_file("DIGEST_MODE", env_path) or os.getenv("DIGEST_MODE"),
-            DEFAULT_DIGEST_MODE,
-        ),
-    )
 
 
 def _load_weather_config(env_path: Path) -> WeatherConfig:
@@ -380,7 +348,6 @@ def load_settings(
                 0, _parse_int(os.getenv("CALDAV_CACHE_TTL_SEC"), DEFAULT_CALDAV_CACHE_TTL_SEC)
             ),
         ),
-        digest=_load_digest_config(resolved_env_path),
         security=SecurityConfig(encryption_key=encryption_key),
         admin=AdminConfig(telegram_ids=admin_ids),
         webapp=WebAppConfig(

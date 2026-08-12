@@ -7,7 +7,6 @@ from satellite.config import (
     is_valid_webapp_base_url,
     load_settings,
     parse_bool_env,
-    parse_digest_mode,
 )
 
 
@@ -32,28 +31,24 @@ def test_parse_bool_env_default():
     assert parse_bool_env("maybe", False) is False
 
 
-def test_digest_mode_from_env_file_overrides_process_env(tmp_path: Path, monkeypatch):
+def test_env_file_value_overrides_process_env(tmp_path: Path, monkeypatch):
+    """`.env` побеждает уже заданную переменную процесса (`_env_value_from_file`).
+
+    `load_dotenv` по умолчанию не перезаписывает окружение, поэтому конфиг
+    читает такие ключи напрямую из файла. Проверяем на `WEATHER_TIMEZONE`.
+    """
     env_file = tmp_path / ".env"
     env_file.write_text(
         "TELEGRAM_BOT_TOKEN=token\n"
         "TOKEN_ENCRYPTION_KEY=key\n"
         "ADMIN_TELEGRAM_IDS=1\n"
         "WEBAPP_BASE_URL=https://example.com/connect\n"
-        "DIGEST_MODE=today\n",
+        "WEATHER_TIMEZONE=Europe/Moscow\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("DIGEST_MODE", "day_after_tomorrow")
+    monkeypatch.setenv("WEATHER_TIMEZONE", "America/New_York")
     settings = load_settings(env_path=env_file)
-    assert settings.digest.mode == "today"
-
-
-def test_parse_digest_mode():
-    assert parse_digest_mode("today") == "today"
-    assert parse_digest_mode("Tomorrow") == "tomorrow"
-    assert parse_digest_mode("DAY_AFTER_TOMORROW") == "day_after_tomorrow"
-    assert parse_digest_mode("garbage") == "today"
-    assert parse_digest_mode(None) == "today"
-    assert parse_digest_mode("") == "today"
+    assert settings.weather.timezone == "Europe/Moscow"
 
 
 def test_load_settings_weather_location_json(tmp_path: Path, monkeypatch):

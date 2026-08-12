@@ -348,10 +348,10 @@ fire_window=catch_up_same_day`.
 failed` / `Daily digest send failed` в `logs/bot.log` и
 [«Бот не запускается»](#бот-не-запускается).
 
-Устаревшие ключи в `.env` (`DIGEST_TIME`, `DIGEST_WEEKDAYS_ONLY`, `DIGEST_MODE`) scheduler
-не читает: авто-дайджест плана всегда на **сегодня** в `digest_timezone` пользователя.
-Если в сообщении «Прогноз на завтра» — обновите образ/код (до fix использовался
-`DIGEST_MODE=tomorrow` по умолчанию).
+Глобальных env-ключей для дайджеста нет: `DIGEST_TIME`, `DIGEST_WEEKDAYS_ONLY` и
+`DIGEST_MODE` удалены. Авто-дайджест плана всегда на **сегодня** в
+`digest_timezone` пользователя. Если в сообщении «Прогноз на завтра» —
+обновите образ/код.
 
 ## Дайджест непринятых не приходит
 

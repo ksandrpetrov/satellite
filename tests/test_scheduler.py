@@ -16,7 +16,6 @@ from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
 from satellite.calendar.event_exclusions import EventExclusionPolicy, EventTitleOverride
-from satellite.config import DigestConfig
 from satellite.digest_utils import (
     is_digest_day_allowed,
     resolve_target_date,
@@ -293,10 +292,8 @@ def _make_scheduler(
     calendar_service = MagicMock()
     meeting_exclusions = MagicMock()
     meeting_exclusions.policy_for_user = MagicMock(return_value=EventExclusionPolicy())
-    digest_config = DigestConfig(mode="tomorrow")
     plan_config = MagicMock()
     scheduler = DigestScheduler(
-        digest_config=digest_config,
         plan_config=plan_config,
         tz=TZ,
         subscriptions=store,
@@ -315,7 +312,8 @@ def _make_scheduler(
     return scheduler, store, telegram
 
 
-def test_daily_digest_targets_today_when_global_mode_is_tomorrow(tmp_path: Path):
+def test_daily_digest_always_targets_today(tmp_path: Path):
+    """Авто-дайджест строится на сегодня; режимы «завтра» — только у команд плана."""
     now = _at(2026, 5, 11, 9, 0)
     scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=now)
     store.subscribe(1, "alice")

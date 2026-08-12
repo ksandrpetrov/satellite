@@ -30,7 +30,7 @@ from zoneinfo import ZoneInfo
 from . import scheduler_policy
 from .calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from .calendar.user_calendar_service import UserCalendarService
-from .config import DigestConfig, PlanConfig, WeatherConfig
+from .config import PlanConfig, WeatherConfig
 from .digest_utils import DIGEST_MODE_TODAY, resolve_target_date
 from .invitations_view import load_pending_invitations_screen
 from .meeting_exclusions import MeetingExclusionService
@@ -69,7 +69,6 @@ class DigestScheduler:
     def __init__(
         self,
         *,
-        digest_config: DigestConfig,
         plan_config: PlanConfig,
         tz: tzinfo,
         subscriptions: SubscriptionStore,
@@ -84,7 +83,6 @@ class DigestScheduler:
         weather_config: WeatherConfig | None = None,
         weather_client: WeatherForecastClient | None = None,
     ) -> None:
-        self._digest_config = digest_config
         self._plan_config = plan_config
         self._tz = tz
         self._subscriptions = subscriptions
@@ -125,9 +123,8 @@ class DigestScheduler:
         self._thread.start()
         log.info(
             "Digest scheduler started: per-user schedule; tick=%.0fs auto_plan_date=today "
-            "fire_window=catch_up_same_day (DIGEST_MODE=%s ignored for scheduled digest)",
+            "fire_window=catch_up_same_day",
             self._tick_interval_sec,
-            self._digest_config.mode,
         )
 
     def stop(self) -> None:

@@ -260,25 +260,13 @@ last_pending_digest_sent_date
 приглашение; иначе тик молча пропускается (без сообщения и без обновления
 `last_pending_digest_sent_date`).
 
-Глобальная переменная:
-
-```env
-DIGEST_MODE=today
-```
-
-Допустимые значения: `today`, `tomorrow`, `day_after_tomorrow` (legacy).
-
 Автоматический **дайджест плана** («🔔 Дайджест на сегодня») всегда строится
-на **текущий день** в часовом поясе пользователя; `DIGEST_MODE` на это не
-влияет. Режимы «завтра»/«послезавтра» — только у команд `/tomorrow`,
-`/dayafter` и кнопок плана. Время и дни отправки — per-user в
-`logs/subscriptions.json`, не в env.
+на **текущий день** в часовом поясе пользователя. Режимы «завтра»/«послезавтра»
+— только у команд `/tomorrow`, `/dayafter` и кнопок плана. Время и дни отправки
+— per-user в `logs/subscriptions.json`, не в env.
 
-Значение `DIGEST_MODE` из `.env` имеет приоритет над уже заданной переменной
-окружения процесса — см. `_load_digest_config` в `satellite/config.py`.
-
-Глобальные `DIGEST_TIME`, `DIGEST_WEEKDAYS_ONLY` и `DIGEST_CATCHUP_WINDOW_HOURS`
-удалены.
+Глобальных env-переменных для дайджеста нет: `DIGEST_MODE`, `DIGEST_TIME`,
+`DIGEST_WEEKDAYS_ONLY` и `DIGEST_CATCHUP_WINDOW_HOURS` удалены.
 
 ## Weather
 

@@ -77,7 +77,6 @@ def _prepare_run(bot: TelegramBot) -> None:
     bot._settings.bot.workers = 2
     bot._settings.bot.long_poll_timeout_sec = 30
     bot._settings.bot.caldav_cache_ttl_sec = 300
-    bot._settings.digest.mode = "today"
     bot._settings.webapp.base_url = "https://example.test"
     bot._install_signal_handlers = MagicMock()
     bot._log_persistence_summary = MagicMock()

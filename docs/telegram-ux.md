@@ -244,8 +244,7 @@ Callback data хаба: `CB_SETTINGS_*` / `CB_ANALYTICS_*` в [`messages_ru/sett
 
 **Дайджест плана** (`digest_enabled`, `digest_time`, …) — `PlanBuilder` на
 **сегодня** (в TZ подписки). Команды «завтра»/«послезавтра» — отдельные
-кнопки и `/tomorrow`, `/dayafter`. `DIGEST_MODE` в `.env` на авто-дайджест не
-влияет.
+кнопки и `/tomorrow`, `/dayafter`; глобальной env-переменной для этого нет.
 
 **Дайджест непринятых** (`pending_digest_enabled`, …) — в заданное время
 шедулер шлёт тот же список и клавиатуру, что `/invitations`

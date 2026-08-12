@@ -114,7 +114,6 @@ class TelegramBot:
             weather_client=self._weather_client,
         )
         self._scheduler = DigestScheduler(
-            digest_config=settings.digest,
             plan_config=settings.plan,
             tz=self._tz,
             subscriptions=self._subscriptions,
@@ -137,11 +136,10 @@ class TelegramBot:
     def run(self) -> None:
         self._install_signal_handlers()
         log.info(
-            "Bot started: workers=%d long_poll=%ds cache_ttl=%ds digest_mode=%s webapp=%s",
+            "Bot started: workers=%d long_poll=%ds cache_ttl=%ds webapp=%s",
             self._settings.bot.workers,
             self._settings.bot.long_poll_timeout_sec,
             self._settings.bot.caldav_cache_ttl_sec,
-            self._settings.digest.mode,
             self._settings.webapp.base_url or "<not configured>",
         )
         self._log_persistence_summary()

@@ -240,11 +240,10 @@ CalDAV-словари в `calculate_day_stats` не подаём напряму�
 
 **Config** (`test_config.py`):
 
-- `DIGEST_MODE` из `.env` (legacy; scheduler авто-дайджеста всегда на today);
+- приоритет `.env` над окружением процесса (`_env_value_from_file`);
 - погода из `WEATHER_LOCATION` JSON;
 - `is_valid_webapp_base_url` — отклонение путей `connect.html` / `/static/`;
-- `load_settings(require_webapp=True)` — заглушки и невалидный `WEBAPP_BASE_URL`;
-- тесты `parse_user_calendar_map` — legacy, удалятся вместе с миграцией handlers.
+- `load_settings(require_webapp=True)` — заглушки и невалидный `WEBAPP_BASE_URL`.
 
 **Scheduler, settings, Telegram, weather** — см. соответствующие `test_*.py`.
 
