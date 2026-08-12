@@ -52,6 +52,7 @@ satellite/
   security/
     token_vault.py       # Fernet encrypt/decrypt ProviderCredentials
   digest_utils.py        # resolve_target_date, is_digest_day_allowed, маски дней
+  meeting_exclusions.py  # MeetingExclusionService: зашифрованные персональные исключения по названию
   invitations_view.py  # load_pending_invitations_screen (/invitations + scheduler)
   plan_service.py        # PlanBuilder (не читает users.json)
   visual_cards/
@@ -68,7 +69,8 @@ satellite/
     calendar_lists.py    # rich-списки /upcoming, /invitations, /manage
     delivery.py          # deliver/edit rich + fallback; единственный домен→telegram_bot.api
   logging_setup.py
-  testing/               # хелперы для тестов (delivery_helpers)
+  testing/
+    delivery_helpers.py  # ассерты доставки для тестов (final_message_html, …)
   messages_ru/           # ВСЕ user-facing тексты (пакет: __init__ = фасад, подмодули по сценарию)
     __init__.py          # реэкспорт публичного API; импорты не меняются
     buttons.py, identity.py, access.py, admin_messages.py
@@ -76,15 +78,17 @@ satellite/
     settings_ui.py       # хаб настроек, аналитика, подэкран «Календарь», ERR_*
     digest_ui.py         # настройки дайджестов: daily + pending
     meetings_ui.py       # /invitations + /manage (PARTSTAT UI)
+    meeting_exclusions_ui.py  # UI персональных исключений встреч
     plan_strings.py, duration.py, streaming_ui.py, tokens.py, webapp_ui.py
 
   analytics/             # недельная аналитика
     service.py           # build_week_analytics (raw → отчёт → PNG + подпись)
     caption.py, render_card.py, period_stats — см. calendar/
+    rich_caption.py      # Rich Message подпись к PNG аналитики
 
   calendar/
     duration_format.py # format_duration_long_ru (домен, без messages_ru)
-    providers/             # Mail.ru + Yandex, registry
+    providers/             # mailru.py, yandex.py, registry.py (выбор по домену), base.py (Protocol)
     user_calendar_service.py  # единый фасад для handlers/plan/scheduler/Web App
     operation_log.py       # audit CalDAV-операций
     caldav_client.py       # CalDAVService facade (discovery, CRUD)
@@ -92,7 +96,14 @@ satellite/
     caldav_fetch_mixin.py  # range search / REPORT
     caldav_partstat_mixin.py  # PARTSTAT refresh + set_attendee_partstat
     conference_url.py    # извлечение ссылок на видеоконференции из CalDAV-события
-    events/                # пакет: facade __init__ + _types + _time + _partstat + _filters + _collectors
+    caldav_discovery.py  # чистые хелперы discovery эндпоинта и матчинга календарей
+    caldav_partstat.py   # чистые хелперы мутации ATTENDEE/PARTSTAT в ICS
+    callback_tokens.py   # короткие стабильные токены для callback_data (≤64 байт)
+    event_exclusions.py  # политика исключения событий по точному названию
+    event_token_cache.py # кэш токен→событие для /invitations и /manage
+    url_utils.py         # URL-хелперы без зависимости от CalDAV (разрыв циклов)
+    events/                # пакет: facade __init__ + _types (Event, алиасы) + _time
+                           # + _partstat + _filters + _collectors
     stats.py, selection.py, time_utils.py, ical_parser.py, constants.py
 
   web/                   # пакет: тонкий router + per-endpoint модули
@@ -104,13 +115,18 @@ satellite/
     connect_token.py     # ConnectTokenStore — краткоживущие токены Web App
     static_pages.py      # serve_html для /connect
     init_data.py         # HMAC validate_init_data
+    calendar_api_service.py  # application-layer use cases Web calendar API
     api/
       calendar.py        # /api/calendar/* (status/connect/disconnect/events)
     static/connect.html
 
   seagull/               # digest, rules, render, templates
     conference.py        # подписи кнопок «Подключиться» (Meet/Zoom/Teams/…)
-  weather/               # client, analyzer, templates, models
+  weather/               # погодный блок плана
+    client.py            # HTTP к провайдеру прогноза
+    analyzer.py          # агрегация почасовых данных + выбор предупреждений
+    models.py            # WeatherConfig и модели прогноза
+    templates.py         # тексты блока
 
   telegram_bot/
     bot.py               # lifecycle, scheduler, WebAppServer
@@ -141,6 +157,7 @@ satellite/
       calendar_manage.py    # /manage — тонкий адаптер над partstat_flow
       calendar_create.py    # /create FSM
       digest_state.py, calendar_state.py  # FSM-сторы (in-memory)
+      meeting_exclusions.py  # настройка персональных исключений встреч
       plan.py, subscription.py, analytics.py
     presenters/            # ScreenBundle (rich + fallback) для экранов бота
       bundle.py            # dataclass ScreenBundle
@@ -213,7 +230,7 @@ satellite/
 11. **Подписка на дайджест** — `DigestSettings.telegram_user_id` в [`subscriptions/record.py`](satellite/subscriptions/record.py); scheduler резолвит пользователя через `UserStore.get`, не через `username`.
 12. **Навигация настроек** — кросс-экранные `CB_SETTINGS_*` / `CB_ANALYTICS_*` обрабатывает только [`settings_hub.py`](satellite/telegram_bot/handlers/settings_hub.py); `settings.py` и `analytics.py` не импортируют друг друга и не имеют lazy-back-импортов в хаб.
 13. **Сбой store commit** — поднимает `UserStorePersistenceError` / `SubscriptionStorePersistenceError`; caller ловит на границе и показывает безопасный текст. Load-ошибки ловятся только startup boundary.
-14. **Перед коммитом** — `make check` (ruff lint + `ruff format --check` + mypy + py_compile + pytest). Стиль/форматирование — только [`ruff`](pyproject.toml) (lint + format); blackd/isort не используем. Поведение при падении тестов — см. раздел **«Тесты и регрессии»** ниже.
+14. **Перед коммитом** — `make check` (lock-check + ruff lint + `ruff format --check` + mypy + py_compile + pytest); тот же набор, что в CI. Стиль/форматирование — только [`ruff`](pyproject.toml) (lint + format); blackd/isort не используем. Поведение при падении тестов — см. раздел **«Тесты и регрессии»** ниже.
 15. **Слои импортов** — домен (`calendar/`, `seagull/`, `weather/`, `analytics/`, `messages_ru/`, `presentation/`, `scheduler.py`, `plan_service.py`, …) не импортирует `telegram_bot`; единственное исключение — `presentation/delivery.py → telegram_bot.api`. Закреплено в [`tests/test_import_layers.py`](tests/test_import_layers.py).
 16. **Зависимости** — прямые пины править только в `requirements.in` / `requirements-dev.in`; generated locks обновлять `make lock` через `uv==0.11.32` и проверять `make lock-check`. Python baseline — 3.11.
 
@@ -221,7 +238,7 @@ satellite/
 
 **Перед завершением работ — всегда полный прогон тестов.** Не отдавай задачу
 пользователю (не пишь финальное сообщение, не предлагай коммит), пока не запущен
-весь набор: `make check` (ruff lint + format-check + mypy + py_compile + pytest)
+весь набор: `make check` (lock-check + ruff lint + format-check + mypy + py_compile + pytest)
 или минимум `make test` (полный `pytest`). Точечный `pytest tests/test_foo.py -q`
 допустим только как промежуточная проверка по ходу правок — он **не заменяет**
 финальный полный прогон. Не сдавай задачу с красным pytest/ruff/mypy без явного
@@ -261,7 +278,9 @@ satellite/
 - Дублировать списки `is_*_request` / `parse_*` в `bot.py` или `dispatch.py` — только `recognize_message`.
 - Импорт `_fetch_calendars` из `calendar_sources` в другие хендлеры — только [`calendar_view.py`](satellite/telegram_bot/handlers/calendar_view.py).
 - Второй путь нормализации событий — только `normalize_caldav_event`.
-- `DIGEST_TIME` / `DIGEST_WEEKDAYS_ONLY` в env — удалены; время в `subscriptions.json`.
+- `DIGEST_TIME` / `DIGEST_WEEKDAYS_ONLY` / `DIGEST_MODE` в env — удалены; время и
+  дни в `subscriptions.json`, авто-дайджест всегда на today. Глобального
+  `DigestConfig` больше нет — не возвращать.
 - Прямые строки в хендлерах — все user-facing тексты в [`messages_ru/`](satellite/messages_ru/) (импорт через корневой фасад `satellite.messages_ru`, не `messages_ru.<submodule>`; закреплено в [`test_import_layers.py`](tests/test_import_layers.py)).
 - Свой `_webapp_url` в хендлерах — только [`delivery.webapp_connect_url`](satellite/telegram_bot/handlers/delivery.py).
 - Lazy-back-импорты `settings_hub` из `settings`/`analytics` для «Назад» — навигация только в хабе (см. инвариант 12).
@@ -278,6 +297,18 @@ satellite/
 - `do_create()` или подобные обёртки в хендлерах ради единственного `try/except` — снимать без потери поведения.
 - Импорт `from satellite.analytics_service import ...` — canonical путь теперь [`satellite.analytics.service`](satellite/analytics/service.py); shim удалён, обновите импорт.
 - Подгонять тест под код «чтобы pytest прошёл», не разобравшись в ожидаемом поведении — см. **«Тесты и регрессии»**; тесты для ловли багов, не для зелёного CI.
+- Compat-алиасы «чтобы старый импорт не сломался»: `setup_bot_commands`,
+  `is_digest_settings_request`, `button_text_is_digest_settings`,
+  `upcoming_events_html`, `upcoming_events_day_sections` **удалены** — звать
+  канонические `setup_bot_identity`, `is_settings_request`,
+  `button_text_is_settings`, `upcoming_events_rich_html` /
+  `upcoming_events_plain_fallback_html`.
+- Неиспользуемая строка в [`messages_ru/`](satellite/messages_ru/) — пакет
+  реэкспортируется через `import *` без `__all__`, ruff и mypy мёртвый текст не
+  видят; ловит [`test_messages_no_dead_strings.py`](tests/test_messages_no_dead_strings.py).
+- Systemd-деплой (`install-server.sh`, unit `satellite-bot.service`) — удалён,
+  прод-путь только Docker; guard-ы, гасящие оставшийся на серверах unit, в
+  [`ci-deploy-remote.sh`](scripts/ci-deploy-remote.sh) и Ansible — оставить.
 - Lazy-import «на всякий случай» — импорты на top-level; допустим только при реальном цикле с комментарием, какой цикл разрывается (пример: `messages_ru/calendar_ui.py` → `calendar.selection`).
 - Дублировать daily/pending-ветки в настройках дайджестов — расширяй таблицу [`BINDINGS`](satellite/telegram_bot/handlers/settings_bindings.py), не пиши парные `if kind == …` в хендлерах.
 
@@ -306,8 +337,8 @@ python -m ruff check satellite tests              # make lint
 python -m ruff format satellite tests             # make format
 python -m mypy satellite                          # make typecheck (блокирующий гейт)
 find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 python -m py_compile  # make compile
-make check                                        # lint + format-check + typecheck + compile + test (full)
-make lock-check                                   # generated dependency locks актуальны
+make check                                        # lock-check + lint + format-check + typecheck + compile + test
+make lock-check                                   # локи соответствуют requirements*.in
 make docker-smoke                                 # smoke образа: импорты + /healthz (см. docs/testing.md)
 make smoke-prod                                   # curl публичного /healthz, /connect, /api/… после деплоя
 python telegram_test_command.py                   # make run

@@ -42,7 +42,12 @@ def is_digest_days_bitmask(value: str) -> bool:
 
 
 def digest_days_to_bitmask(digest_days: str) -> str:
-    """Нормализует legacy ``weekdays``/``all_days`` и маску в 7-символьную строку."""
+    """Нормализует пресеты ``weekdays``/``all_days`` и маску в 7-символьную строку.
+
+    Оба представления поддерживаются намеренно — см. комментарий в
+    ``subscriptions/record.py``: это формат живых данных в
+    ``logs/subscriptions.json``, а не забытое легаси.
+    """
     if digest_days == DIGEST_DAYS_ALL:
         return DIGEST_DAYS_ALL_MASK
     if digest_days == DIGEST_DAYS_WEEKDAYS:

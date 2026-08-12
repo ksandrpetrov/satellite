@@ -51,7 +51,8 @@ python -m pytest
 - **py_compile** — все модули `satellite/` и `tests/`;
 - **pytest** — `pytest -q`.
 
-Перед коммитом локально: `make check` (= lint + typecheck + compile + test).
+Перед коммитом локально: `make check`
+(= lock-check + lint + format-check + typecheck + compile + test — тот же набор, что в CI).
 
 На каждый push в `main` или тег `v*` workflow
 [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) сначала вызывает тот же

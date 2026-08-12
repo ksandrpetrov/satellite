@@ -99,7 +99,7 @@ python telegram_test_command.py
 ```bash
 python -m pytest
 # или: make test
-make check   # ruff + mypy + py_compile + pytest (перед коммитом)
+make check   # lock-check + ruff + mypy + py_compile + pytest (перед коммитом)
 make docker-smoke   # после docker build: импорты + /healthz в образе (см. docs/testing.md)
 ```
 

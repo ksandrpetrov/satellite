@@ -103,6 +103,16 @@ pytest оставался зелёным.
 
 - mypy strict включён для persistence, scheduler, dispatcher и bot lifecycle.
   Остальные модули переводятся постепенно; базовый mypy блокирует весь проект.
+- **Два HTTP-стека в прод-образе.** `caldav==3.2.1` тянет `niquests`
+  (+`urllib3-future`, `jh2`, `qh3`, `wassima`), а наш код ходит через
+  `requests` (+`urllib3`, `certifi`, `idna`). Мосты между ними нет:
+  `caldav_shared._new_http_session()` строит `requests.Session` для
+  PARTSTAT GET/PUT, а `DAVClient` создаётся без сессии. Итог — два пула
+  соединений и два CA-бандла к одному и тому же CalDAV-хосту. Миграция
+  `requests → niquests` (API совместим) убрала бы 5 записей из лока, но
+  трогает сетевой путь в `telegram_bot/api/client.py`, `weather/client.py`,
+  `caldav_shared.py`, `caldav_partstat_mixin.py`, `config.py` — отдельная
+  задача с полным прогоном сетевых тестов и `make docker-smoke`.
 
 ## messages_ru: разбиение по сценариям (2026-05-22)
 
@@ -294,8 +304,8 @@ pytest оставался зелёным.
 ## Авто-дайджест плана: всегда «сегодня» (2026-05-22)
 
 - `DigestScheduler._deliver_daily` вызывает `resolve_target_date("today", …)`;
-  `DIGEST_MODE` из `.env` на дату авто-отправки не влияет (legacy для логов /
-  совместимости; дефолт `today`).
+  `DIGEST_MODE` из `.env` на дату авто-отправки не влиял (тогда — legacy для
+  логов; переменная удалена целиком в 2026-08, см. «Зачистка легаси» ниже).
 - `resolve_target_date`: неизвестный режим → `today` (раньше — `tomorrow`).
 - Документация и `.env.example`: README, configuration, architecture, telegram-ux,
   troubleshooting, AGENTS.md, refactor-log.
@@ -413,6 +423,62 @@ JsonStore memory/disk divergence закрыт в hardening 2026-07-26 ниже.
 6. **Reproducible tooling** — Python baseline 3.11, CI 3.11/3.12, Docker 3.12;
    direct pins в `requirements*.in`, generated locks через `uv==0.11.32`,
    `make lock` / `make lock-check`.
+
+## Зачистка легаси (2026-08-12)
+
+Аудит всей кодовой базы на мёртвый код и легаси-зависимости. База оказалась в
+хорошем состоянии — современный typing, ноль `skip`/`xfail`, ноль битых ссылок
+в документации, слои закреплены `test_import_layers.py`. Легаси было
+сосредоточено в четырёх местах.
+
+1. **Мёртвый код** — удалены 4 compat-алиаса (`setup_bot_commands`,
+   `is_digest_settings_request`, `button_text_is_digest_settings`,
+   `upcoming_events_html` / `upcoming_events_day_sections`), 8 функций без
+   единой ссылки в репозитории (`CalDAVService.fetch_all_events`,
+   `UserStore.{list_by_status,find_by_username,ensure_admin_record}`,
+   `WebAppConfig.is_configured`, `CalendarState.is_busy`,
+   `visual_cards.{meetings_label,draw_stat_row}`) и 19 неиспользуемых констант.
+   `ensure_admin_record` был избыточен: админ получает `approved` в
+   `handlers/access.py` при первом сообщении.
+2. **`DIGEST_MODE`** — env-переменная протаскивалась через `Settings → bot →
+   scheduler` и использовалась только в двух логах, один из которых сам писал
+   «ignored». Удалены `DigestConfig`, `parse_digest_mode`, `Settings.digest`,
+   параметр `digest_config` у `DigestScheduler`, записи в `.env.example` и
+   deploy-шаблонах. `resolve_target_date` остался — у него живой вызов в
+   `handlers/plan.py`.
+3. **Systemd-деплой** — `install-server.sh`, `bootstrap-server.sh`,
+   `git-github-auth.sh` и Make-цели `install-server` / `update` удалены. Unit
+   ставился в тот же `/opt/satellite`, который занимает Docker, и оба
+   прод-пути деплоя его явно гасили. Guard-ы в `ci-deploy-remote.sh`,
+   Ansible и `migrate-legacy-logs.sh` оставлены — на живых серверах unit ещё
+   может быть.
+4. **Мусор и тулинг** — осиротевший `.coverage`, остатки `USER_CALENDAR_MAP`
+   в `.gitignore`, ручной дубль `deploy/docker-compose.yml` (Ansible деплоит
+   только `.j2`, копия уже разошлась), хук mypy в pre-commit (гонялся в
+   изолированном venv без caldav/icalendar/requests, то есть против другого
+   окружения, чем `make typecheck` и CI).
+
+Попутно найдены и исправлены два дефекта, не связанных с самой зачисткой:
+
+- **`make lock-check` был нестабилен**: компилировал требования в пустой
+  `TMP_DIR`, где uv нечего сохранять, поэтому всегда резолвил свежайшие версии
+  и краснел от любого апстрим-релиза транзитивной зависимости — на чистом
+  `HEAD` он уже падал на `cffi`, `packaging`, `platformdirs`, `virtualenv`,
+  `ast-serialize`, `librt`. Теперь существующие локи копируются в `TMP_DIR` до
+  компиляции, и проверка отвечает на свой настоящий вопрос. С этим `lock-check`
+  добавлен в `make check` — до сих пор его гонял только CI.
+- **Живой путь `/upcoming` не имел прямого покрытия**: единственные тесты
+  презентации проверяли удалённую ветку `upcoming_events_html`. Перенацелены
+  на `upcoming_events_rich_html` и `upcoming_events_plain_fallback_html`.
+
+Против рецидива добавлен `tests/test_messages_no_dead_strings.py`: `messages_ru`
+реэкспортируется через `import *` без `__all__`, поэтому ни ruff, ни mypy не
+видят строку, которую никто не читает — так и накопились 19 мёртвых текстов.
+
+Сознательно не тронуты: миграция `requests → niquests` (см. «Техдолг») и
+дуальность `weekdays` / `all_days` + битовая маска в `subscriptions.json` —
+это контракт персистентного хранилища с живыми прод-данными, его снятие
+означает миграцию данных, а не зачистку кода.
 
 ---
 

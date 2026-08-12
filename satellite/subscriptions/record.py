@@ -11,6 +11,10 @@ from ..calendar.time_utils import normalize_hhmm_input
 log = logging.getLogger(__name__)
 
 
+# Строковые пресеты и 7-битная маска сосуществуют НАМЕРЕННО: это контракт
+# logs/subscriptions.json с живыми прод-данными. Снять дуальность — значит
+# мигрировать пользовательские расписания, а не почистить код. Нормализация
+# к маске — digest_utils.digest_days_to_bitmask.
 DIGEST_DAYS_WEEKDAYS = "weekdays"
 DIGEST_DAYS_ALL = "all_days"
 ALLOWED_DIGEST_DAYS = frozenset({DIGEST_DAYS_WEEKDAYS, DIGEST_DAYS_ALL})
