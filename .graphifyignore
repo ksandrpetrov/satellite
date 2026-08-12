@@ -1,7 +1,0 @@
-# Не индексировать сам Graphify и его генерируемые артефакты.
-.codex/skills/graphify/
-.codex/hooks.json
-graphify-out/
-
-# В графе нужны код и документация; брендовый PNG архитектурных связей не добавляет.
-satellite/analytics/assets/logo.png

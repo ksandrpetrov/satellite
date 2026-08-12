@@ -5,12 +5,10 @@ VENV_PY := $(VENV)/bin/python
 VENV_PIP := $(VENV)/bin/pip
 ENTRY := telegram_test_command.py
 DOCKER_IMAGE ?= satellite:dev
-GRAPHIFY_VERSION ?= 0.9.27
-GRAPHIFY := uv tool run --from "graphifyy==$(GRAPHIFY_VERSION)" graphify
 UV ?= uv
 UV_VERSION ?= 0.11.32
 
-.PHONY: help install install-dev install-server deploy venv env fernet-key run test compile lint format format-check typecheck check lock lock-check check-uv clean update docker-build docker-up docker-down docker-logs docker-smoke smoke-prod graphify-install graphify-update graphify-check
+.PHONY: help install install-dev install-server deploy venv env fernet-key run test compile lint format format-check typecheck check lock lock-check check-uv clean update docker-build docker-up docker-down docker-logs docker-smoke smoke-prod
 
 help:
 	@echo "Targets:"
@@ -37,9 +35,6 @@ help:
 	@echo "  make docker-smoke   smoke собранного образа (import + /healthz)"
 	@echo "  make smoke-prod     проверка публичного URL (SATELLITE_BASE_URL)"
 	@echo "  make update         git pull + pip install -r requirements.txt"
-	@echo "  make graphify-install установить Graphify CLI $(GRAPHIFY_VERSION) через uv"
-	@echo "  make graphify-update  обновить кодовую часть knowledge graph (без LLM)"
-	@echo "  make graphify-check   проверить, требуется ли semantic update"
 	@echo "  make clean          удалить venv и кэши"
 
 install:
@@ -152,17 +147,6 @@ smoke-prod:
 update:
 	git pull --ff-only
 	$(VENV_PIP) install -r requirements.txt
-
-graphify-install:
-	uv tool install --force "graphifyy==$(GRAPHIFY_VERSION)"
-	uv tool update-shell
-	$(GRAPHIFY) --version
-
-graphify-update:
-	$(GRAPHIFY) update .
-
-graphify-check:
-	$(GRAPHIFY) check-update .
 
 clean:
 	rm -rf $(VENV) .pytest_cache .mypy_cache .ruff_cache

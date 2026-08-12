@@ -203,7 +203,6 @@ WEBAPP_BASE_URL=https://cassinilab.ru/connect
 | Эксплуатация и деплой | [docs/operations.md](docs/operations.md) |
 | Docker (Ansible) | [deploy/README.md](deploy/README.md) |
 | Тестирование | [docs/testing.md](docs/testing.md) ([smoke](docs/testing.md#smoke-образ-и-production-url)) |
-| Knowledge graph для Codex | [docs/graphify.md](docs/graphify.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | Refactor log | [docs/refactor-log.md](docs/refactor-log.md) |
 | Покрытие сценариев | [docs/test-coverage-audit.md](docs/test-coverage-audit.md) |
