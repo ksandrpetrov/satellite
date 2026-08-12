@@ -12,7 +12,6 @@ from __future__ import annotations
 # Сейчас триггер — эмодзи «пицца» в названии; ключевое слово (завтрак/обед/ужин)
 # выбирает конкретный шаблон в render-слое.
 LUNCH_EMOJI_MARKER = "🍕"
-LUNCH_TEXT_MARKER = "обед"
 
 # Подпись для all-day событий в плане (когда они не скрыты HIDE_ALL_DAY_EVENTS).
 PLAN_ALL_DAY_LABEL = "весь день"

@@ -36,14 +36,11 @@ CB_SETTINGS_WEATHER_TOGGLE = "settings_weather_toggle"
 # Вход в настройки pending-дайджеста с хаба; остальные CB_PENDING_* — в digest_ui.
 CB_PENDING_DIGEST_SETTINGS = "pending_digest_settings"
 
-WEATHER_IN_PLAN_SAVED_TOAST = "Сохранено"
-
 CB_ANALYTICS_RUN = "analytics:run"
 CB_ANALYTICS_WORKDAY_9 = "analytics:wd:9-18"
 CB_ANALYTICS_WORKDAY_10 = "analytics:wd:10-19"
 CB_ANALYTICS_BACK = "analytics:back"
 
-CALENDAR_DISCONNECT_TOAST = "Отключено"
 CALENDAR_DISCONNECT_LOADING_HTML = "⏳ Отключаю календарь…"
 ANALYTICS_SAVED_TOAST = "Сохранено"
 ANALYTICS_BUSY_TOAST = "Уже строю отчёт — подожди немного"
@@ -117,10 +114,6 @@ def settings_hub_text(
 
 
 SETTINGS_HUB_TEXT = settings_hub_text()
-SETTINGS_HUB_NO_CALENDAR_HINT = (
-    "🔌 Календарь ещё не подключён — без него Чайке нечего показывать.\n"
-    "Жми «Подключить календарь» ниже — откроется защищённое окно."
-)
 
 ANALYTICS_OPTIONS_TEXT = (
     "📊 <b>Аналитика недели</b>\n\n"
@@ -219,7 +212,6 @@ SETTINGS_DISCONNECT_CONFIRM_TEXT = (
     "Чайка забудет логин и пароль, но настройки дайджеста и аналитики сохранятся. "
     "Заново подключить можно одной кнопкой."
 )
-SETTINGS_DISCONNECT_CANCEL_TEXT = "🪶 Отбой — календарь на месте."
 BUTTON_DISCONNECT_CALENDAR_CONFIRM = "⚠️ Да, отключить"
 BUTTON_DISCONNECT_CALENDAR_CANCEL = "⬅️ Отмена"
 

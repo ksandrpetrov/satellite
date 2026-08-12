@@ -6,7 +6,7 @@ import json
 from unittest.mock import MagicMock
 
 from satellite.telegram_bot.api import TelegramError
-from satellite.telegram_bot.commands import BOT_COMMANDS, setup_bot_commands, setup_bot_identity
+from satellite.telegram_bot.commands import BOT_COMMANDS, setup_bot_identity
 
 EXPECTED_COMMANDS = (
     "start",
@@ -49,18 +49,6 @@ def test_setup_bot_identity_registers_all_steps():
     telegram.set_my_short_description.assert_called_once()
     telegram.set_my_description.assert_called_once()
     telegram.set_chat_menu_button.assert_called_once_with(menu_button={"type": "commands"})
-
-
-def test_setup_bot_commands_is_alias():
-    telegram = MagicMock()
-    telegram.set_my_commands = MagicMock(return_value=True)
-    telegram.set_my_name = MagicMock(return_value=True)
-    telegram.set_my_short_description = MagicMock(return_value=True)
-    telegram.set_my_description = MagicMock(return_value=True)
-    telegram.set_chat_menu_button = MagicMock(return_value=True)
-
-    assert setup_bot_commands(telegram) is True
-    assert telegram.set_my_commands.called
 
 
 def test_setup_bot_identity_does_not_raise_on_telegram_error(caplog):

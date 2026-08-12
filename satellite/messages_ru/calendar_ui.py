@@ -23,7 +23,6 @@ from .identity import BOT_INPUT_PLACEHOLDER
 
 UPCOMING_FETCH_STATUS = "🗓 Чайка обходит ближайшую неделю…"
 UPCOMING_BUSY_TEXT = "🗓 Уже собираю список — секунду."
-UPCOMING_EVENTS_HEADING = "🗓 Ближайшие события"
 UPCOMING_EVENTS_HEADING_PLAIN = "Ближайшие события"
 UPCOMING_EVENTS_HEADING_HTML = f"🗓 <b>{UPCOMING_EVENTS_HEADING_PLAIN}</b>"
 UPCOMING_EMPTY_HTML = (
@@ -133,8 +132,6 @@ CALENDAR_SOURCES_LAST_ENABLED_TEXT = (
 CALENDAR_SOURCES_LOAD_FAIL_HTML = (
     "⚠️ Чайка не смогла принести список календарей.\nПопробуй ещё раз через минуту."
 )
-CALENDAR_SOURCES_UNAVAILABLE_TEXT = "Календари не отвечают"
-CALENDAR_SOURCES_UPDATE_FAIL_TEXT = "Не удалось обновить список"
 CALENDAR_SOURCES_FETCH_STATUS = "📚 Чайка собирает календари…"
 CALENDAR_SOURCES_CLOSED_TEXT = "📚 Закрыли список календарей. Возвращайся, когда понадобится."
 CALENDAR_SOURCES_INTRO = (
@@ -192,7 +189,6 @@ FOREIGN_CALENDARS_EMPTY_HTML = (
 FOREIGN_CALENDARS_LOAD_FAIL_HTML = (
     "⚠️ Чайка не смогла принести список чужих календарей.\nПопробуй ещё раз через минуту."
 )
-FOREIGN_CALENDARS_REFRESH_FAIL_TEXT = "Не удалось обновить список"
 FOREIGN_CALENDARS_CLOSED_TEXT = "👥 Закрыли чужие календари. Возвращайся, когда понадобится."
 FOREIGN_CALENDARS_FETCH_STATUS = "⏳ Чайка облетает чужой календарь…"
 FOREIGN_CALENDARS_DAY_EMPTY_HTML = "🪶 В этот день встреч у коллеги нет."

@@ -179,10 +179,6 @@ class WebAppConfig:
     port: int = DEFAULT_WEBAPP_PORT
     base_url: str = ""
 
-    @property
-    def is_configured(self) -> bool:
-        return bool(self.base_url.strip())
-
 
 @dataclass(frozen=True)
 class Settings:

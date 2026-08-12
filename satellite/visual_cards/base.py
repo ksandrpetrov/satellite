@@ -28,15 +28,12 @@ FONT_MONO_BOLD_PATH = FONT_DIR / "GeistMono-Bold.ttf"
 COLOR_BG_TOP = (251, 253, 253)
 COLOR_BG = (241, 246, 248)
 COLOR_SURFACE = (255, 255, 255)
-COLOR_SURFACE_STRONG = (246, 250, 251)
 COLOR_TEXT = (20, 48, 64)
 COLOR_MUTED = (91, 117, 132)
 COLOR_FAINT = (133, 155, 166)
 COLOR_SEPARATOR = (216, 229, 234)
 COLOR_GRID = (232, 240, 243)
 COLOR_ACCENT = (0, 112, 153)
-COLOR_ACCENT_BRIGHT = (48, 201, 238)
-COLOR_ACCENT_SOFT = (203, 235, 245)
 COLOR_FREE = (230, 240, 244)
 COLOR_BUSY = (41, 180, 220)
 COLOR_RING_TRACK = (205, 222, 230)
@@ -45,7 +42,6 @@ COLOR_TREND_DOWN = (24, 126, 88)
 COLOR_TREND_FLAT = (93, 117, 131)
 COLOR_WARNING = (166, 105, 0)
 COLOR_SPARK_FILL = COLOR_ACCENT
-COLOR_SHADOW = (0, 0, 0, 0)
 COLOR_PILL_BG = (235, 243, 246)
 
 COLOR_HERO_SURFACE = (14, 48, 68)
@@ -232,20 +228,6 @@ def hours_label(minutes: int) -> str:
     return f"{hours:.1f} ч"
 
 
-def meetings_label(count: int) -> str:
-    n = abs(count) % 100
-    n1 = n % 10
-    if 11 <= n <= 19:
-        word = "встреч"
-    elif n1 == 1:
-        word = "встреча"
-    elif 2 <= n1 <= 4:
-        word = "встречи"
-    else:
-        word = "встреч"
-    return f"{count} {word}"
-
-
 def rounded_rect(
     draw: ImageDraw.ImageDraw,
     box: tuple[int, int, int, int],
@@ -356,26 +338,3 @@ def draw_load_ring(
         )
     draw.text((cx, cy - 15), f"{percent}%", fill=text_color, font=font_pct, anchor="mm")
     draw.text((cx, cy + 48), "ЗАГРУЗКА", fill=muted_color, font=font_label, anchor="mm")
-
-
-def draw_stat_row(
-    draw: ImageDraw.ImageDraw,
-    left: int,
-    top: int,
-    *,
-    label: str,
-    value: str,
-    sub: str | None,
-    font_label,
-    font_value,
-    font_sub,
-    accent: tuple[int, int, int] | None = None,
-) -> int:
-    draw.text((left, top), label.upper(), fill=COLOR_MUTED, font=font_label)
-    y = top + int(getattr(font_label, "size", 18)) + 12
-    draw.text((left, y), value, fill=accent or COLOR_TEXT, font=font_value)
-    y += int(getattr(font_value, "size", 36)) + 10
-    if sub:
-        draw.text((left, y), sub, fill=COLOR_MUTED, font=font_sub)
-        y += int(getattr(font_sub, "size", 18)) + 6
-    return y

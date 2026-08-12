@@ -38,7 +38,7 @@ from satellite.messages_ru import (
     ERR_SETTINGS_SAVE_FAILED_TEXT,
     build_digest_days_keyboard,
     build_digest_settings_keyboard,
-    button_text_is_digest_settings,
+    button_text_is_settings,
     digest_settings_screen_text,
     digest_time_applied_text,
 )
@@ -57,7 +57,7 @@ from satellite.telegram_bot.handlers import (
     IncomingMessage,
     handle_callback_query,
     handle_message,
-    is_digest_settings_request,
+    is_settings_request,
 )
 from satellite.telegram_bot.handlers.digest_state import DigestStateStore
 from satellite.telegram_bot.handlers.settings import handle_digest_time_input
@@ -339,17 +339,18 @@ def _ctx(tmp_path: Path, *, username: str = "alice"):
 # --- открытие экрана настроек --------------------------------------------
 
 
-def test_button_text_is_digest_settings_recognized():
-    assert button_text_is_digest_settings(BUTTON_DIGEST_SETTINGS)
-    assert button_text_is_digest_settings(BUTTON_SETTINGS)
-    assert is_digest_settings_request(BUTTON_DIGEST_SETTINGS)
-    assert is_digest_settings_request(BUTTON_SETTINGS)
+def test_settings_screen_opens_from_both_buttons():
+    # Старая кнопка «Настройки дайджеста» ведёт на тот же общий экран настроек.
+    assert button_text_is_settings(BUTTON_DIGEST_SETTINGS)
+    assert button_text_is_settings(BUTTON_SETTINGS)
+    assert is_settings_request(BUTTON_DIGEST_SETTINGS)
+    assert is_settings_request(BUTTON_SETTINGS)
     # /settings — единственная команда, открывающая экран настроек.
     # /digest теперь сразу включает подписку (см. parse_subscription_action).
-    assert is_digest_settings_request("/settings")
-    assert not is_digest_settings_request("/digest")
-    assert not is_digest_settings_request("/stopdigest")
-    assert not is_digest_settings_request("td")
+    assert is_settings_request("/settings")
+    assert not is_settings_request("/digest")
+    assert not is_settings_request("/stopdigest")
+    assert not is_settings_request("td")
 
 
 def test_digest_settings_button_sends_inline_settings_screen(tmp_path: Path):

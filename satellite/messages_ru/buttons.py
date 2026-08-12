@@ -127,11 +127,6 @@ def button_text_is_settings(text: str | None) -> bool:
     }
 
 
-def button_text_is_digest_settings(text: str | None) -> bool:
-    """Legacy alias: старая кнопка «Настройки дайджеста» открывает общий экран настроек."""
-    return button_text_is_settings(text)
-
-
 def button_text_is_upcoming(text: str | None) -> bool:
     if not text:
         return False

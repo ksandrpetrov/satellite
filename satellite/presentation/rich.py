@@ -12,7 +12,6 @@ from collections.abc import Sequence
 from html import escape
 
 # Bot API 10.1 — лимит rich message (с запасом под safety-cap в рендерах).
-RICH_MESSAGE_CHAR_LIMIT = 32768
 RICH_MESSAGE_SAFETY_CAP = 30000
 
 _HEADING_TAG = {1: "h1", 2: "h2", 3: "h3", 4: "h4", 5: "h5", 6: "h6"}

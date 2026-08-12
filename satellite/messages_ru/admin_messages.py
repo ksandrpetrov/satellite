@@ -7,7 +7,6 @@ from .buttons import styled_button
 # --- Admin ---
 CB_ADMIN_APPROVE_PREFIX = "admin:approve:"
 CB_ADMIN_REJECT_PREFIX = "admin:reject:"
-CMD_PENDING = "/pending"
 
 
 def admin_access_request_html(
@@ -53,5 +52,3 @@ ADMIN_ACTION_FORBIDDEN_HTML = "⛔️ Эта команда доступна т�
 
 ADMIN_TOAST_FORBIDDEN = "Недостаточно прав"
 ADMIN_TOAST_USER_NOT_FOUND = "Пользователь не найден"
-ADMIN_TOAST_APPROVED = "Доступ открыт"
-ADMIN_TOAST_REJECTED = "Отклонено"

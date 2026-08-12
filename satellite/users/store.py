@@ -57,10 +57,6 @@ class UserStore(JsonStoreBase[UserRecord]):
         with self._lock:
             return list(self._items.values())
 
-    def list_by_status(self, status: str) -> list[UserRecord]:
-        with self._lock:
-            return [rec for rec in self._items.values() if rec.status == status]
-
     def list_pending_requests(self) -> list[UserRecord]:
         with self._lock:
             return [
@@ -68,16 +64,6 @@ class UserStore(JsonStoreBase[UserRecord]):
                 for rec in self._items.values()
                 if rec.access_request_status == ACCESS_REQUEST_PENDING
             ]
-
-    def find_by_username(self, username: str) -> UserRecord | None:
-        normalized = (username or "").strip().lower()
-        if not normalized:
-            return None
-        with self._lock:
-            for rec in self._items.values():
-                if (rec.username or "").lower() == normalized:
-                    return rec
-        return None
 
     # --- mutators --------------------------------------------------------
 
@@ -301,30 +287,6 @@ class UserStore(JsonStoreBase[UserRecord]):
                 "calendar_last_checked_at": now_iso,
             },
         )
-
-    def ensure_admin_record(
-        self,
-        *,
-        telegram_user_id: int,
-        chat_id: int | None = None,
-        username: str | None = None,
-        display_name: str | None = None,
-    ) -> UserRecord:
-        """Гарантирует, что админ заведён и сразу ``approved``.
-
-        Нужно для бутстрапа: первый запуск с пустым ``logs/users.json`` —
-        админ должен сразу получить доступ, без процедуры одобрения.
-        """
-        record = self.upsert_from_telegram(
-            telegram_user_id=telegram_user_id,
-            chat_id=chat_id,
-            username=username,
-            display_name=display_name,
-            default_status=USER_STATUS_APPROVED,
-        )
-        if record.status == USER_STATUS_APPROVED:
-            return record
-        return self.approve(telegram_user_id, admin_telegram_id=telegram_user_id)
 
     # --- internals -------------------------------------------------------
 

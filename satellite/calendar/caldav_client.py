@@ -41,7 +41,6 @@ from .caldav_shared import (
     log,
     login_variants_for_caldav,
 )
-from .ical_parser import parse_calendar_events
 
 __all__ = [
     "DEFAULT_CALDAV_URL",
@@ -176,37 +175,6 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
                 attempt += 1
         assert last_exc is not None
         raise CalDAVError(f"CalDAV fetch failed: {last_exc}") from last_exc
-
-    def fetch_all_events(self) -> tuple[str, list[dict[str, Any]], list[Event]]:
-        """Полная выгрузка всех календарей: meta-info + плоский отсортированный список."""
-        result = self._ensure_discovery()
-        archive_calendars: list[dict[str, Any]] = []
-        all_events: list[Event] = []
-
-        for handle in result.calendars:
-            cal_events: list[Event] = []
-            try:
-                events_iter = handle.obj.get_events()
-            except Exception as exc:  # noqa: BLE001
-                log.warning(
-                    "Failed to enumerate events for calendar url=%s: %s",
-                    _redact_url(handle.url),
-                    exc.__class__.__name__,
-                )
-                events_iter = []
-            for event in events_iter:
-                cal_events.extend(parse_calendar_events(event.data, handle.name))
-            archive_calendars.append(
-                {
-                    "name": handle.name,
-                    "url": handle.url,
-                    "events_count": len(cal_events),
-                }
-            )
-            all_events.extend(cal_events)
-
-        all_events.sort(key=lambda event: event.get("dtstart") or "")
-        return result.endpoint, archive_calendars, all_events
 
     def create_event(
         self,

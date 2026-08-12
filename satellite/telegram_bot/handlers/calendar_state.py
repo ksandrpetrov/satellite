@@ -44,7 +44,3 @@ class CalendarStateStore:
     def clear(self, chat_id: int) -> None:
         with self._lock:
             self._items.pop(chat_id, None)
-
-    def is_busy(self, chat_id: int) -> bool:
-        with self._lock:
-            return chat_id in self._items

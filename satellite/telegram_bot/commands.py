@@ -21,7 +21,8 @@ from .api import TelegramClient, TelegramError
 
 log = logging.getLogger(__name__)
 
-# Реэкспорт для обратной совместимости тестов и внешних импортов.
+# ``BOT_COMMANDS`` живёт в messages_ru; здесь он реэкспортируется, чтобы
+# вызывающему коду не нужно было знать про оба модуля.
 __all__ = ["BOT_COMMANDS", "setup_bot_identity"]
 
 _MENU_BUTTON_COMMANDS: dict[str, str] = {"type": "commands"}
@@ -96,12 +97,3 @@ def setup_bot_identity(
         log.exception("Unexpected error while calling setChatMenuButton")
 
     return success
-
-
-def setup_bot_commands(
-    telegram: TelegramClient,
-    *,
-    commands: Iterable[tuple[str, str]] = BOT_COMMANDS,
-) -> bool:
-    """Обратная совместимость: алиас ``setup_bot_identity``."""
-    return setup_bot_identity(telegram, commands=commands)

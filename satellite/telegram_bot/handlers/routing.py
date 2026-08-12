@@ -264,11 +264,6 @@ def is_settings_request(text: str | None) -> bool:
     return _button_or_command(text, button=button_text_is_settings, command=_CMD_DIGEST_SETTINGS)
 
 
-def is_digest_settings_request(text: str | None) -> bool:
-    """Alias для обратной совместимости тестов и импортов."""
-    return is_settings_request(text)
-
-
 def is_upcoming_request(text: str | None) -> bool:
     return _button_or_command(text, button=button_text_is_upcoming, command=_CMD_UPCOMING)
 

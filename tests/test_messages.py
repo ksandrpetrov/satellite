@@ -17,8 +17,8 @@ from satellite.messages_ru import (
     normalize_button_text,
 )
 from satellite.presentation.calendar_lists import (
-    upcoming_events_day_sections,
-    upcoming_events_html,
+    upcoming_events_plain_fallback_html,
+    upcoming_events_rich_html,
 )
 
 TZ = ZoneInfo("Europe/Moscow")
@@ -71,8 +71,12 @@ def _ev(**fields):
     return {"summary": "—", **fields}
 
 
-def test_upcoming_events_html_blockquote_per_day_not_whole_list():
-    """Дневной блок встреч оборачивается в обычный blockquote (развёрнутый)."""
+def test_upcoming_fallback_groups_events_by_day_without_blockquote():
+    """Fallback-ветка `/upcoming`: дни-заголовки, плоский HTML без ``<blockquote>``.
+
+    Blockquote тут запрещён намеренно: fallback уходит вместо rich-сообщения с
+    ``<details>``, и обёртка давала мигание при подмене одного другим.
+    """
 
     ref = date(2026, 5, 20)
     events = [
@@ -92,23 +96,21 @@ def test_upcoming_events_html_blockquote_per_day_not_whole_list():
             dtend=datetime(2026, 5, 21, 15, 0, tzinfo=TZ).isoformat(),
         ),
     ]
-    html = upcoming_events_html(events, TZ, ref, days=7)
+    html = upcoming_events_plain_fallback_html(events, TZ, ref, days=7)
+    assert "<blockquote>" not in html
     assert 'expandable="true"' not in html
-    assert html.count("<blockquote>") == 1
     assert "<b>Сегодня" in html
     assert "<b>Завтра" in html
     assert "A" in html
     assert "B1" in html
     assert "B2" in html
-    # Заголовок «Завтра» снаружи единственного blockquote-блока этого дня
-    tomorrow_header = html.index("<b>Завтра")
-    block_start = html.index("<blockquote>")
-    assert tomorrow_header < block_start
-    block_end = html.index("</blockquote>", block_start)
-    assert "Завтра" not in html[block_start:block_end]
+    # Оба события завтрашнего дня — под одним заголовком «Завтра».
+    tomorrow_at = html.index("<b>Завтра")
+    assert html.index("B1") > tomorrow_at
+    assert html.index("B2") > tomorrow_at
 
 
-def test_upcoming_events_message_title_spacing():
+def test_upcoming_fallback_title_spacing():
     """Заголовок «Ближайшие события» отделён от первого дня одной пустой строкой."""
     ref = date(2026, 5, 21)
     events = [
@@ -123,13 +125,18 @@ def test_upcoming_events_message_title_spacing():
             dtend=datetime(2026, 5, 21, 15, 0, tzinfo=TZ).isoformat(),
         ),
     ]
-    day_sections = upcoming_events_day_sections(events, TZ, ref, days=7)
-    text = "\n\n".join(["🗓 <b>Ближайшие события</b>", *day_sections])
-    assert text.startswith("🗓 <b>Ближайшие события</b>\n\n<b>Сегодня")
-    assert "🗓 <b>Ближайшие события</b>\n\n\n" not in text
+    html = upcoming_events_plain_fallback_html(events, TZ, ref, days=7)
+    assert html.startswith("🗓 <b>Ближайшие события</b>\n\n<b>Сегодня")
+    assert "🗓 <b>Ближайшие события</b>\n\n\n" not in html
 
 
-def test_upcoming_events_html_single_event_day_plain():
+def test_upcoming_fallback_empty_returns_empty_string():
+    """Без событий fallback пуст — хендлер показывает отдельный «пусто»-текст."""
+    assert upcoming_events_plain_fallback_html([], TZ, date(2026, 5, 20), days=7) == ""
+
+
+def test_upcoming_rich_collapses_multi_event_day_into_details():
+    """Rich-ветка: день с 2+ встречами — ``<details>``, одиночный — простой абзац."""
     ref = date(2026, 5, 20)
     events = [
         _ev(
@@ -137,11 +144,47 @@ def test_upcoming_events_html_single_event_day_plain():
             dtstart=datetime(2026, 5, 20, 12, 0, tzinfo=TZ).isoformat(),
             dtend=datetime(2026, 5, 20, 13, 0, tzinfo=TZ).isoformat(),
         ),
+        _ev(
+            summary="Pair1",
+            dtstart=datetime(2026, 5, 21, 10, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 21, 11, 0, tzinfo=TZ).isoformat(),
+        ),
+        _ev(
+            summary="Pair2",
+            dtstart=datetime(2026, 5, 21, 14, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 21, 15, 0, tzinfo=TZ).isoformat(),
+        ),
     ]
-    html = upcoming_events_html(events, TZ, ref, days=7)
-    assert 'expandable="true"' not in html
-    assert "<blockquote>" not in html
-    assert "Solo" in html
+    html = upcoming_events_rich_html(events, TZ, ref, days=7)
+    assert html.count("<details") == 1
+    summary = html[html.index("<summary>") : html.index("</summary>")]
+    assert "Завтра" in summary
+    # В summary свёрнутого дня — счётчик встреч, чтобы он читался закрытым.
+    assert summary.rstrip().endswith("— 2</b>")
+    assert "Solo" in html and "Pair1" in html and "Pair2" in html
+
+
+def test_upcoming_rich_max_groups_limits_days():
+    ref = date(2026, 5, 20)
+    events = [
+        _ev(
+            summary="Day1",
+            dtstart=datetime(2026, 5, 20, 12, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 20, 13, 0, tzinfo=TZ).isoformat(),
+        ),
+        _ev(
+            summary="Day2",
+            dtstart=datetime(2026, 5, 21, 12, 0, tzinfo=TZ).isoformat(),
+            dtend=datetime(2026, 5, 21, 13, 0, tzinfo=TZ).isoformat(),
+        ),
+    ]
+    html = upcoming_events_rich_html(events, TZ, ref, days=7, max_groups=1)
+    assert "Day1" in html
+    assert "Day2" not in html
+
+
+def test_upcoming_rich_empty_returns_empty_string():
+    assert upcoming_events_rich_html([], TZ, date(2026, 5, 20), days=7) == ""
 
 
 def test_format_duration_ru():
