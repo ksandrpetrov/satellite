@@ -12,6 +12,8 @@ from .settings_ui import CB_SETTINGS_CALENDAR_BACK
 
 CB_INV_CLOSE = "inv:close"
 CB_INV_REFRESH = "inv:refresh"
+CB_INV_BACK = "inv:back"
+CB_INV_PICK_PREFIX = "inv:p:"
 CB_INV_RESPOND_PREFIX = "inv:r:"
 
 INVITATIONS_FETCH_STATUS = "📨 Чайка собирает приглашения…"
@@ -21,8 +23,8 @@ INVITATIONS_EMPTY_HTML = (
 )
 INVITATIONS_INTRO_HTML = (
     "<b>Приглашения</b>\n\n"
-    "Встречи, где тебя ждут как участника. Нажми кнопку под событием — "
-    "ответ улетит в календарь."
+    "Встречи, где тебя ждут как участника. Выбери номер встречи, "
+    "затем ответь на приглашение."
 )
 INVITATIONS_SERIES_LABEL = "Повторяется · ответ на всю серию"
 INVITATIONS_RESPOND_ACCEPTED = "Принято"
@@ -37,31 +39,14 @@ def build_invitations_keyboard(
     *,
     from_settings_hub: bool = False,
 ) -> dict:
-    """Inline-клавиатура: по строке кнопок на каждое событие (token, label index).
+    """Выбор встречи по номеру: до четырёх номеров в строке.
 
     ``from_settings_hub=True`` — «⬅️ В календарь» + «Закрыть»; иначе только «Закрыть».
     """
-    rows: list[list[dict[str, str]]] = []
-    for token, label in events:
-        rows.append(
-            [
-                styled_button(
-                    f"✅ {label}",
-                    f"{CB_INV_RESPOND_PREFIX}{token}:a",
-                    style="success",
-                ),
-                styled_button(
-                    f"❌ {label}",
-                    f"{CB_INV_RESPOND_PREFIX}{token}:d",
-                    style="danger",
-                ),
-                styled_button(
-                    f"🤔 {label}",
-                    f"{CB_INV_RESPOND_PREFIX}{token}:t",
-                    style="primary",
-                ),
-            ]
-        )
+    buttons = [
+        {"text": label, "callback_data": f"{CB_INV_PICK_PREFIX}{token}"} for token, label in events
+    ]
+    rows = [buttons[index : index + 4] for index in range(0, len(buttons), 4)]
     rows.append([{"text": "🔄 Обновить", "callback_data": CB_INV_REFRESH}])
     if from_settings_hub:
         rows.append(
@@ -73,6 +58,26 @@ def build_invitations_keyboard(
     else:
         rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_INV_CLOSE}])
     return {"inline_keyboard": rows}
+
+
+def build_invitation_detail_keyboard(token: str) -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                styled_button("✅ Принять", f"{CB_INV_RESPOND_PREFIX}{token}:a", style="success"),
+                styled_button("❌ Отклонить", f"{CB_INV_RESPOND_PREFIX}{token}:d", style="danger"),
+                styled_button("🤔 Возможно", f"{CB_INV_RESPOND_PREFIX}{token}:t", style="primary"),
+            ],
+            [{"text": "⬅️ К приглашениям", "callback_data": CB_INV_BACK}],
+        ]
+    }
+
+
+def invitation_detail_html(*, title: str, when: str, series: bool) -> str:
+    parts = [f"<b>{escape(title)}</b>", escape(when)]
+    if series:
+        parts.append(INVITATIONS_SERIES_LABEL)
+    return "\n\n".join(parts)
 
 
 def invitations_list_html(

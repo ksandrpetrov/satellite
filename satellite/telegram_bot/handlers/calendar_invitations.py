@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 
 from ...calendar.callback_tokens import event_callback_token
+from ...calendar.events import event_local_start_date, format_time_range, format_upcoming_day_header
 from ...calendar.providers.base import (
     CalendarNotConnectedError,
     CalendarProviderError,
@@ -21,7 +22,9 @@ from ...invitations_view import (
     screen_from_pending,
 )
 from ...messages_ru import (
+    CB_INV_BACK,
     CB_INV_CLOSE,
+    CB_INV_PICK_PREFIX,
     CB_INV_REFRESH,
     CB_INV_RESPOND_PREFIX,
     ERR_CALDAV_UNAVAILABLE_TEXT,
@@ -32,7 +35,10 @@ from ...messages_ru import (
     INVITATIONS_RESPOND_DECLINED,
     INVITATIONS_RESPOND_FAIL_TEXT,
     INVITATIONS_RESPOND_TENTATIVE,
+    build_invitation_detail_keyboard,
+    invitation_detail_html,
 )
+from ...presentation.rich import join_blocks, paragraph
 from ..visual import pick_invitations_effect
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
@@ -223,13 +229,8 @@ def _on_not_found(ctx: HandlerContext, cb: IncomingCallback) -> None:
 
 
 def _on_fail(ctx: HandlerContext, cb: IncomingCallback) -> None:
-    edit_callback_rich_or_html(
-        ctx,
-        cb,
-        rich_html=INVITATIONS_RESPOND_FAIL_TEXT,
-        fallback_html=INVITATIONS_RESPOND_FAIL_TEXT,
-        reply_markup=None,
-    )
+    token = (cb.data or "")[len(CB_INV_RESPOND_PREFIX) :].rsplit(":", 1)[0]
+    _show_cached_invitation(ctx, cb, token, error=True)
 
 
 _FLOW = PartstatFlow(
@@ -249,12 +250,64 @@ _FLOW = PartstatFlow(
 )
 
 
+def _show_cached_invitation(
+    ctx: HandlerContext, cb: IncomingCallback, token: str | None, *, error: bool = False
+) -> None:
+    if cb.user_id is None or cb.chat_id is None:
+        safe_answer_callback(ctx, cb)
+        return
+    snapshot = ctx.runtime.event_tokens.get_invitations_snapshot(cb.user_id)
+    if snapshot is None:
+        # An expired screen must be refreshed before choosing an event again.
+        _edit_invitations_screen(ctx, cb, show_loading=True)
+        return
+    if token is not None:
+        event = _find_event_by_token(snapshot.pending, token)
+        if event is not None:
+            day = event_local_start_date(event, ctx.tz)
+            when = format_time_range(event, ctx.tz)
+            if day is not None:
+                when = f"{format_upcoming_day_header(day, snapshot.moment.date())} · {when}"
+            text = invitation_detail_html(
+                title=str(event.get("summary") or "—"),
+                when=when,
+                series=bool(event.get("invitation_series")),
+            )
+            if error:
+                text += f"\n\n{INVITATIONS_RESPOND_FAIL_TEXT}"
+            edit_callback_rich_or_html(
+                ctx,
+                cb,
+                rich_html=join_blocks([paragraph(part) for part in text.split("\n\n")]),
+                fallback_html=text,
+                reply_markup=build_invitation_detail_keyboard(token),
+            )
+            safe_answer_callback(ctx, cb)
+            return
+    text, rich_text, keyboard = screen_from_pending(
+        snapshot.pending,
+        ctx.tz,
+        reference_date=snapshot.moment.date(),
+        truncated=snapshot.truncated,
+        from_settings_hub=snapshot.from_settings_hub,
+    )
+    edit_callback_rich_or_html(
+        ctx, cb, rich_html=rich_text, fallback_html=text, reply_markup=keyboard
+    )
+    safe_answer_callback(ctx, cb)
+
+
 def route_invitations_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
     data = (cb.data or "").strip()
     if not data:
         return False
     if not data.startswith("inv:"):
         return False
+    if data == CB_INV_BACK or data.startswith(CB_INV_PICK_PREFIX):
+        _show_cached_invitation(
+            ctx, cb, None if data == CB_INV_BACK else data[len(CB_INV_PICK_PREFIX) :]
+        )
+        return True
     if data == CB_INV_CLOSE:
         edit_callback_message(ctx, cb, INVITATIONS_CLOSED_TEXT, reply_markup=None)
         safe_answer_callback(ctx, cb)

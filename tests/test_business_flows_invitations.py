@@ -136,7 +136,8 @@ def test_invitations_screen_starts_with_first_event_title_and_when() -> None:
     )
     assert "Следующая встреча" in text
     assert "Следующая встреча" in rich_text
-    assert len(keyboard["inline_keyboard"]) == 4
+    assert len(keyboard["inline_keyboard"]) == 3
+    assert [button["text"] for button in keyboard["inline_keyboard"][0]] == ["1", "2"]
 
 
 def test_invitations_preview_escapes_title_and_supports_all_day() -> None:
