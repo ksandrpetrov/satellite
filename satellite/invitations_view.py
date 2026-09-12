@@ -147,7 +147,7 @@ def screen_from_pending(
         truncated=truncated,
     )
     rich_text = invitations_list_rich_html(
-        body_events=display_events,
+        body_events=pending,
         tz=tz,
         reference_date=reference_date,
         preview_title=preview_title,

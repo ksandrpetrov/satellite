@@ -78,7 +78,7 @@ def test_single_answer_preserves_correct_html_format(legacy):
     else:
         text = ctx.telegram.edit_message_rich.call_args.args[2]["html"]
         assert "<p>" in text
-        assert "<li>" in text
+        assert '<tg-button type="callback_data"' in text
         assert "<blockquote" not in text
     assert "Other" in text
 

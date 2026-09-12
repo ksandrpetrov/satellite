@@ -81,3 +81,38 @@ def test_edit_rich_or_html_falls_back_to_legacy_html(telegram: MagicMock) -> Non
         "<b>Legacy</b>",
         reply_markup=None,
     )
+
+
+@pytest.mark.parametrize("edit", [False, True])
+@pytest.mark.parametrize("fallback", [False, True])
+def test_embedded_callback_replaces_only_matching_keyboard_button(telegram, edit, fallback):
+    from copy import deepcopy
+
+    markup = {
+        "inline_keyboard": [
+            [{"text": "Ответить", "callback_data": "pick:1"}],
+            [{"text": "Обновить", "callback_data": "refresh"}],
+        ]
+    }
+    original = deepcopy(markup)
+    rich = '<p>Meeting</p><tg-button-row><tg-button type="callback_data" data="pick:1">Ответить</tg-button></tg-button-row>'
+    rich_method = telegram.edit_message_rich if edit else telegram.send_rich_message
+    legacy_method = telegram.edit_message_text if edit else telegram.send_message
+    if fallback:
+        rich_method.side_effect = TelegramError("unsupported button")
+    if edit:
+        edit_rich_or_html(
+            telegram, 1, 2, rich_html=rich, fallback_html="Meeting", reply_markup=markup
+        )
+    else:
+        deliver_rich_or_html(
+            telegram, 1, rich_html=rich, fallback_html="Meeting", reply_markup=markup
+        )
+    assert rich_method.call_args.kwargs["reply_markup"] == {
+        "inline_keyboard": [original["inline_keyboard"][1]]
+    }
+    if fallback:
+        assert legacy_method.call_args.kwargs["reply_markup"] == original
+    else:
+        legacy_method.assert_not_called()
+    assert markup == original

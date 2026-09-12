@@ -3,12 +3,39 @@
 from __future__ import annotations
 
 import logging
+from html.parser import HTMLParser
 from typing import Any
 
 from ..telegram_bot.api import TelegramClient, TelegramError, is_rich_message_unavailable
 from .rich import input_rich_message
 
 log = logging.getLogger(__name__)
+
+
+class _EmbeddedCallbacks(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.tokens: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        if tag == "tg-button" and attributes.get("type") == "callback_data":
+            token = attributes.get("data")
+            if token:
+                self.tokens.add(token)
+
+
+def rich_reply_markup(html: str, markup: dict | list | str | None) -> dict | list | str | None:
+    """Keep shared navigation; embedded callbacks retain their legacy fallback buttons."""
+    if not isinstance(markup, dict) or "inline_keyboard" not in markup or "<tg-button" not in html:
+        return markup
+    parser = _EmbeddedCallbacks()
+    parser.feed(html)
+    rows = [
+        [button for button in row if button.get("callback_data") not in parser.tokens]
+        for row in markup["inline_keyboard"]
+    ]
+    return {**markup, "inline_keyboard": [row for row in rows if row]}
 
 
 def deliver_rich_or_html(
@@ -26,7 +53,7 @@ def deliver_rich_or_html(
         return telegram.send_rich_message(
             chat_id,
             rich_payload,
-            reply_markup=reply_markup,
+            reply_markup=rich_reply_markup(rich_html, reply_markup),
             message_effect_id=message_effect_id,
         )
     except TelegramError as exc:
@@ -58,7 +85,7 @@ def edit_rich_or_html(
             chat_id,
             message_id,
             rich_payload,
-            reply_markup=reply_markup,
+            reply_markup=rich_reply_markup(rich_html, reply_markup),
         )
     except TelegramError as exc:
         if is_rich_message_unavailable(exc):

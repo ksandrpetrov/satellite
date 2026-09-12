@@ -62,6 +62,15 @@ def unordered_list(items: Sequence[str]) -> str:
     return f"<ul>{lines}</ul>"
 
 
+def callback_button(label: str, data: str) -> str:
+    """Bot API 10.3 callback button embedded beside its decision block."""
+    return (
+        '<tg-button-row align="left">'
+        f'<tg-button type="callback_data" style="primary" data="{escape_rich(data)}">'
+        f"{escape_rich(label)}</tg-button></tg-button-row>"
+    )
+
+
 def table(headers: Sequence[str], rows: Sequence[Sequence[str]], *, centered: bool = False) -> str:
     """Таблица rich message; ячейки — уже размеченный HTML."""
     alignment = ' align="center"' if centered else ""

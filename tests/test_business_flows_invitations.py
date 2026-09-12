@@ -129,15 +129,18 @@ def test_invitations_screen_starts_with_first_event_title_and_when() -> None:
     assert text.startswith(
         "📨 <b>QA 2.0 ВКонтакте: синк</b>\n🗓 Вт, 04.08 · 17:00–18:00\n\n<b>Приглашения</b>"
     )
-    assert rich_text.startswith(
-        "<p>📨 <b>QA 2.0 ВКонтакте: синк</b></p>"
-        "<p>🗓 Вт, 04.08 · 17:00–18:00</p>"
-        "<p><b>Приглашения</b>"
-    )
+    assert rich_text.startswith("<p><b>Приглашения</b>")
+    assert rich_text.count("QA 2.0 ВКонтакте: синк") == 1
+    assert "Вт, 04.08" in rich_text
+    assert "17:00–18:00" in rich_text
+    assert rich_text.count('<tg-button type="callback_data"') == 2
     assert "Следующая встреча" in text
     assert "Следующая встреча" in rich_text
-    assert len(keyboard["inline_keyboard"]) == 4
-    assert [button["text"] for button in keyboard["inline_keyboard"][0]] == ["1", "2"]
+    assert len(keyboard["inline_keyboard"]) == 5
+    assert [row[0]["text"] for row in keyboard["inline_keyboard"][:2]] == [
+        "Ответить · 1",
+        "Ответить · 2",
+    ]
 
 
 def test_invitations_preview_escapes_title_and_supports_all_day() -> None:
@@ -158,7 +161,8 @@ def test_invitations_preview_escapes_title_and_supports_all_day() -> None:
 
     expected_preview = "📨 <b>&lt;QA &amp; Release&gt;</b>"
     assert text.startswith(f"{expected_preview}\n🗓 Вт, 04.08 · весь день")
-    assert rich_text.startswith(f"<p>{expected_preview}</p><p>🗓 Вт, 04.08 · весь день</p>")
+    assert "<p><b>&lt;QA &amp; Release&gt;</b></p>" in rich_text
+    assert "<p>Вт, 04.08 · весь день</p>" in rich_text
 
 
 def test_empty_invitations_screen_keeps_existing_text() -> None:

@@ -36,8 +36,8 @@ def test_series_group_before_limit_and_render_without_mutating_events():
     assert len(screen.pending) == 12
     assert screen.truncated
     rows = screen.keyboard["inline_keyboard"][:-3]
-    assert len(rows) == 3
-    assert all(len(row) == 4 for row in rows)
+    assert len(rows) == 12
+    assert all(len(row) == 1 for row in rows)
     assert len({button["callback_data"] for row in rows for button in row}) == 12
     assert screen.text.count(INVITATIONS_SERIES_LABEL) == 1
     assert screen.rich_text.count(INVITATIONS_SERIES_LABEL) == 1
@@ -155,4 +155,6 @@ def test_scheduler_delivers_same_grouped_screen_as_manual_loader(tmp_path):
     call = telegram.send_rich_message.call_args
     assert call is not None
     assert call.args[1]["html"] == manual.rich_text
-    assert call.kwargs["reply_markup"] == manual.keyboard
+    assert call.kwargs["reply_markup"] == {
+        "inline_keyboard": manual.keyboard["inline_keyboard"][-3:]
+    }

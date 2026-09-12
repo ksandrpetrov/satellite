@@ -56,7 +56,7 @@ def test_pick_shows_only_selected_series_and_back_restores_hub_list():
     assert rows[1][0]["callback_data"] == CB_INV_BACK
     ctx.calendar_service.set_attendee_partstat.assert_not_called()
     click(ctx, CB_INV_BACK)
-    assert _reply_markup(ctx) == screen.keyboard
+    assert _reply_markup(ctx) == {"inline_keyboard": screen.keyboard["inline_keyboard"][-3:]}
     assert CB_SETTINGS_CALENDAR_BACK in {
         b["callback_data"] for row in screen.keyboard["inline_keyboard"] for b in row
     }
@@ -70,9 +70,11 @@ def test_answer_returns_remaining_number_picker(code):
     click(ctx, CB_INV_RESPOND_PREFIX + token + ":" + code)
     rows = _reply_markup(ctx)["inline_keyboard"]
     assert len(rows[0]) == 1
-    assert rows[0][0]["text"] == "1"
-    assert rows[0][0]["callback_data"].startswith(CB_INV_PICK_PREFIX)
-    assert token not in rows[0][0]["callback_data"]
+    assert rows[0][0]["text"] == "✅ Принять все"
+    text = ctx.telegram.edit_message_rich.call_args.args[2]["html"]
+    assert text.count('<tg-button type="callback_data"') == 1
+    assert 'data="' + CB_INV_PICK_PREFIX + token + '"' not in text
+    assert "Other" in text
     ctx.calendar_service.set_attendee_partstat.assert_called_once()
 
 
@@ -90,7 +92,7 @@ def test_failed_answer_keeps_detail_and_retry_buttons():
 def test_unknown_pick_returns_list_without_calendar_mutation():
     ctx, screen, _ = setup_picker()
     click(ctx, CB_INV_PICK_PREFIX + "unknown")
-    assert _reply_markup(ctx) == screen.keyboard
+    assert _reply_markup(ctx) == {"inline_keyboard": screen.keyboard["inline_keyboard"][-3:]}
     ctx.calendar_service.set_attendee_partstat.assert_not_called()
     ctx.calendar_service.list_events_for_invitations.assert_not_called()
 

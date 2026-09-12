@@ -25,9 +25,9 @@ INVITATIONS_EMPTY_HTML = (
 )
 INVITATIONS_INTRO_HTML = (
     "<b>Приглашения</b>\n\n"
-    "Встречи, где тебя ждут как участника. Выбери номер встречи, "
-    "затем ответь на приглашение. «Принять все» примет все показанные встречи и серии."
+    "Встречи, где тебя ждут как участника. Нажми «Ответить» у нужной встречи. «Принять все» примет все показанные встречи и серии."
 )
+INVITATIONS_PICK_LABEL = "Ответить"
 INVITATIONS_SERIES_LABEL = "Повторяется · ответ на всю серию"
 INVITATIONS_RESPOND_ACCEPTED = "Принято"
 INVITATIONS_RESPOND_DECLINED = "Отклонено"
@@ -41,14 +41,18 @@ def build_invitations_keyboard(
     *,
     from_settings_hub: bool = False,
 ) -> dict:
-    """Выбор встречи по номеру: до четырёх номеров в строке.
+    """Резервный выбор встречи: одна кнопка на блок приглашения.
 
     ``from_settings_hub=True`` — «⬅️ В календарь» + «Закрыть»; иначе только «Закрыть».
     """
     buttons = [
-        {"text": label, "callback_data": f"{CB_INV_PICK_PREFIX}{token}"} for token, label in events
+        {
+            "text": f"{INVITATIONS_PICK_LABEL} · {label}",
+            "callback_data": f"{CB_INV_PICK_PREFIX}{token}",
+        }
+        for token, label in events
     ]
-    rows = [buttons[index : index + 4] for index in range(0, len(buttons), 4)]
+    rows = [[button] for button in buttons]
     if events:
         rows.append(
             [

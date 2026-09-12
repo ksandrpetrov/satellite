@@ -6,6 +6,7 @@ from datetime import date, datetime, tzinfo
 from html import escape
 from typing import Any
 
+from ..calendar.callback_tokens import event_callback_token
 from ..calendar.events import (
     build_upcoming_events_groups,
     event_index_marker,
@@ -15,7 +16,10 @@ from ..calendar.events import (
     parse_iso,
 )
 from ..messages_ru import (
+    CB_INV_PICK_PREFIX,
     INVITATIONS_INTRO_HTML,
+    INVITATIONS_PICK_LABEL,
+    INVITATIONS_SERIES_LABEL,
     MANAGE_INTRO_HTML,
     UPCOMING_EVENTS_HEADING_HTML,
     UPCOMING_EVENTS_HEADING_PLAIN,
@@ -23,8 +27,10 @@ from ..messages_ru import (
 )
 from .rich import (
     bold,
+    callback_button,
     datetime_link,
     details_block,
+    divider,
     escape_rich,
     join_blocks,
     paragraph,
@@ -32,8 +38,6 @@ from .rich import (
     truncate_rich_html,
     unordered_list,
 )
-
-_INVITATIONS_DETAILS_MIN = 5
 
 
 def upcoming_events_plain_fallback_html(
@@ -147,34 +151,19 @@ def _invitation_items_rich(
     reference_date: date,
 ) -> list[str]:
     sections: list[str] = []
-    last_day: date | None = None
-    day_items: list[str] = []
-    day_header = ""
-
-    def flush_day() -> None:
-        if not day_items:
-            return
-        body = unordered_list(day_items)
-        summary = bold(_day_header_rich(day_header))
-        open_day = len(day_items) < _INVITATIONS_DETAILS_MIN
-        if len(day_items) >= 2:
-            sections.append(details_block(summary, body, open=open_day))
-        else:
-            sections.append(paragraph(summary))
-            sections.append(body)
-
     for idx, ev in enumerate(events):
+        if idx:
+            sections.append(divider())
+        sections.append(paragraph(bold(escape_rich(str(ev.get("summary") or "—")))))
         day = event_local_start_date(ev, tz)
-        if day is not None and day != last_day:
-            flush_day()
-            day_items = []
-            day_header = format_upcoming_day_header(day, reference_date)
-            last_day = day
-        marker = event_index_marker(idx)
-        title = bold(escape_rich(str(ev.get("summary") or "—")))
         when = _time_range_rich(ev, tz)
-        day_items.append(f"{marker} {when} — {title}")
-    flush_day()
+        if day is not None:
+            when = f"{escape_rich(format_upcoming_day_header(day, reference_date))} · {when}"
+        sections.append(paragraph(when))
+        if ev.get("invitation_series"):
+            sections.append(paragraph(escape_rich(INVITATIONS_SERIES_LABEL)))
+        token = event_callback_token(str(ev.get("url") or ""))
+        sections.append(callback_button(INVITATIONS_PICK_LABEL, f"{CB_INV_PICK_PREFIX}{token}"))
     return sections
 
 
@@ -188,8 +177,6 @@ def invitations_list_rich_html(
     truncated: bool,
 ) -> str:
     blocks: list[str] = [
-        paragraph(f"📨 {bold(escape_rich(preview_title))}"),
-        paragraph(f"🗓 {escape_rich(preview_when)}"),
         paragraph(INVITATIONS_INTRO_HTML),
     ]
     blocks.extend(_invitation_items_rich(body_events, tz, reference_date))
