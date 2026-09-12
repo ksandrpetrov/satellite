@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, tzinfo
 from typing import Any, cast
 
 from .calendar.callback_tokens import event_callback_token
-from .calendar.event_token_cache import get_event_token_cache
+from .calendar.event_token_cache import EventTokenCache
 from .calendar.events import (
     collect_pending_invitations,
     event_local_start_date,
@@ -139,6 +139,7 @@ def load_pending_invitations_screen(
     calendar_service: UserCalendarService,
     user_id: int,
     *,
+    event_tokens: EventTokenCache,
     tz: tzinfo,
     now: datetime | None = None,
     from_settings_hub: bool = False,
@@ -159,7 +160,7 @@ def load_pending_invitations_screen(
         truncated=truncated,
         from_settings_hub=from_settings_hub,
     )
-    get_event_token_cache().register_invitations_screen(
+    event_tokens.register_invitations_screen(
         user_id,
         pending=pending,
         all_events=events,

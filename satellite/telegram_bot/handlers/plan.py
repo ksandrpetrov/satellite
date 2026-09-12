@@ -21,13 +21,10 @@ from ...messages_ru import (
 )
 from ...plan_service import PlanTextBundle
 from ..visual import is_private_chat, pick_plan_message_effect
-from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingMessage, PlanMode
 from .delivery import open_streaming_reply, send
 
 log = logging.getLogger(__name__)
-
-_plan_run_guard = ActionGuard(cooldown_sec=0.0)
 
 
 def _plan_action_key(mode: PlanMode) -> str:
@@ -40,7 +37,7 @@ def handle_plan(ctx: HandlerContext, msg: IncomingMessage, mode: PlanMode) -> No
         return
 
     action = _plan_action_key(mode)
-    if not _plan_run_guard.try_acquire(msg.chat_id, action):
+    if not ctx.runtime.plan.try_acquire(msg.chat_id, action):
         log.info(
             "Plan run skipped (build in progress): user_id=%s mode=%s",
             msg.user_id,
@@ -89,7 +86,7 @@ def handle_plan(ctx: HandlerContext, msg: IncomingMessage, mode: PlanMode) -> No
             msg.update_id,
         )
     finally:
-        _plan_run_guard.release(msg.chat_id, action, sent=sent)
+        ctx.runtime.plan.release(msg.chat_id, action, sent=sent)
 
 
 def build_plan_bundle_for_user(

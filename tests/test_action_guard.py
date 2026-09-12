@@ -38,13 +38,15 @@ def test_release_with_sent_starts_cooldown():
     assert guard.try_acquire(1, "plan:today") is False
 
 
-def test_cooldown_expires():
+def test_cooldown_expires(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(
+        "satellite.telegram_bot.handlers.action_guard.time.monotonic", lambda: now[0]
+    )
     guard = ActionGuard(cooldown_sec=0.01)
     assert guard.try_acquire(1, "plan:today") is True
     guard.release(1, "plan:today", sent=True)
-    import time
-
-    time.sleep(0.02)
+    now[0] = 0.02
     assert guard.try_acquire(1, "plan:today") is True
 
 
@@ -53,11 +55,3 @@ def test_different_keys_independent():
     assert guard.try_acquire(1, "plan:today") is True
     assert guard.try_acquire(1, "upcoming") is True
     assert guard.try_acquire(2, "plan:today") is True
-
-
-def test_reset_clears_state():
-    guard = ActionGuard(cooldown_sec=60.0)
-    assert guard.try_acquire(1, "plan:today") is True
-    guard.release(1, "plan:today", sent=True)
-    guard.reset()
-    assert guard.try_acquire(1, "plan:today") is True

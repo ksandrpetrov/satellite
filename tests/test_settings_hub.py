@@ -47,6 +47,7 @@ from satellite.telegram_bot.handlers import (
     handle_message,
 )
 from satellite.telegram_bot.handlers.digest_state import DigestStateStore
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.testing.delivery_helpers import (
     callback_edit_html,
     callback_edit_markup,
@@ -70,6 +71,7 @@ def _ctx(tmp_path: Path, *, has_calendar: bool = True) -> MagicMock:
     state = DigestStateStore()
     record = _approved_user(has_calendar=has_calendar)
     ctx = MagicMock()
+    ctx.runtime = HandlerRuntime()
     ctx.users = MagicMock()
     ctx.users.get = MagicMock(return_value=record)
     ctx.admin = MagicMock()

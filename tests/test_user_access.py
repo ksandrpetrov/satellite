@@ -31,6 +31,7 @@ from satellite.telegram_bot.handlers.context import (
     IncomingCallback,
     IncomingMessage,
 )
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.testing.delivery_helpers import final_message_html
 from satellite.users import (
     ACCESS_REQUEST_PENDING,
@@ -54,6 +55,7 @@ def users(tmp_path: Path) -> UserStore:
 
 def _ctx(users: UserStore) -> MagicMock:
     ctx = MagicMock(spec=HandlerContext)
+    ctx.runtime = HandlerRuntime()
     ctx.users = users
     ctx.admin = AdminConfig(telegram_ids=(ADMIN_ID,))
     ctx.webapp = MagicMock()

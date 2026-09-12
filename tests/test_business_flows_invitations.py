@@ -23,6 +23,7 @@ from satellite.messages_ru import (
     INVITATIONS_FETCH_STATUS,
 )
 from satellite.telegram_bot.handlers import handle_callback_query, handle_message
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.users import USER_STATUS_APPROVED
 
 from .conftest import (
@@ -63,6 +64,7 @@ def _ctx(*, events: list[dict] | None = None, raise_on_list: Exception | None = 
     record.status = USER_STATUS_APPROVED
     record.has_calendar = True
     ctx = MagicMock()
+    ctx.runtime = HandlerRuntime()
     ctx.users = MagicMock()
     ctx.users.get = MagicMock(return_value=record)
     ctx.tz = TZ

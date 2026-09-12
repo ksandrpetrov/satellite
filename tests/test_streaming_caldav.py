@@ -4,21 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from satellite.calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from satellite.messages_ru import ERR_CALDAV_UNAVAILABLE_TEXT, INVITATIONS_BUSY_TEXT
-from satellite.telegram_bot.handlers.calendar_invitations import _invitations_open_guard
 from satellite.telegram_bot.handlers.context import IncomingMessage
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.telegram_bot.handlers.streaming_caldav import (
     StreamingCaldavResult,
     run_streaming_caldav_message,
 )
-
-
-@pytest.fixture(autouse=True)
-def _reset_guard() -> None:
-    _invitations_open_guard.reset()
 
 
 def _msg(update_id: int = 1) -> IncomingMessage:
@@ -34,6 +27,7 @@ def _msg(update_id: int = 1) -> IncomingMessage:
 
 def _ctx() -> MagicMock:
     ctx = MagicMock()
+    ctx.runtime = HandlerRuntime()
     stream = MagicMock()
     stream.push_status = MagicMock()
     stream.finish = MagicMock()
@@ -50,11 +44,11 @@ def test_streaming_caldav_guard_busy() -> None:
         ) as open_stream,
         patch("satellite.telegram_bot.handlers.streaming_caldav.send") as send,
     ):
-        assert _invitations_open_guard.try_acquire(100, "invitations:open")
+        assert ctx.runtime.invitations_open.try_acquire(100, "invitations:open")
         result = run_streaming_caldav_message(
             ctx,
             _msg(),
-            guard=_invitations_open_guard,
+            guard=ctx.runtime.invitations_open,
             action_key="invitations:open",
             busy_text=INVITATIONS_BUSY_TEXT,
             status_text="loading",
@@ -79,7 +73,7 @@ def test_streaming_caldav_calendar_error_finishes_safe_text() -> None:
         result = run_streaming_caldav_message(
             ctx,
             _msg(),
-            guard=_invitations_open_guard,
+            guard=ctx.runtime.invitations_open,
             action_key="invitations:open",
             busy_text=INVITATIONS_BUSY_TEXT,
             status_text="loading",
@@ -105,11 +99,11 @@ def test_streaming_caldav_provider_error_releases_guard() -> None:
         run_streaming_caldav_message(
             ctx,
             _msg(update_id=2),
-            guard=_invitations_open_guard,
+            guard=ctx.runtime.invitations_open,
             action_key="invitations:open",
             busy_text=INVITATIONS_BUSY_TEXT,
             status_text="loading",
             fetch_fn=_fail,
             log_label="Test",
         )
-    assert _invitations_open_guard.try_acquire(100, "invitations:open")
+    assert ctx.runtime.invitations_open.try_acquire(100, "invitations:open")

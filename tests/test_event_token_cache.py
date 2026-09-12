@@ -9,7 +9,6 @@ from satellite.calendar.callback_tokens import event_callback_token
 from satellite.calendar.event_token_cache import (
     EventTokenCache,
     apply_user_partstat_to_event,
-    reset_event_token_cache,
 )
 
 TZ = ZoneInfo("Europe/Moscow")
@@ -26,10 +25,6 @@ def _ev(*, url: str = "https://cal/e/1.ics", partstat: str = "NEEDS-ACTION") -> 
         "dtend": "2026-05-22T15:00:00+03:00",
         "attendees": [f"mailto:{LOGIN};PARTSTAT={partstat}"],
     }
-
-
-def setup_function() -> None:
-    reset_event_token_cache()
 
 
 def test_register_and_lookup_invitations_token() -> None:
@@ -114,3 +109,54 @@ def test_token_expires_after_ttl() -> None:
         truncated=False,
     )
     assert cache.lookup(USER_ID, token) is None
+
+
+def test_concurrent_responses_do_not_restore_removed_invitation(monkeypatch) -> None:
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    import satellite.calendar.event_token_cache as module
+
+    cache = EventTokenCache()
+    events = [_ev(url=f"https://cal/e/{i}.ics") for i in (1, 2)]
+    tokens = [event_callback_token(event["url"]) for event in events]
+    cache.register_invitations_screen(
+        USER_ID,
+        pending=events,
+        all_events=events,
+        login=LOGIN,
+        moment=datetime(2026, 5, 22, 10, 0, tzinfo=TZ),
+        truncated=False,
+    )
+    first_read = threading.Event()
+    release_first = threading.Event()
+    second_started = threading.Event()
+    second_finished = threading.Event()
+    original_token = module.event_callback_token
+
+    def paused_token(url):
+        if not first_read.is_set():
+            first_read.set()
+            assert release_first.wait(timeout=3)
+        return original_token(url)
+
+    monkeypatch.setattr(module, "event_callback_token", paused_token)
+
+    def second_response():
+        second_started.set()
+        result = cache.remove_invitations_pending(USER_ID, tokens[1])
+        second_finished.set()
+        return result
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(cache.remove_invitations_pending, USER_ID, tokens[0])
+        try:
+            assert first_read.wait(timeout=3)
+            second = pool.submit(second_response)
+            assert second_started.wait(timeout=3)
+            assert not second_finished.wait(timeout=0.1)
+        finally:
+            release_first.set()
+        first.result(timeout=3)
+        second.result(timeout=3)
+    assert cache.get_invitations_snapshot(USER_ID).pending == []

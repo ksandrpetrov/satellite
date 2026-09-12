@@ -77,7 +77,7 @@ def handle_digest_time_input(ctx: HandlerContext, msg: IncomingMessage) -> None:
     except SubscriptionStorePersistenceError:
         log.exception(
             "Failed to persist %s from text input: chat_id=%s user_id=%s",
-            bindings.time_field,
+            bindings.kind,
             msg.chat_id,
             msg.user_id,
         )
@@ -86,7 +86,7 @@ def handle_digest_time_input(ctx: HandlerContext, msg: IncomingMessage) -> None:
     ctx.digest_state.clear(msg.chat_id)
     log.info(
         "Updated %s: chat_id=%s username=%s -> %s",
-        bindings.time_field,
+        bindings.kind,
         msg.chat_id,
         username,
         time_value(updated, bindings),
@@ -118,7 +118,7 @@ def handle_callback_toggle(
     notice = bindings.toggle_notice(enabled=enabled_value(updated, bindings))
     log.info(
         "Toggle %s: chat_id=%s username=%s -> %s",
-        bindings.enabled_field,
+        bindings.kind,
         cb.chat_id,
         username,
         enabled_value(updated, bindings),
@@ -190,7 +190,7 @@ def handle_callback_set_days(
     changed = days_value(before, bindings) != days_value(updated, bindings)
     log.info(
         "Set %s: chat_id=%s username=%s -> %s (changed=%s)",
-        bindings.days_field,
+        bindings.kind,
         cb.chat_id,
         username,
         days_value(updated, bindings),
@@ -236,7 +236,7 @@ def handle_pending_digest_day_toggle(
     )
     log.info(
         "Toggle %s weekday=%s: chat_id=%s username=%s -> %s",
-        bindings.days_field,
+        bindings.kind,
         weekday,
         cb.chat_id,
         username,

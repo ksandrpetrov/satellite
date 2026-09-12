@@ -16,13 +16,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from ...calendar.callback_tokens import event_callback_token
-from ...calendar.event_token_cache import CachedEventRef, get_event_token_cache
+from ...calendar.event_token_cache import CachedEventRef
 from ...calendar.providers.base import (
     CalendarEventRef,
     CalendarNotConnectedError,
     CalendarProviderError,
 )
-from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback
 from .delivery import ack_callback_with_loading, safe_answer_callback
 
@@ -32,8 +31,6 @@ log = logging.getLogger(__name__)
 # ждёт chat lock, потом делает повторный CalDAV PUT и шлёт повторный toast +
 # эффект. Guard блокирует повтор пока CalDAV ещё идёт И ~5 с после успеха
 # (отдельный ключ на каждое событие — другой токен значит другая встреча).
-_PARTSTAT_RESPOND_COOLDOWN_SEC = 5.0
-_partstat_respond_guard = ActionGuard(cooldown_sec=_PARTSTAT_RESPOND_COOLDOWN_SEC)
 
 PARTSTAT_BY_CODE: Mapping[str, str] = {
     "a": "ACCEPTED",
@@ -81,7 +78,7 @@ def _resolve_event_ref(
     fetch_events: Callable[[HandlerContext, int], list],
 ) -> tuple[CachedEventRef | None, list | None]:
     """URL события из token-cache или fallback на полный CalDAV-лист."""
-    cache = get_event_token_cache()
+    cache = ctx.runtime.event_tokens
     cached = cache.lookup(user_id, token)
     if cached is not None:
         return cached, None
@@ -143,7 +140,7 @@ def respond_partstat(
         return
     token, code, partstat = parsed
     action_key = f"{flow.prefix}{token}"
-    if not _partstat_respond_guard.try_acquire(cb.chat_id, action_key):
+    if not ctx.runtime.partstat_respond.try_acquire(cb.chat_id, action_key):
         # Дубль того же ответа на ту же встречу: молча ack-аем callback,
         # чтобы Telegram-кнопка не «вращалась», но никаких send/effect/toast.
         safe_answer_callback(ctx, cb)
@@ -152,7 +149,7 @@ def respond_partstat(
     try:
         fallback_toast = next(iter(flow.toast_by_code.values()))
         toast = flow.toast_by_code.get(code, fallback_toast)
-        cache = get_event_token_cache()
+        cache = ctx.runtime.event_tokens
         cached = cache.lookup(cb.user_id, token)
         if cached is None and flow.loading_status_html is not None:
             ack_callback_with_loading(
@@ -196,4 +193,4 @@ def respond_partstat(
         flow.optimistic_refresh_view(ctx, cb, token, partstat, fallback_events)
         sent = True
     finally:
-        _partstat_respond_guard.release(cb.chat_id, action_key, sent=sent)
+        ctx.runtime.partstat_respond.release(cb.chat_id, action_key, sent=sent)

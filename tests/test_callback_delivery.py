@@ -9,6 +9,7 @@ from satellite.telegram_bot.handlers.delivery import (
     ack_callback_with_loading,
     respond_callback_nav,
 )
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.telegram_bot.presenters.bundle import ScreenBundle
 
 from .conftest import make_fake_telegram
@@ -16,6 +17,7 @@ from .conftest import make_fake_telegram
 
 def _ctx() -> MagicMock:
     ctx = MagicMock()
+    ctx.runtime = HandlerRuntime()
     ctx.telegram = make_fake_telegram()
     return ctx
 

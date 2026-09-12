@@ -57,6 +57,7 @@ from satellite.telegram_bot.handlers.routing import (
     SubscriptionCommand,
     UpcomingCommand,
 )
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.testing.delivery_helpers import (
     final_message_html,
     final_reply_markup,
@@ -70,6 +71,7 @@ def _access_ctx(*, approved: bool = True, has_calendar: bool = True) -> MagicMoc
     record.status = USER_STATUS_APPROVED if approved else USER_STATUS_PENDING
     record.has_calendar = has_calendar
     ctx = MagicMock(spec=HandlerContext)
+    ctx.runtime = HandlerRuntime()
     ctx.users = MagicMock()
     ctx.users.get = MagicMock(return_value=record if approved else record)
     ctx.users.upsert_from_telegram = MagicMock(return_value=record)

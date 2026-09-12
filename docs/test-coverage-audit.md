@@ -75,7 +75,7 @@
 |---|---|---|---|---|
 | Все алиасы распознаются | [handlers/routing.py](../satellite/telegram_bot/handlers/routing.py) | `test_parse_command_mode_*`, частичный parametrize в `test_recognize_message_covers_dispatch_commands` | Не было параметризации по полному списку из telegram-ux.md | [test_business_routes_contract.py](../tests/test_business_routes_contract.py) *(new)* |
 | Команда вызывает `PlanBuilder.build_text` на корректную дату | [plan_service.py](../satellite/plan_service.py), [handlers/plan.py](../satellite/telegram_bot/handlers/plan.py) | `test_long_menu_commands_invoke_correct_day_offset`, `test_short_aliases_still_work_after_migration` | OK | без изменений |
-| ActionGuard 30 с блокирует повтор плана | [handlers/plan.py::_plan_run_guard](../satellite/telegram_bot/handlers/plan.py) | `test_plan_dedup_blocks_second_call_within_cooldown` | Нет теста, что guard сбрасывается после исключения CalDAV (риск: одна ошибка → 30 c глухой блокировки) | [test_business_flows_plan.py](../tests/test_business_flows_plan.py) *(new)* |
+| ActionGuard блокирует одновременный запуск плана; после завершения повтор разрешён | `HandlerContext.runtime.plan` | `test_plan_no_post_success_cooldown_allows_immediate_retry` | Проверка освобождения guard после исключения CalDAV | [test_business_flows_plan.py](../tests/test_business_flows_plan.py) *(new)* |
 | Streaming reply (draft → finish), legacy fallback | `streaming_delivery.py`, `handlers/delivery.py` | `test_plan_uses_send_message_draft_when_supported`, `test_plan_legacy_*`, `test_plan_replaces_loading_with_caldav_error_text` | OK | без изменений |
 | Pending invitations не считаются занятостью | `seagull/render.py`, `calendar/events/_partstat.py` | `test_digest_marks_pending_*` в `test_seagull_digest.py` | Нет интеграционного теста через `PlanBuilder.build_text` со смоктнутым CalDAV | [test_business_flows_plan.py](../tests/test_business_flows_plan.py) *(new)* |
 | `HIDE_ALL_DAY_EVENTS=true` скрывает all-day | `calendar/events/_filters.py` | `test_filter_events_for_user_removes_declined_lunch_allday` | Нет регрессии на флаг с фронтального хендлера | покрыто косвенно `test_calendar_stats` |
@@ -88,7 +88,7 @@
 | 7-дневный горизонт | `calendar_list.py` | косвенно | Не было прямой проверки `start_date`/`end_date` в kwargs | [test_business_flows_upcoming.py](../tests/test_business_flows_upcoming.py) *(new)* |
 | Лимит 30 событий, нумерация emoji | `calendar/events/_collectors.py`, `_filters.py` | `test_format_upcoming_events_lines_skips_cancelled_and_respects_limit` | OK | без изменений |
 | Пустой результат + CalDAV error | `handle_upcoming_events` | – | Нет покрытия | [test_business_flows_upcoming.py](../tests/test_business_flows_upcoming.py) *(new)* |
-| 15 с cooldown ActionGuard | `_upcoming_guard` | – | Нет теста | [test_business_flows_upcoming.py](../tests/test_business_flows_upcoming.py) *(new)* |
+| 15 с cooldown ActionGuard | `HandlerContext.runtime.upcoming` | – | Нет теста | [test_business_flows_upcoming.py](../tests/test_business_flows_upcoming.py) *(new)* |
 
 ## 5. `/invitations`
 
@@ -262,3 +262,8 @@
 
 **Далее:** [testing.md](testing.md) · [telegram-ux.md](telegram-ux.md) ·
 [refactor-log.md](refactor-log.md)
+
+## Переработка 2026-09-12
+
+Актуальные замеры, новые регрессии и обоснование удаления тестов —
+[code-quality-audit-2026-09-12.md](code-quality-audit-2026-09-12.md).

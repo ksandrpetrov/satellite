@@ -10,7 +10,6 @@ import logging
 from datetime import datetime
 
 from ...calendar.callback_tokens import event_callback_token
-from ...calendar.event_token_cache import get_event_token_cache
 from ...calendar.providers.base import (
     CalendarNotConnectedError,
     CalendarProviderError,
@@ -36,7 +35,6 @@ from ...messages_ru import (
 )
 from ..visual import pick_invitations_effect
 from .access import ensure_calendar_connected
-from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
     ack_callback_with_loading,
@@ -66,14 +64,14 @@ _INVITATIONS_OPEN_ACTION = "invitations:open"
 _INVITATIONS_REFRESH_ACTION = "invitations:refresh"
 
 # Двойной /invitations или refresh пока CalDAV ещё идёт — два одинаковых экрана.
-_invitations_open_guard = ActionGuard(cooldown_sec=10.0)
-_invitations_refresh_guard = ActionGuard(cooldown_sec=10.0)
 
 
-def _invitations_from_settings_hub(user_id: int, *, explicit: bool | None = None) -> bool:
+def _invitations_from_settings_hub(
+    ctx: HandlerContext, user_id: int, *, explicit: bool | None = None
+) -> bool:
     if explicit is not None:
         return explicit
-    snapshot = get_event_token_cache().get_invitations_snapshot(user_id)
+    snapshot = ctx.runtime.event_tokens.get_invitations_snapshot(user_id)
     return bool(snapshot and snapshot.from_settings_hub)
 
 
@@ -83,12 +81,13 @@ def _load_screen(
     *,
     from_settings_hub: bool | None = None,
 ) -> tuple[str, str, dict]:
-    hub = _invitations_from_settings_hub(user_id, explicit=from_settings_hub)
+    hub = _invitations_from_settings_hub(ctx, user_id, explicit=from_settings_hub)
     screen = load_pending_invitations_screen(
         ctx.calendar_service,
         user_id,
         tz=ctx.tz,
         from_settings_hub=hub,
+        event_tokens=ctx.runtime.event_tokens,
     )
     return screen.rich_text, screen.text, screen.keyboard
 
@@ -114,7 +113,7 @@ def handle_open_invitations(ctx: HandlerContext, msg: IncomingMessage) -> None:
     run_streaming_caldav_message(
         ctx,
         msg,
-        guard=_invitations_open_guard,
+        guard=ctx.runtime.invitations_open,
         action_key=_INVITATIONS_OPEN_ACTION,
         busy_text=INVITATIONS_BUSY_TEXT,
         status_text=INVITATIONS_FETCH_STATUS,
@@ -168,8 +167,8 @@ def _optimistic_refresh_invitations(
 ) -> None:
     if cb.user_id is None or cb.chat_id is None:
         return
-    from_hub = _invitations_from_settings_hub(cb.user_id)
-    snapshot = get_event_token_cache().remove_invitations_pending(cb.user_id, token)
+    from_hub = _invitations_from_settings_hub(ctx, cb.user_id)
+    snapshot = ctx.runtime.event_tokens.remove_invitations_pending(cb.user_id, token)
     if snapshot is not None:
         rich_text, fallback_text, keyboard = screen_from_pending(
             snapshot.pending,
@@ -263,7 +262,7 @@ def route_invitations_callback(ctx: HandlerContext, cb: IncomingCallback) -> boo
     if data == CB_INV_REFRESH:
         if cb.chat_id is None:
             return True
-        if not _invitations_refresh_guard.try_acquire(cb.chat_id, _INVITATIONS_REFRESH_ACTION):
+        if not ctx.runtime.invitations_refresh.try_acquire(cb.chat_id, _INVITATIONS_REFRESH_ACTION):
             safe_answer_callback(ctx, cb, text=INVITATIONS_BUSY_TEXT)
             return True
         sent = False
@@ -271,7 +270,9 @@ def route_invitations_callback(ctx: HandlerContext, cb: IncomingCallback) -> boo
             _edit_invitations_screen(ctx, cb, show_loading=True)
             sent = True
         finally:
-            _invitations_refresh_guard.release(cb.chat_id, _INVITATIONS_REFRESH_ACTION, sent=sent)
+            ctx.runtime.invitations_refresh.release(
+                cb.chat_id, _INVITATIONS_REFRESH_ACTION, sent=sent
+            )
         return True
     if data.startswith(CB_INV_RESPOND_PREFIX):
         respond_partstat(ctx, cb, data, _FLOW)

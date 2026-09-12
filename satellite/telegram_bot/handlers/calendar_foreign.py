@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from threading import Lock
 
 from ...calendar.events import format_single_day_events_lines
 from ...calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
@@ -44,36 +42,6 @@ from .delivery import ack_callback_with_loading, edit_callback_message, safe_ans
 
 log = logging.getLogger(__name__)
 
-_FOREIGN_LIST_TTL_SEC = 60.0
-_foreign_list_cache: dict[int, tuple[tuple, float]] = {}
-_foreign_list_lock = Lock()
-
-
-def _put_foreign_list_cache(user_id: int, entries: tuple) -> None:
-    with _foreign_list_lock:
-        _foreign_list_cache[user_id] = (entries, time.monotonic())
-
-
-def _get_foreign_list_cache(user_id: int) -> list | None:
-    with _foreign_list_lock:
-        stored = _foreign_list_cache.get(user_id)
-    if stored is None:
-        return None
-    entries, cached_at = stored
-    if (time.monotonic() - cached_at) >= _FOREIGN_LIST_TTL_SEC:
-        with _foreign_list_lock:
-            _foreign_list_cache.pop(user_id, None)
-        return None
-    return list(entries)
-
-
-def clear_foreign_list_cache(user_id: int | None = None) -> None:
-    with _foreign_list_lock:
-        if user_id is None:
-            _foreign_list_cache.clear()
-        else:
-            _foreign_list_cache.pop(user_id, None)
-
 
 @dataclass(frozen=True)
 class _ForeignResult:
@@ -108,12 +76,12 @@ def _foreign_calendars_cached(
     prefer_cache: bool = False,
 ) -> _ForeignResult:
     if prefer_cache:
-        cached = _get_foreign_list_cache(user_id)
+        cached = ctx.runtime.foreign_lists.get(user_id)
         if cached is not None:
             return _ForeignResult(status=CalendarListStatus.OK, entries=tuple(cached))
     result = _foreign_calendars(ctx, user_id)
     if result.ok:
-        _put_foreign_list_cache(user_id, result.entries)
+        ctx.runtime.foreign_lists.put(user_id, result.entries)
     return result
 
 

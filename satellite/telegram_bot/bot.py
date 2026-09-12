@@ -30,6 +30,7 @@ from .concurrency import ChatLockManager
 from .handlers import HandlerContext
 from .handlers.calendar_state import CalendarStateStore
 from .handlers.digest_state import DigestStateStore
+from .handlers.runtime import HandlerRuntime
 from .offset_store import OffsetStore
 from .offset_tracker import OffsetTracker
 from .startup_checks import (
@@ -82,6 +83,7 @@ class TelegramBot:
             WeatherForecastClient() if settings.weather.enabled else None
         )
         self._chat_locks = ChatLockManager()
+        self._handler_runtime = HandlerRuntime()
         self._digest_state = DigestStateStore()
         self._calendar_state = CalendarStateStore()
         self._executor = ThreadPoolExecutor(
@@ -114,6 +116,7 @@ class TelegramBot:
             weather_client=self._weather_client,
         )
         self._scheduler = DigestScheduler(
+            event_tokens=self._handler_runtime.event_tokens,
             plan_config=settings.plan,
             tz=self._tz,
             subscriptions=self._subscriptions,
@@ -219,6 +222,7 @@ class TelegramBot:
 
     def _build_handler_context(self) -> HandlerContext:
         return HandlerContext(
+            runtime=self._handler_runtime,
             telegram=self._telegram,
             calendar_service=self._calendar_service,
             users=self._users,

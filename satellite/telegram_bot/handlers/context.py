@@ -16,6 +16,7 @@ from ...web.connect_token import ConnectTokenStore
 from ..api import TelegramClient
 from .calendar_state import CalendarStateStore
 from .digest_state import DigestStateStore
+from .runtime import HandlerRuntime
 
 PlanMode = str  # "today" | "tomorrow" | "day_after_tomorrow"
 SubscriptionAction = str  # "subscribe" | "unsubscribe"
@@ -23,6 +24,7 @@ SubscriptionAction = str  # "subscribe" | "unsubscribe"
 
 @dataclass(frozen=True)
 class HandlerContext:
+    runtime: HandlerRuntime
     telegram: TelegramClient
     calendar_service: UserCalendarService
     users: UserStore

@@ -154,3 +154,5 @@ make smoke-prod                   # публичные /healthz, /connect, /api/
 ```
 
 Подробнее: [testing.md](testing.md), [operations.md](operations.md).
+
+Аудит поддерживаемости и регрессий: [2026-09-12](code-quality-audit-2026-09-12.md).

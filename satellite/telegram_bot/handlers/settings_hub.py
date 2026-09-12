@@ -98,27 +98,19 @@ from .settings_actions import toggle_weather_in_plan
 
 log = logging.getLogger(__name__)
 
-# Последнее inline-сообщение хаба настроек per chat (reply «⚙️ Настройки» сворачивает его).
-_hub_message_by_chat: dict[int, int] = {}
 
-
-def reset_settings_hub_message_tracker() -> None:
-    """Сброс трекера между тестами."""
-    _hub_message_by_chat.clear()
-
-
-def _track_hub_message(chat_id: int, message_id: int | None) -> None:
+def _track_hub_message(ctx: HandlerContext, chat_id: int, message_id: int | None) -> None:
     if message_id is not None:
-        _hub_message_by_chat[chat_id] = message_id
+        ctx.runtime.hub_messages[chat_id] = message_id
 
 
-def _untrack_hub_message(chat_id: int) -> None:
-    _hub_message_by_chat.pop(chat_id, None)
+def _untrack_hub_message(ctx: HandlerContext, chat_id: int) -> None:
+    ctx.runtime.hub_messages.pop(chat_id, None)
 
 
 def _close_tracked_hub_message(ctx: HandlerContext, chat_id: int) -> bool:
     """Свернуть хаб по reply-кнопке «Настройки». ``True`` — сообщение обновлено."""
-    message_id = _hub_message_by_chat.get(chat_id)
+    message_id = ctx.runtime.hub_messages.get(chat_id)
     if message_id is None:
         return False
     try:
@@ -128,11 +120,11 @@ def _close_tracked_hub_message(ctx: HandlerContext, chat_id: int) -> bool:
             SETTINGS_HUB_CLOSED_TEXT,
             reply_markup=None,
         )
-        _untrack_hub_message(chat_id)
+        _untrack_hub_message(ctx, chat_id)
         return True
     except TelegramError as exc:
         log.info("Close settings hub via reply ignored: %s", exc)
-        _untrack_hub_message(chat_id)
+        _untrack_hub_message(ctx, chat_id)
         return False
 
 
@@ -227,7 +219,7 @@ def handle_open_settings_hub(ctx: HandlerContext, msg: IncomingMessage) -> None:
     )
     stream.dismiss()
     message_id = sent.get("message_id") if isinstance(sent, dict) else None
-    _track_hub_message(msg.chat_id, message_id)
+    _track_hub_message(ctx, msg.chat_id, message_id)
     log.info("Opened settings hub: chat_id=%s user_id=%s", msg.chat_id, msg.user_id)
 
 
@@ -245,7 +237,7 @@ def show_settings_hub_screen(
         safe_answer_callback(ctx, cb)
     edit_callback_bundle(ctx, cb, bundle)
     if cb.message_id is not None:
-        _track_hub_message(cb.chat_id, cb.message_id)
+        _track_hub_message(ctx, cb.chat_id, cb.message_id)
 
 
 # --- подэкран «Календарь» -------------------------------------------------
@@ -400,7 +392,7 @@ def _close_settings_hub(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if cb.chat_id is not None:
         ctx.digest_state.clear(cb.chat_id)
         ctx.calendar_state.clear(cb.chat_id)
-        _untrack_hub_message(cb.chat_id)
+        _untrack_hub_message(ctx, cb.chat_id)
     respond_callback_rich_nav(
         ctx,
         cb,

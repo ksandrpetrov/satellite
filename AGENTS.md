@@ -140,6 +140,7 @@ satellite/
       partstat_flow.py   # общий PARTSTAT-флоу для invitations и manage
       streaming_caldav.py # ActionGuard → streaming → CalDAV fetch (invitations, manage)
       action_guard.py    # ActionGuard — дедуп долгих действий (plan/upcoming/analytics/…)
+      runtime.py         # HandlerRuntime: guards, кэши и трекер хаба одного бота
       calendar_view.py   # общие хелперы списка календарей (sources/foreign/hub)
       delivery.py, context.py  # context.py: плоский HandlerContext DI + update DTO
       access.py, access_notifications.py, admin.py
@@ -203,7 +204,7 @@ satellite/
 | Ссылки на видеозвонки в плане/дайджесте | [`calendar/conference_url.py`](satellite/calendar/conference_url.py) (извлечение URL), [`seagull/conference.py`](satellite/seagull/conference.py) (подписи кнопок), рендер — [`seagull/render.py`](satellite/seagull/render.py) / [`seagull/render_rich.py`](satellite/seagull/render_rich.py) |
 | Сборку текста плана | [`plan_service.py`](satellite/plan_service.py) — callers передают calendar identity |
 | Недельную аналитику (PNG + подпись) | [`analytics/service.py`](satellite/analytics/service.py), [`calendar/period_stats.py`](satellite/calendar/period_stats.py), [`calendar/event_kinds.py`](satellite/calendar/event_kinds.py), [`handlers/analytics.py`](satellite/telegram_bot/handlers/analytics.py) (`ActionGuard`, cooldown 45 с) |
-| Дедуп повторных команд/кнопок (два PNG, два плана…) | [`handlers/action_guard.py`](satellite/telegram_bot/handlers/action_guard.py) — `try_acquire` / `release`; синглтоны сбрасывает `tests/conftest.py::_reset_action_guards` |
+| Дедуп повторных команд/кнопок (два PNG, два плана…) | [`handlers/action_guard.py`](satellite/telegram_bot/handlers/action_guard.py) — `try_acquire` / `release`; экземпляры в `HandlerContext.runtime`; новый `HandlerRuntime` на каждый бот и тест |
 | Ответ на встречу (PARTSTAT) | [`handlers/partstat_flow.py`](satellite/telegram_bot/handlers/partstat_flow.py) — общий флоу; [`calendar_invitations.py`](satellite/telegram_bot/handlers/calendar_invitations.py) и [`calendar_manage.py`](satellite/telegram_bot/handlers/calendar_manage.py) — тонкие адаптеры |
 | PNG недельной аналитики | [`analytics/render_card.py`](satellite/analytics/render_card.py), примитивы — [`visual_cards/base.py`](satellite/visual_cards/base.py) |
 | JSON-store мутацию (users / subscriptions) | [`json_store.py`](satellite/json_store.py) (`JsonStoreBase`), [`users/store.py`](satellite/users/store.py) и [`subscriptions/store.py`](satellite/subscriptions/store.py) (`_upsert_locked`, `DigestSettings.{to,from}_json`); прямой `replace()` не использовать |
@@ -232,7 +233,7 @@ satellite/
 13. **Сбой store commit** — поднимает `UserStorePersistenceError` / `SubscriptionStorePersistenceError`; caller ловит на границе и показывает безопасный текст. Load-ошибки ловятся только startup boundary.
 14. **Перед коммитом** — `make check` (lock-check + ruff lint + `ruff format --check` + mypy + py_compile + pytest); тот же набор, что в CI. Стиль/форматирование — только [`ruff`](pyproject.toml) (lint + format); blackd/isort не используем. Поведение при падении тестов — см. раздел **«Тесты и регрессии»** ниже.
 15. **Слои импортов** — домен (`calendar/`, `seagull/`, `weather/`, `analytics/`, `messages_ru/`, `presentation/`, `scheduler.py`, `plan_service.py`, …) не импортирует `telegram_bot`; единственное исключение — `presentation/delivery.py → telegram_bot.api`. Закреплено в [`tests/test_import_layers.py`](tests/test_import_layers.py).
-16. **Зависимости** — прямые пины править только в `requirements.in` / `requirements-dev.in`; generated locks обновлять `make lock` через `uv==0.11.32` и проверять `make lock-check`. Python baseline — 3.11.
+16. **Зависимости** — прямые пины править только в `requirements.in` / `requirements-dev.in`; generated locks обновлять `make lock` через `uv==0.11.32` и проверять `make lock-check`. Python baseline — 3.11. При добавлении зависимости без обновления остальных версий: `make lock LOCK_UPGRADE=`.
 
 ## Тесты и регрессии (для агентов)
 
@@ -339,6 +340,7 @@ python -m mypy satellite                          # make typecheck (блокир
 find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 python -m py_compile  # make compile
 make check                                        # lock-check + lint + format-check + typecheck + compile + test
 make lock-check                                   # локи соответствуют requirements*.in
+make coverage                                     # полный pytest, покрытие строк и ветвей
 make docker-smoke                                 # smoke образа: импорты + /healthz (см. docs/testing.md)
 make smoke-prod                                   # curl публичного /healthz, /connect, /api/… после деплоя
 python telegram_test_command.py                   # make run

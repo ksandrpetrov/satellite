@@ -28,6 +28,7 @@ from enum import Enum, auto
 from zoneinfo import ZoneInfo
 
 from . import scheduler_policy
+from .calendar.event_token_cache import EventTokenCache
 from .calendar.providers.base import CalendarNotConnectedError, CalendarProviderError
 from .calendar.user_calendar_service import UserCalendarService
 from .config import PlanConfig, WeatherConfig
@@ -76,6 +77,7 @@ class DigestScheduler:
         calendar_service: UserCalendarService,
         meeting_exclusions: MeetingExclusionService,
         telegram: TelegramClient,
+        event_tokens: EventTokenCache | None = None,
         stop_event: threading.Event | None = None,
         tick_interval_sec: float = _DEFAULT_TICK_SEC,
         max_parallel_deliveries: int = _DEFAULT_MAX_PARALLEL_DELIVERIES,
@@ -89,6 +91,7 @@ class DigestScheduler:
         self._users = users
         self._calendar_service = calendar_service
         self._meeting_exclusions = meeting_exclusions
+        self._event_tokens = event_tokens if event_tokens is not None else EventTokenCache()
         self._telegram = telegram
         self._plan_builder = PlanBuilder(
             calendar_service=calendar_service,
@@ -398,6 +401,7 @@ class DigestScheduler:
             screen = load_pending_invitations_screen(
                 self._calendar_service,
                 telegram_user_id,
+                event_tokens=self._event_tokens,
                 tz=user_tz,
                 now=now_local,
             )

@@ -20,6 +20,7 @@ import pytest
 from satellite.calendar.stats import NormalizedEvent
 from satellite.calendar.time_utils import parse_hhmm
 from satellite.telegram_bot.handlers.context import IncomingCallback, IncomingMessage
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.testing.delivery_helpers import (
     callback_edit_html,
     callback_edit_markup,
@@ -59,56 +60,6 @@ def make_event(
         is_pending=is_pending,
         is_tentative=is_tentative,
     )
-
-
-# --- ActionGuard reset (autouse) -------------------------------------------
-
-
-@pytest.fixture(autouse=True)
-def _reset_action_guards():
-    """Сбрасывает module-level ``ActionGuard``-синглтоны между тестами.
-
-    Назначение: guard-ы (analytics/plan/upcoming/invitations/manage/partstat)
-    держат cooldown per ``(chat_id, action)``. Без сброса cooldown с прошлого
-    теста ловит повторный вызов команды (``/td`` и т.п.) в текущем тесте, и
-    тот видит 0 ``send`` вместо ожидаемого 1 (с логом
-    ``Plan run skipped (duplicate within cooldown)``).
-
-    Импорты внутри фикстуры — чтобы collect-time не падал, если кто-то
-    переименует/удалит соответствующие модули.
-    """
-    from satellite.calendar.event_token_cache import reset_event_token_cache
-    from satellite.telegram_bot.handlers import analytics as _analytics
-    from satellite.telegram_bot.handlers import calendar_foreign as _foreign
-    from satellite.telegram_bot.handlers import calendar_invitations as _invitations
-    from satellite.telegram_bot.handlers import calendar_list as _upcoming
-    from satellite.telegram_bot.handlers import calendar_manage as _manage
-    from satellite.telegram_bot.handlers import partstat_flow as _partstat
-    from satellite.telegram_bot.handlers import plan as _plan
-    from satellite.telegram_bot.handlers import settings_hub as _settings_hub
-    from satellite.telegram_bot.handlers.calendar_view import clear_calendar_list_cache
-    from satellite.telegram_bot.handlers.meeting_exclusions import (
-        reset_meeting_exclusion_cache,
-    )
-
-    reset_event_token_cache()
-    clear_calendar_list_cache()
-    reset_meeting_exclusion_cache()
-    _foreign.clear_foreign_list_cache()
-
-    for guard in (
-        _analytics._analytics_run_guard,
-        _plan._plan_run_guard,
-        _upcoming._upcoming_guard,
-        _invitations._invitations_open_guard,
-        _invitations._invitations_refresh_guard,
-        _manage._manage_open_guard,
-        _manage._manage_refresh_guard,
-        _partstat._partstat_respond_guard,
-    ):
-        guard.reset()
-    _settings_hub.reset_settings_hub_message_tracker()
-    yield
 
 
 # --- Telegram client mock --------------------------------------------------
@@ -291,6 +242,8 @@ def make_ctx(
     from satellite.config import AdminConfig
 
     ctx = MagicMock()
+
+    ctx.runtime = HandlerRuntime()
     ctx.users = users
     ctx.admin = AdminConfig(telegram_ids=tuple(admin_ids))
     ctx.webapp = MagicMock()

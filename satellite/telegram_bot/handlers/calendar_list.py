@@ -19,7 +19,6 @@ from ...presentation.calendar_lists import (
 )
 from ..visual import is_private_chat, pick_upcoming_message_effect
 from .access import ensure_calendar_connected
-from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingMessage
 from .delivery import open_streaming_reply, send
 
@@ -30,13 +29,12 @@ _UPCOMING_ACTION = "upcoming"
 
 # Двойной /upcoming пока CalDAV ещё идёт даёт два одинаковых списка.
 # Guard ограничивает повтор пока строим И ~15 с после успешной отправки.
-_upcoming_guard = ActionGuard(cooldown_sec=15.0)
 
 
 def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if not ensure_calendar_connected(ctx, msg) or msg.chat_id is None or msg.user_id is None:
         return
-    if not _upcoming_guard.try_acquire(msg.chat_id, _UPCOMING_ACTION):
+    if not ctx.runtime.upcoming.try_acquire(msg.chat_id, _UPCOMING_ACTION):
         log.info("Upcoming skipped (duplicate within cooldown): user_id=%s", msg.user_id)
         send(ctx, msg.chat_id, UPCOMING_BUSY_TEXT)
         return
@@ -92,4 +90,4 @@ def handle_upcoming_events(ctx: HandlerContext, msg: IncomingMessage) -> None:
         )
         sent = True
     finally:
-        _upcoming_guard.release(msg.chat_id, _UPCOMING_ACTION, sent=sent)
+        ctx.runtime.upcoming.release(msg.chat_id, _UPCOMING_ACTION, sent=sent)

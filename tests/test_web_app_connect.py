@@ -10,6 +10,7 @@ import pytest
 
 from satellite.telegram_bot.handlers.calendar_setup import handle_web_app_connect
 from satellite.telegram_bot.handlers.context import IncomingMessage
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.users import USER_STATUS_APPROVED, UserStore
 
 
@@ -28,6 +29,7 @@ def users(tmp_path: Path) -> UserStore:
 
 def _ctx(users: UserStore) -> MagicMock:
     ctx = MagicMock()
+    ctx.runtime = HandlerRuntime()
     ctx.users = users
     ctx.calendar_service = MagicMock()
     ctx.telegram = MagicMock()

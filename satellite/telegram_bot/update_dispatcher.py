@@ -101,8 +101,17 @@ class UpdateDispatcher:
         log.info("Stopping while waiting for update capacity; deferring update_id=%s", update_id)
         return False
 
-    def _complete_and_release(self, _future: Future[None], update_id: int) -> None:
+    def _complete_and_release(self, future: Future[None], update_id: int) -> None:
         try:
+            if future.cancelled():
+                log.info("Cancelled update_id=%s remains uncompleted", update_id)
+                return
+            error = future.exception()
+            if error is not None:
+                log.error(
+                    "Unhandled update failure update_id=%s type=%s", update_id, type(error).__name__
+                )
+                return
             self._offset_tracker.mark_completed(update_id)
         finally:
             self._pending_slots.release()

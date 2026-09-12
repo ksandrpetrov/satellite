@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
 
 from ...messages_ru import (
     CB_DIGEST_BACK,
@@ -67,12 +66,6 @@ log = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class DigestKindBindings:
     kind: DigestKind
-    enabled_field: str
-    days_field: str
-    time_field: str
-    update_enabled_kw: str
-    update_days_kw: str
-    update_time_kw: str
     cb_settings: str
     cb_toggle: str
     cb_days: str
@@ -96,26 +89,28 @@ class DigestKindBindings:
 
 
 def enabled_value(settings: DigestSettings, bindings: DigestKindBindings) -> bool:
-    return bool(getattr(settings, bindings.enabled_field))
+    return (
+        settings.digest_enabled
+        if bindings.kind == DIGEST_KIND_DAILY
+        else settings.pending_digest_enabled
+    )
 
 
 def days_value(settings: DigestSettings, bindings: DigestKindBindings) -> str:
-    return str(getattr(settings, bindings.days_field))
+    return (
+        settings.digest_days if bindings.kind == DIGEST_KIND_DAILY else settings.pending_digest_days
+    )
 
 
 def time_value(settings: DigestSettings, bindings: DigestKindBindings) -> str:
-    return str(getattr(settings, bindings.time_field))
+    return (
+        settings.digest_time if bindings.kind == DIGEST_KIND_DAILY else settings.pending_digest_time
+    )
 
 
 BINDINGS: dict[DigestKind, DigestKindBindings] = {
     DIGEST_KIND_DAILY: DigestKindBindings(
         kind=DIGEST_KIND_DAILY,
-        enabled_field="digest_enabled",
-        days_field="digest_days",
-        time_field="digest_time",
-        update_enabled_kw="digest_enabled",
-        update_days_kw="digest_days",
-        update_time_kw="digest_time",
         cb_settings=CB_DIGEST_SETTINGS,
         cb_toggle=CB_DIGEST_TOGGLE,
         cb_days=CB_DIGEST_DAYS,
@@ -139,12 +134,6 @@ BINDINGS: dict[DigestKind, DigestKindBindings] = {
     ),
     DIGEST_KIND_PENDING: DigestKindBindings(
         kind=DIGEST_KIND_PENDING,
-        enabled_field="pending_digest_enabled",
-        days_field="pending_digest_days",
-        time_field="pending_digest_time",
-        update_enabled_kw="pending_digest_enabled",
-        update_days_kw="pending_digest_days",
-        update_time_kw="pending_digest_time",
         cb_settings=CB_PENDING_DIGEST_SETTINGS,
         cb_toggle=CB_PENDING_DIGEST_TOGGLE,
         cb_days=CB_PENDING_DIGEST_DAYS,
@@ -220,18 +209,24 @@ def update_settings(
     *,
     telegram_user_id: int,
     bindings: DigestKindBindings,
-    **kwargs: Any,
+    enabled: bool | None = None,
+    days: str | None = None,
+    time: str | None = None,
 ) -> DigestSettings:
-    patch: dict[str, Any] = {}
-    if "enabled" in kwargs:
-        patch[bindings.update_enabled_kw] = kwargs["enabled"]
-    if "days" in kwargs:
-        patch[bindings.update_days_kw] = kwargs["days"]
-    if "time" in kwargs:
-        patch[bindings.update_time_kw] = kwargs["time"]
+    if bindings.kind == DIGEST_KIND_DAILY:
+        return ctx.subscriptions.update_settings(
+            chat_id,
+            username,
+            telegram_user_id=telegram_user_id,
+            digest_enabled=enabled,
+            digest_days=days,
+            digest_time=time,
+        )
     return ctx.subscriptions.update_settings(
         chat_id,
         username,
         telegram_user_id=telegram_user_id,
-        **patch,
+        pending_digest_enabled=enabled,
+        pending_digest_days=days,
+        pending_digest_time=time,
     )

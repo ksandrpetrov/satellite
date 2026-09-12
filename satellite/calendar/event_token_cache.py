@@ -12,6 +12,7 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from threading import Lock
 from typing import Any
 
 from .callback_tokens import event_callback_token
@@ -94,15 +95,11 @@ def _replace_partstat_in_line(line: str, partstat: str) -> str:
 
 class EventTokenCache:
     def __init__(self, *, ttl_sec: float = _TOKEN_TTL_SEC) -> None:
+        self._lock = Lock()
         self._ttl_sec = ttl_sec
         self._tokens: dict[tuple[int, str], _TokenEntry] = {}
         self._invitations: dict[int, tuple[InvitationsScreenSnapshot, float]] = {}
         self._manage: dict[int, tuple[ManageScreenSnapshot, float]] = {}
-
-    def reset(self) -> None:
-        self._tokens.clear()
-        self._invitations.clear()
-        self._manage.clear()
 
     def register_invitations_screen(
         self,
@@ -115,19 +112,20 @@ class EventTokenCache:
         truncated: bool,
         from_settings_hub: bool = False,
     ) -> None:
-        now = time.monotonic()
-        self._invitations[user_id] = (
-            InvitationsScreenSnapshot(
-                pending=[copy.deepcopy(dict(ev)) for ev in pending],
-                login=login,
-                moment=moment,
-                truncated=truncated,
-                from_settings_hub=from_settings_hub,
-            ),
-            now,
-        )
-        for ev in all_events:
-            self._register_event(user_id, ev, cached_at=now)
+        with self._lock:
+            now = time.monotonic()
+            self._invitations[user_id] = (
+                InvitationsScreenSnapshot(
+                    pending=[copy.deepcopy(dict(ev)) for ev in pending],
+                    login=login,
+                    moment=moment,
+                    truncated=truncated,
+                    from_settings_hub=from_settings_hub,
+                ),
+                now,
+            )
+            for ev in all_events:
+                self._register_event(user_id, ev, cached_at=now)
 
     def register_manage_screen(
         self,
@@ -138,73 +136,80 @@ class EventTokenCache:
         moment: datetime,
         truncated: bool,
     ) -> None:
-        now = time.monotonic()
-        self._manage[user_id] = (
-            ManageScreenSnapshot(
-                events=[copy.deepcopy(dict(ev)) for ev in events],
-                login=login,
-                moment=moment,
-                truncated=truncated,
-            ),
-            now,
-        )
-        for ev in events:
-            self._register_event(user_id, ev, cached_at=now)
+        with self._lock:
+            now = time.monotonic()
+            self._manage[user_id] = (
+                ManageScreenSnapshot(
+                    events=[copy.deepcopy(dict(ev)) for ev in events],
+                    login=login,
+                    moment=moment,
+                    truncated=truncated,
+                ),
+                now,
+            )
+            for ev in events:
+                self._register_event(user_id, ev, cached_at=now)
 
     def lookup(self, user_id: int, token: str) -> CachedEventRef | None:
-        needle = (token or "").strip()
-        if not needle:
-            return None
-        entry = self._tokens.get((user_id, needle))
-        if entry is None:
-            return None
-        if (time.monotonic() - entry.cached_at) >= self._ttl_sec:
-            self._tokens.pop((user_id, needle), None)
-            return None
-        return entry.ref
+        with self._lock:
+            needle = (token or "").strip()
+            if not needle:
+                return None
+            entry = self._tokens.get((user_id, needle))
+            if entry is None:
+                return None
+            if (time.monotonic() - entry.cached_at) >= self._ttl_sec:
+                self._tokens.pop((user_id, needle), None)
+                return None
+            return entry.ref
 
     def get_invitations_snapshot(self, user_id: int) -> InvitationsScreenSnapshot | None:
-        stored = self._invitations.get(user_id)
-        if stored is None:
-            return None
-        snapshot, cached_at = stored
-        if (time.monotonic() - cached_at) >= self._ttl_sec:
-            self._invitations.pop(user_id, None)
-            return None
-        return snapshot
+        with self._lock:
+            stored = self._invitations.get(user_id)
+            if stored is None:
+                return None
+            snapshot, cached_at = stored
+            if (time.monotonic() - cached_at) >= self._ttl_sec:
+                self._invitations.pop(user_id, None)
+                return None
+            return snapshot
 
     def get_manage_snapshot(self, user_id: int) -> ManageScreenSnapshot | None:
-        stored = self._manage.get(user_id)
-        if stored is None:
-            return None
-        snapshot, cached_at = stored
-        if (time.monotonic() - cached_at) >= self._ttl_sec:
-            self._manage.pop(user_id, None)
-            return None
-        return snapshot
+        with self._lock:
+            stored = self._manage.get(user_id)
+            if stored is None:
+                return None
+            snapshot, cached_at = stored
+            if (time.monotonic() - cached_at) >= self._ttl_sec:
+                self._manage.pop(user_id, None)
+                return None
+            return snapshot
 
     def remove_invitations_pending(
         self, user_id: int, token: str
     ) -> InvitationsScreenSnapshot | None:
-        stored = self._invitations.get(user_id)
-        if stored is None:
-            return None
-        snapshot, cached_at = stored
-        if (time.monotonic() - cached_at) >= self._ttl_sec:
-            self._invitations.pop(user_id, None)
-            return None
-        pending = [
-            ev for ev in snapshot.pending if event_callback_token(str(ev.get("url") or "")) != token
-        ]
-        updated = InvitationsScreenSnapshot(
-            pending=pending,
-            login=snapshot.login,
-            moment=snapshot.moment,
-            truncated=snapshot.truncated and len(pending) >= len(snapshot.pending),
-            from_settings_hub=snapshot.from_settings_hub,
-        )
-        self._invitations[user_id] = (updated, cached_at)
-        return updated
+        with self._lock:
+            stored = self._invitations.get(user_id)
+            if stored is None:
+                return None
+            snapshot, cached_at = stored
+            if (time.monotonic() - cached_at) >= self._ttl_sec:
+                self._invitations.pop(user_id, None)
+                return None
+            pending = [
+                ev
+                for ev in snapshot.pending
+                if event_callback_token(str(ev.get("url") or "")) != token
+            ]
+            updated = InvitationsScreenSnapshot(
+                pending=pending,
+                login=snapshot.login,
+                moment=snapshot.moment,
+                truncated=snapshot.truncated and len(pending) >= len(snapshot.pending),
+                from_settings_hub=snapshot.from_settings_hub,
+            )
+            self._invitations[user_id] = (updated, cached_at)
+            return updated
 
     def update_manage_partstat(
         self,
@@ -213,27 +218,28 @@ class EventTokenCache:
         login: str,
         partstat: str,
     ) -> ManageScreenSnapshot | None:
-        stored = self._manage.get(user_id)
-        if stored is None:
-            return None
-        snapshot, cached_at = stored
-        if (time.monotonic() - cached_at) >= self._ttl_sec:
-            self._manage.pop(user_id, None)
-            return None
-        events: list[dict[str, Any]] = []
-        for ev in snapshot.events:
-            if event_callback_token(str(ev.get("url") or "")) == token:
-                events.append(apply_user_partstat_to_event(ev, login, partstat))
-            else:
-                events.append(copy.deepcopy(ev))
-        updated = ManageScreenSnapshot(
-            events=events,
-            login=snapshot.login,
-            moment=snapshot.moment,
-            truncated=snapshot.truncated,
-        )
-        self._manage[user_id] = (updated, cached_at)
-        return updated
+        with self._lock:
+            stored = self._manage.get(user_id)
+            if stored is None:
+                return None
+            snapshot, cached_at = stored
+            if (time.monotonic() - cached_at) >= self._ttl_sec:
+                self._manage.pop(user_id, None)
+                return None
+            events: list[dict[str, Any]] = []
+            for ev in snapshot.events:
+                if event_callback_token(str(ev.get("url") or "")) == token:
+                    events.append(apply_user_partstat_to_event(ev, login, partstat))
+                else:
+                    events.append(copy.deepcopy(ev))
+            updated = ManageScreenSnapshot(
+                events=events,
+                login=snapshot.login,
+                moment=snapshot.moment,
+                truncated=snapshot.truncated,
+            )
+            self._manage[user_id] = (updated, cached_at)
+            return updated
 
     def _register_event(self, user_id: int, event: Event, *, cached_at: float) -> None:
         url = str(event.get("url") or "").strip()
@@ -244,14 +250,3 @@ class EventTokenCache:
             ref=CachedEventRef(url=url, uid=str(event.get("uid") or "")),
             cached_at=cached_at,
         )
-
-
-_cache = EventTokenCache()
-
-
-def get_event_token_cache() -> EventTokenCache:
-    return _cache
-
-
-def reset_event_token_cache() -> None:
-    _cache.reset()

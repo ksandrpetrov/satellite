@@ -57,6 +57,9 @@ files = ["satellite"]
 [[tool.mypy.overrides]]
 module = [
     "satellite.json_store",
+    "satellite.calendar.event_token_cache",
+    "satellite.telegram_bot.handlers.runtime",
+    "satellite.telegram_bot.handlers.action_guard",
     "satellite.users.store",
     "satellite.subscriptions.store",
     "satellite.scheduler",

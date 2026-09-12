@@ -32,6 +32,7 @@ from satellite.telegram_bot.handlers import (
     recognize_message,
 )
 from satellite.telegram_bot.handlers.routing import ManageEventsCommand
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.users import USER_STATUS_APPROVED
 
 from .conftest import (
@@ -187,6 +188,7 @@ def _approved_user(*, has_calendar: bool = True) -> MagicMock:
 def _ctx(*, events: list[dict] | None = None) -> MagicMock:
     record = _approved_user()
     ctx = MagicMock()
+    ctx.runtime = HandlerRuntime()
     ctx.users = MagicMock()
     ctx.users.get = MagicMock(return_value=record)
     ctx.users.upsert_from_telegram = MagicMock(return_value=record)

@@ -176,11 +176,17 @@ telegram_test_command.py
     `ActionGuard` (45 с cooldown) — один прогон на `chat_id` + защита от
     двойного PNG при повторном callback.
   - `action_guard.py` — общий `ActionGuard`: per `(chat_id, action_key)` блокирует
-    параллельный запуск и повтор сразу после успеха. Используют `plan.py` (30 с),
+    параллельный запуск и повтор сразу после успеха. Используют `plan.py` (только одновременный запуск, cooldown 0 с),
     `calendar_list.py` (15 с), `analytics.py` (45 с), `calendar_invitations.py` /
     `calendar_manage.py` (10 с на открытие списка), `partstat_flow.py` (5 с на ответ
     по событию). Дополняет `ChatLockManager` (сериализация по чату), но не заменяет
     `DigestStateStore.claim_callback` (дедуп одного и того же `callback_query_id`).
+  - `runtime.py` — `HandlerRuntime`, создаваемый в `TelegramBot.__init__` и передаваемый
+    всем его контекстам: guards, списки календарей, снимки исключений, трекер хаба.
+    `event_tokens` передаётся также scheduler: кнопки автоматических приглашений
+    используют тот же кэш, что ручные команды. Глобального кэша больше нет.
+    `UserCache` атомарно читает/удаляет истёкшие записи; `EventTokenCache`
+    сериализует регистрацию и изменение снимков между scheduler и workers.
   - `calendar_setup.py` — connect / check / disconnect (Web App; check/disconnect
     также из хаба настроек).
   - `calendar_view.py` — общие хелперы списка CalDAV-календарей (fetch, screen lines).
@@ -193,7 +199,7 @@ telegram_test_command.py
     streaming open + ответы ACCEPTED / DECLINED / TENTATIVE через CalDAV.
   - `calendar_manage.py` — `/manage`, смена PARTSTAT по любой встрече на 7 дней
     (streaming open списка).
-  - `plan.py` — command → plan → streaming reply (`ActionGuard`, 30 с).
+  - `plan.py` — command → plan → streaming reply (`ActionGuard`, без cooldown после завершения).
   - `subscription.py` — subscribe/unsubscribe.
 - `satellite/telegram_bot/api/` — пакет Bot API клиента: `client.py`
   (`TelegramClient`: retries, token sanitizing, общий `_call_with_fallbacks` —

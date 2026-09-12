@@ -76,9 +76,3 @@ class ActionGuard:
                 self._last_success_at[key] = time.monotonic()
             else:
                 self._last_success_at.pop(key, None)
-
-    def reset(self) -> None:
-        """Полный сброс — для изоляции в тестах между прогонами."""
-        with self._lock:
-            self._running.clear()
-            self._last_success_at.clear()

@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import time
-from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from datetime import time as datetime_time
-from threading import Lock
 
 from ...calendar.event_exclusions import normalize_event_title
 from ...calendar.events import (
@@ -62,8 +59,6 @@ log = logging.getLogger(__name__)
 _WINDOW_DAYS = 7
 _PAGE_SIZE = 8
 _MAX_WEEK_TITLES = 200
-_SNAPSHOT_TTL_SEC = 600.0
-_MAX_CACHED_USERS = 128
 
 
 @dataclass(frozen=True)
@@ -82,40 +77,6 @@ class _MeetingExclusionSnapshot:
     saved_outside_week_count: int
     has_overrides: bool
     truncated: bool
-    cached_at: float
-
-
-_snapshot_cache: OrderedDict[int, _MeetingExclusionSnapshot] = OrderedDict()
-_snapshot_lock = Lock()
-
-
-def reset_meeting_exclusion_cache(user_id: int | None = None) -> None:
-    """Сбросить ephemeral token→title cache (production/tests)."""
-    with _snapshot_lock:
-        if user_id is None:
-            _snapshot_cache.clear()
-        else:
-            _snapshot_cache.pop(user_id, None)
-
-
-def _put_snapshot(user_id: int, snapshot: _MeetingExclusionSnapshot) -> None:
-    with _snapshot_lock:
-        _snapshot_cache.pop(user_id, None)
-        _snapshot_cache[user_id] = snapshot
-        while len(_snapshot_cache) > _MAX_CACHED_USERS:
-            _snapshot_cache.popitem(last=False)
-
-
-def _get_snapshot(user_id: int) -> _MeetingExclusionSnapshot | None:
-    with _snapshot_lock:
-        snapshot = _snapshot_cache.get(user_id)
-        if snapshot is None:
-            return None
-        if time.monotonic() - snapshot.cached_at >= _SNAPSHOT_TTL_SEC:
-            _snapshot_cache.pop(user_id, None)
-            return None
-        _snapshot_cache.move_to_end(user_id)
-        return snapshot
 
 
 def _normalized_title(title: str) -> str:
@@ -224,9 +185,8 @@ def _build_snapshot(
         saved_outside_week_count=outside_count,
         has_overrides=bool(overrides),
         truncated=truncated,
-        cached_at=time.monotonic(),
     )
-    _put_snapshot(user_id, snapshot)
+    ctx.runtime.meeting_snapshots.put(user_id, snapshot)
     return snapshot
 
 
@@ -337,7 +297,7 @@ def _snapshot_for_action(
 ) -> tuple[_MeetingExclusionSnapshot | None, str | None, bool]:
     if cb.user_id is None:
         return None, None, False
-    snapshot = _get_snapshot(cb.user_id)
+    snapshot = ctx.runtime.meeting_snapshots.get(cb.user_id)
     if snapshot is not None:
         title = snapshot.token_to_title.get(token)
         if title is not None:
@@ -366,7 +326,7 @@ def _handle_page(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
         page = int(data.removeprefix(MEX_CALLBACK_PAGE_PREFIX))
     except ValueError:
         page = 0
-    snapshot = _get_snapshot(cb.user_id)
+    snapshot = ctx.runtime.meeting_snapshots.get(cb.user_id)
     if snapshot is None:
         ack_callback_with_loading(
             ctx,
@@ -400,7 +360,7 @@ def _handle_clear(ctx: HandlerContext, cb: IncomingCallback) -> None:
         return
     ctx.meeting_exclusions.clear(cb.user_id)
     safe_answer_callback(ctx, cb, text=MEETING_EXCLUSIONS_CLEARED_TOAST)
-    snapshot = _get_snapshot(cb.user_id)
+    snapshot = ctx.runtime.meeting_snapshots.get(cb.user_id)
     if snapshot is None:
         snapshot = _fetch_snapshot(ctx, cb.user_id)
     else:

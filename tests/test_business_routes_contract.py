@@ -69,6 +69,7 @@ from satellite.telegram_bot.handlers.routing import (
     UpcomingCommand,
     recognize_message,
 )
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.users import UserStore
 from satellite.web.connect_token import ConnectTokenStore
 
@@ -259,6 +260,7 @@ def _try_route(routers, ctx, cb) -> bool:
 def _fully_mocked_ctx() -> MagicMock:
     """ctx, в котором ВСЕ методы — MagicMock; не зависим от make_ctx."""
     ctx = MagicMock()
+    ctx.runtime = HandlerRuntime()
     ctx.users = MagicMock()
     ctx.calendar_service = MagicMock()
     ctx.subscriptions = MagicMock()

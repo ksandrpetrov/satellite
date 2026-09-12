@@ -27,6 +27,7 @@ from satellite.messages_ru import (
 )
 from satellite.telegram_bot.api import TelegramError
 from satellite.telegram_bot.handlers import IncomingCallback, handle_callback_query
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.testing.delivery_helpers import final_message_html
 from satellite.users import CALENDAR_CONNECTED, USER_STATUS_APPROVED, UserStore
 
@@ -53,6 +54,7 @@ def _approved_user(tmp_path: Path) -> UserStore:
 def _ctx(tmp_path: Path, *, build_side_effect):
     users = _approved_user(tmp_path)
     ctx = MagicMock()
+    ctx.runtime = HandlerRuntime()
     ctx.users = users
     ctx.admin = MagicMock()
     ctx.admin.is_admin = MagicMock(return_value=False)

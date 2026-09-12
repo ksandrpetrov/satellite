@@ -240,11 +240,11 @@ def test_plan_busy_message_when_build_in_progress(
     ctx = _build_ctx(approved_user_store)
     pb = ctx.plan_builder()
 
-    assert plan_module._plan_run_guard.try_acquire(USER_ID, "plan:today")
+    assert ctx.runtime.plan.try_acquire(USER_ID, "plan:today")
     try:
         handle_message(ctx, make_msg(text="/td", chat_id=USER_ID, user_id=USER_ID, update_id=10))
     finally:
-        plan_module._plan_run_guard.release(USER_ID, "plan:today")
+        ctx.runtime.plan.release(USER_ID, "plan:today")
 
     pb.build_plan_bundle.assert_not_called()
     assert PLAN_BUSY_TEXT in sent_messages_text(ctx.telegram)

@@ -21,7 +21,6 @@ from satellite.messages_ru import (
 from satellite.telegram_bot.handlers import handle_callback_query
 from satellite.telegram_bot.handlers.dispatch import _CALLBACK_ROUTERS
 from satellite.telegram_bot.handlers.meeting_exclusions import (
-    reset_meeting_exclusion_cache,
     route_meeting_exclusions_callback,
 )
 from satellite.testing.delivery_helpers import (
@@ -267,7 +266,7 @@ def test_stale_snapshot_store_failure_replaces_loading_with_safe_error(tmp_path)
         make_callback(data=CB_SETTINGS_MEETING_EXCLUSIONS, user_id=_USER_ID),
     )
     toggle = _button(ctx, callback_prefix=MEX_CALLBACK_TOGGLE_PREFIX)
-    reset_meeting_exclusion_cache(_USER_ID)
+    ctx.runtime.meeting_snapshots.clear(_USER_ID)
     ctx.telegram.answer_callback_query.reset_mock()
     ctx.meeting_exclusions.toggle_title = MagicMock(
         side_effect=UserStorePersistenceError("disk failed")

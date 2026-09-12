@@ -9,10 +9,8 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass, field
 from enum import StrEnum
-from threading import Lock
 
 from ...calendar.providers.base import (
     CalendarListEntry,
@@ -34,38 +32,6 @@ from ..presenters.calendar_screens import calendar_source_toggle_lines
 from .context import HandlerContext
 
 log = logging.getLogger(__name__)
-
-_CALENDAR_LIST_TTL_SEC = 60.0
-_calendar_list_cache: dict[int, tuple[CalendarListResult, float]] = {}
-_calendar_list_lock = Lock()
-
-
-def _put_calendar_list_cache(user_id: int, result: CalendarListResult) -> None:
-    if not result.ok:
-        return
-    with _calendar_list_lock:
-        _calendar_list_cache[user_id] = (result, time.monotonic())
-
-
-def get_calendar_list_cache(user_id: int) -> CalendarListResult | None:
-    with _calendar_list_lock:
-        stored = _calendar_list_cache.get(user_id)
-    if stored is None:
-        return None
-    result, cached_at = stored
-    if (time.monotonic() - cached_at) >= _CALENDAR_LIST_TTL_SEC:
-        with _calendar_list_lock:
-            _calendar_list_cache.pop(user_id, None)
-        return None
-    return result
-
-
-def clear_calendar_list_cache(user_id: int | None = None) -> None:
-    with _calendar_list_lock:
-        if user_id is None:
-            _calendar_list_cache.clear()
-        else:
-            _calendar_list_cache.pop(user_id, None)
 
 
 class CalendarListStatus(StrEnum):
@@ -101,7 +67,7 @@ def fetch_calendars(
     prefer_cache: bool = False,
 ) -> CalendarListResult:
     if prefer_cache:
-        cached = get_calendar_list_cache(user_id)
+        cached = ctx.runtime.calendar_lists.get(user_id)
         if cached is not None:
             return cached
     try:
@@ -116,7 +82,7 @@ def fetch_calendars(
         status=CalendarListStatus.OK,
         calendars=tuple(sort_calendar_entries(calendars)),
     )
-    _put_calendar_list_cache(user_id, result)
+    ctx.runtime.calendar_lists.put(user_id, result)
     return result
 
 

@@ -19,6 +19,7 @@ from satellite.telegram_bot.handlers.calendar_view import (
     build_calendar_sources_screen,
     fetch_calendars,
 )
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.users import (
     USER_STATUS_APPROVED,
     UserStore,
@@ -48,6 +49,7 @@ def users(tmp_path: Path) -> UserStore:
 
 def _ctx(users: UserStore, calendar_service: MagicMock) -> MagicMock:
     ctx = MagicMock()
+    ctx.runtime = HandlerRuntime()
     ctx.users = users
     ctx.calendar_service = calendar_service
     return ctx

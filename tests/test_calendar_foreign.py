@@ -26,7 +26,6 @@ from satellite.messages_ru import (
     button_text_is_foreign_calendars,
 )
 from satellite.telegram_bot.handlers.calendar_foreign import (
-    clear_foreign_list_cache,
     handle_open_foreign_calendars,
     route_foreign_calendars_callback,
 )
@@ -36,6 +35,7 @@ from satellite.telegram_bot.handlers.context import (
     IncomingMessage,
 )
 from satellite.telegram_bot.handlers.routing import is_foreign_calendars_request
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.testing.delivery_helpers import final_message_html
 from satellite.users import CALENDAR_CONNECTED, USER_STATUS_APPROVED, UserStore
 
@@ -122,6 +122,8 @@ def _connected_context(
     users.mark_calendar_status(user_id, status=CALENDAR_CONNECTED)
 
     ctx = MagicMock(spec=HandlerContext)
+
+    ctx.runtime = HandlerRuntime()
     ctx.users = users
     ctx.tz = TZ
     ctx.calendar_service = MagicMock()
@@ -185,7 +187,6 @@ def test_open_foreign_calendars_provider_error_is_safe(users: UserStore) -> None
 
 def test_foreign_back_provider_error_replaces_loading_state(users: UserStore) -> None:
     user_id = 203
-    clear_foreign_list_cache(user_id)
     ctx = _connected_context(
         users,
         user_id=user_id,
@@ -210,7 +211,6 @@ def test_foreign_back_provider_error_replaces_loading_state(users: UserStore) ->
 
 def test_foreign_day_provider_error_uses_safe_caldav_text(users: UserStore) -> None:
     user_id = 204
-    clear_foreign_list_cache(user_id)
     shared_url = "https://cal/shared"
     ctx = _connected_context(
         users,
@@ -265,6 +265,8 @@ def test_foreign_calendars_callback_flow(users: UserStore) -> None:
     users.mark_calendar_status(user_id, status=CALENDAR_CONNECTED)
 
     ctx = MagicMock(spec=HandlerContext)
+
+    ctx.runtime = HandlerRuntime()
     ctx.users = users
     ctx.tz = TZ
     ctx.calendar_service = MagicMock()
@@ -330,6 +332,8 @@ def test_foreign_day_acks_before_caldav(users: UserStore) -> None:
     users.mark_calendar_status(user_id, status=CALENDAR_CONNECTED)
 
     ctx = MagicMock(spec=HandlerContext)
+
+    ctx.runtime = HandlerRuntime()
     ctx.users = users
     ctx.tz = TZ
     ctx.calendar_service = MagicMock()
@@ -389,6 +393,8 @@ def test_foreign_back_acks_before_caldav(users: UserStore) -> None:
     users.mark_calendar_status(user_id, status=CALENDAR_CONNECTED)
 
     ctx = MagicMock(spec=HandlerContext)
+
+    ctx.runtime = HandlerRuntime()
     ctx.users = users
     ctx.tz = TZ
     ctx.calendar_service = MagicMock()

@@ -143,3 +143,47 @@ def test_startup_snapshot_precedes_strict_store_load(tmp_path) -> None:
     telegram_client.assert_not_called()
     webapp_server.assert_not_called()
     scheduler.assert_not_called()
+
+
+def test_bot_contexts_share_runtime_with_scheduler_but_other_bots_are_isolated(tmp_path) -> None:
+    from dataclasses import replace
+
+    from cryptography.fernet import Fernet
+
+    from satellite.config import (
+        AdminConfig,
+        BotConfig,
+        PlanConfig,
+        SecurityConfig,
+        Settings,
+        TelegramConfig,
+        WebAppConfig,
+    )
+
+    settings = Settings(
+        telegram=TelegramConfig(bot_token="test:token"),
+        plan=PlanConfig(),
+        bot=BotConfig(workers=1),
+        security=SecurityConfig(encryption_key=Fernet.generate_key().decode()),
+        admin=AdminConfig(),
+        webapp=WebAppConfig(),
+        project_root=tmp_path / "first",
+    )
+    first = TelegramBot(settings)
+    try:
+        second = TelegramBot(replace(settings, project_root=tmp_path / "second"))
+        try:
+            one = first._build_handler_context()
+            again = first._build_handler_context()
+            other = second._build_handler_context()
+            assert one.runtime is again.runtime
+            assert one.runtime.event_tokens is first._scheduler._event_tokens
+            assert one.runtime is not other.runtime
+            assert one.runtime.event_tokens is not second._scheduler._event_tokens
+            assert one.runtime.plan.try_acquire(1, "plan:today")
+            assert not again.runtime.plan.try_acquire(1, "plan:today")
+            assert other.runtime.plan.try_acquire(1, "plan:today")
+        finally:
+            second.shutdown()
+    finally:
+        first.shutdown()

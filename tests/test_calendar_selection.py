@@ -31,6 +31,7 @@ from satellite.telegram_bot.handlers import (
     handle_message,
 )
 from satellite.telegram_bot.handlers.routing import is_calendar_sources_request
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.testing.delivery_helpers import (
     callback_edit_was_called,
     final_message_html,
@@ -146,6 +147,7 @@ def _approved_user(tmp_path: Path) -> UserStore:
 def _ctx(tmp_path: Path, *, calendars: list[CalendarListEntry] | None):
     users = _approved_user(tmp_path)
     ctx = MagicMock()
+    ctx.runtime = HandlerRuntime()
     ctx.users = users
     ctx.admin = MagicMock()
     ctx.admin.is_admin = MagicMock(return_value=False)

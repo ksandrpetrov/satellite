@@ -10,6 +10,7 @@ import pytest
 
 from satellite.telegram_bot.concurrency import ChatLockManager
 from satellite.telegram_bot.handlers.context import HandlerContext
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 from satellite.telegram_bot.offset_store import OffsetStore
 from satellite.telegram_bot.offset_tracker import OffsetTracker
 from satellite.telegram_bot.update_dispatcher import UpdateDispatcher
@@ -30,6 +31,7 @@ def dispatcher_ctx(tmp_path) -> tuple[UpdateDispatcher, OffsetTracker, MagicMock
         max_pending_updates=2,
     )
     ctx = MagicMock(spec=HandlerContext)
+    ctx.runtime = HandlerRuntime()
     yield disp, tracker, ctx, stop_event
     stop_event.set()
     executor.shutdown(wait=True)
@@ -125,6 +127,7 @@ def test_executor_shutdown_defers_without_advancing_persisted_offset(
         max_pending_updates=2,
     )
     ctx = MagicMock(spec=HandlerContext)
+    ctx.runtime = HandlerRuntime()
 
     def _boom(*_args, **_kwargs):
         raise RuntimeError("Executor shut down")
@@ -199,6 +202,7 @@ def test_pending_limit_applies_backpressure_before_submit(
         max_pending_updates=2,
     )
     ctx = MagicMock(spec=HandlerContext)
+    ctx.runtime = HandlerRuntime()
     first_started = threading.Event()
     allow_first_finish = threading.Event()
     third_dispatched = threading.Event()
@@ -257,6 +261,7 @@ def test_stop_while_waiting_keeps_unsubmitted_update_unconfirmed(
         max_pending_updates=1,
     )
     ctx = MagicMock(spec=HandlerContext)
+    ctx.runtime = HandlerRuntime()
     first_started = threading.Event()
     allow_first_finish = threading.Event()
     second_returned = threading.Event()
@@ -304,3 +309,38 @@ def test_stop_while_waiting_keeps_unsubmitted_update_unconfirmed(
         allow_first_finish.set()
         stop_event.set()
         executor.shutdown(wait=True)
+
+
+@pytest.mark.parametrize("outcome", ["cancelled", "exception", "success"])
+def test_only_successful_tasks_advance_completion_and_all_release_capacity(
+    tmp_path, outcome
+) -> None:
+    from concurrent.futures import Future
+
+    tracker = OffsetTracker(OffsetStore(tmp_path / "offset.json"))
+    executor = MagicMock()
+    futures = [Future(), Future()]
+    executor.submit.side_effect = futures
+    disp = UpdateDispatcher(
+        executor=executor,
+        chat_locks=ChatLockManager(),
+        offset_tracker=tracker,
+        stop_event=threading.Event(),
+        max_pending_updates=1,
+    )
+    ctx = MagicMock(spec=HandlerContext)
+    first = {"update_id": 1, "message": {"message_id": 1, "chat": {"id": 1}, "text": "x"}}
+    disp.dispatch_update(ctx, first)
+    if outcome == "cancelled":
+        assert futures[0].cancel()
+    elif outcome == "exception":
+        futures[0].set_exception(RuntimeError("handler failed"))
+    else:
+        futures[0].set_result(None)
+    assert tracker.offset == (2 if outcome == "success" else 0)
+    # Check released capacity without a hanging second dispatch on regression.
+    assert disp._pending_slots.acquire(blocking=False)
+    disp._pending_slots.release()
+    disp.dispatch_update(ctx, {**first, "update_id": 2})
+    futures[1].set_result(None)
+    assert tracker.offset == (3 if outcome == "success" else 0)

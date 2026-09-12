@@ -4,21 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from satellite.calendar.callback_tokens import event_callback_token
 from satellite.messages_ru import CB_INV_RESPOND_PREFIX
 from satellite.telegram_bot.handlers.context import IncomingCallback
 from satellite.telegram_bot.handlers.partstat_flow import (
     PartstatFlow,
-    _partstat_respond_guard,
     respond_partstat,
 )
-
-
-@pytest.fixture(autouse=True)
-def _reset_guard() -> None:
-    _partstat_respond_guard.reset()
+from satellite.telegram_bot.handlers.runtime import HandlerRuntime
 
 
 def test_partstat_respond_dedup_within_cooldown() -> None:
@@ -35,6 +28,8 @@ def test_partstat_respond_dedup_within_cooldown() -> None:
     ]
 
     ctx = MagicMock()
+
+    ctx.runtime = HandlerRuntime()
     ctx.users = MagicMock()
     ctx.tz = MagicMock()
     ctx.calendar_service = MagicMock()

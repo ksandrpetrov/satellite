@@ -22,7 +22,6 @@ from ..api import TelegramError
 from ..presenters.settings_screens import analytics_options_bundle, analytics_workday_applied_bundle
 from ..visual import pick_analytics_effect, private_message_effect
 from .access import ensure_calendar_connected
-from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback
 from .delivery import (
     open_streaming_reply,
@@ -37,7 +36,6 @@ log = logging.getLogger(__name__)
 # debounce пользователь получает два PNG подряд (см. prod log 2026-05-21
 # 12:49:50/57 UTC). 45 c — заметно длиннее средней сборки PNG (~10 c).
 _ANALYTICS_ACTION = "analytics:run"
-_analytics_run_guard = ActionGuard(cooldown_sec=45.0)
 
 
 def handle_open_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
@@ -63,7 +61,7 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
     if not ensure_calendar_connected(ctx, chat_id=cb.chat_id, user_id=user_id):
         safe_answer_callback(ctx, cb)
         return
-    if not _analytics_run_guard.try_acquire(cb.chat_id, _ANALYTICS_ACTION):
+    if not ctx.runtime.analytics.try_acquire(cb.chat_id, _ANALYTICS_ACTION):
         safe_answer_callback(ctx, cb, text=ANALYTICS_BUSY_TOAST)
         return
 
@@ -129,7 +127,7 @@ def handle_run_analytics(ctx: HandlerContext, cb: IncomingCallback) -> None:
         sent = True
         log.info("Sent weekly analytics user_id=%s chat_id=%s", cb.user_id, cb.chat_id)
     finally:
-        _analytics_run_guard.release(cb.chat_id, _ANALYTICS_ACTION, sent=sent)
+        ctx.runtime.analytics.release(cb.chat_id, _ANALYTICS_ACTION, sent=sent)
 
 
 def handle_set_analytics_workday(ctx: HandlerContext, cb: IncomingCallback, preset: str) -> None:

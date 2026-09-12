@@ -62,6 +62,15 @@ python -m pytest
 semver-образ. После деплоя CI вызывает [`smoke-prod.sh`](../scripts/smoke-prod.sh).
 Подробности и секреты — [deploy/README.md](../deploy/README.md).
 
+## Покрытие строк и ветвей
+
+`make coverage` запускает весь pytest под закреплённым `coverage==7.15.2`
+и печатает пропущенные строки и ветви. Данные остаются в игнорируемом `.coverage`;
+HTML-отчёт: `venv/bin/python -m coverage html`. Процент — средство поиска пробелов;
+release-blocking сценарии обязательны независимо от общего числа.
+
+Замер до и после переработки: [аудит 2026-09-12](code-quality-audit-2026-09-12.md).
+
 ## Контракт зависимостей (`test_requirements.py`)
 
 [`requirements.in`](../requirements.in) и
@@ -71,7 +80,8 @@ runtime/dev/transitive пакетов для Python 3.11/3.12, macOS/Linux; хе
 distribution намеренно не включены. Обновление:
 
 ```bash
-make lock        # только uv 0.11.32
+make lock        # только uv 0.11.32, обновляет допустимые транзитивные версии
+make lock LOCK_UPGRADE=  # добавить зависимость, сохраняя существующие версии
 make lock-check  # не меняет рабочие lock-файлы
 ```
 
@@ -181,7 +191,7 @@ python -m pytest tests/test_business_routes_contract.py \
 `tests/conftest.py`:
 
 - `make_event(title, start, end, ...)` — `NormalizedEvent` из `HH:MM` для метрик;
-- autouse `_reset_action_guards` — сброс `ActionGuard` между тестами;
+- `make_ctx` создаёт отдельный `HandlerRuntime`: guards и кэши не текут между тестами;
 - `make_fake_telegram`, `make_ctx`, `make_msg`, `make_callback`, `make_user_store`,
   `FakeCalendarService`, `freeze_now`, `free_tcp_port` — для business-flow тестов.
 
@@ -266,8 +276,8 @@ CalDAV-словари в `calculate_day_stats` не подаём напряму�
 **ActionGuard** (`test_action_guard.py`):
 
 - `try_acquire` / `release`, cooldown после `sent=True`;
-- autouse-фикстура `_reset_action_guards` в `conftest.py` сбрасывает синглтоны
-  plan/upcoming/analytics/invitations/manage/partstat между тестами.
+- `test_handler_runtime.py` и `test_bot_lifecycle.py` проверяют изоляцию runtime
+  разных ботов и общий кэш scheduler/handlers одного бота.
 - `period_stats` / `event_kinds` — фильтры для недельного отчёта.
 
 **Telegram presentation** (`test_visual.py`, `test_html_format.py`,

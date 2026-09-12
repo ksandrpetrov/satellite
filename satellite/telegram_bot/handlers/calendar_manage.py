@@ -21,7 +21,7 @@ import logging
 from datetime import date, datetime, timedelta
 
 from ...calendar.callback_tokens import event_callback_token
-from ...calendar.event_token_cache import apply_user_partstat_to_event, get_event_token_cache
+from ...calendar.event_token_cache import apply_user_partstat_to_event
 from ...calendar.events import (
     collect_manageable_events,
     event_index_marker,
@@ -61,7 +61,6 @@ from ...presentation.calendar_lists import (
     manage_list_rich_html,
 )
 from .access import ensure_calendar_connected
-from .action_guard import ActionGuard
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
     ack_callback_with_loading,
@@ -80,8 +79,6 @@ _MANAGE_OPEN_ACTION = "manage:open"
 _MANAGE_REFRESH_ACTION = "manage:refresh"
 
 # Двойной /manage или refresh пока CalDAV ещё идёт — два одинаковых экрана.
-_manage_open_guard = ActionGuard(cooldown_sec=10.0)
-_manage_refresh_guard = ActionGuard(cooldown_sec=10.0)
 
 
 def _fetch_manageable(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
@@ -106,7 +103,7 @@ def _fetch_manageable(ctx: HandlerContext, user_id: int) -> tuple[list, str, boo
     truncated = len(manageable) > _MAX_EVENTS
     if truncated:
         manageable = manageable[:_MAX_EVENTS]
-    get_event_token_cache().register_manage_screen(
+    ctx.runtime.event_tokens.register_manage_screen(
         user_id,
         events=manageable,
         login=login,
@@ -184,7 +181,7 @@ def handle_open_manage_events(ctx: HandlerContext, msg: IncomingMessage) -> None
     run_streaming_caldav_message(
         ctx,
         msg,
-        guard=_manage_open_guard,
+        guard=ctx.runtime.manage_open,
         action_key=_MANAGE_OPEN_ACTION,
         busy_text=MANAGE_BUSY_TEXT,
         status_text=MANAGE_FETCH_STATUS,
@@ -229,7 +226,7 @@ def _open_detail(ctx: HandlerContext, cb: IncomingCallback, token: str) -> None:
         safe_answer_callback(ctx, cb)
         return
     ack_callback_with_loading(ctx, cb, status_html=MANAGE_FETCH_STATUS)
-    cache = get_event_token_cache()
+    cache = ctx.runtime.event_tokens
     snapshot = cache.get_manage_snapshot(cb.user_id)
     if snapshot is not None:
         event = find_event_by_token(snapshot.events, token)
@@ -271,7 +268,7 @@ def _optimistic_refresh_list(
 ) -> None:
     if cb.user_id is None or cb.chat_id is None:
         return
-    cache = get_event_token_cache()
+    cache = ctx.runtime.event_tokens
     existing = cache.get_manage_snapshot(cb.user_id)
     if existing is not None:
         snapshot = cache.update_manage_partstat(
@@ -374,7 +371,7 @@ def route_manage_events_callback(ctx: HandlerContext, cb: IncomingCallback) -> b
     if data in (CB_MANAGE_BACK, CB_MANAGE_REFRESH):
         if cb.chat_id is None:
             return True
-        if not _manage_refresh_guard.try_acquire(cb.chat_id, _MANAGE_REFRESH_ACTION):
+        if not ctx.runtime.manage_refresh.try_acquire(cb.chat_id, _MANAGE_REFRESH_ACTION):
             safe_answer_callback(ctx, cb, text=MANAGE_BUSY_TEXT)
             return True
         sent = False
@@ -382,7 +379,7 @@ def route_manage_events_callback(ctx: HandlerContext, cb: IncomingCallback) -> b
             _refresh_list(ctx, cb, show_loading=True)
             sent = True
         finally:
-            _manage_refresh_guard.release(cb.chat_id, _MANAGE_REFRESH_ACTION, sent=sent)
+            ctx.runtime.manage_refresh.release(cb.chat_id, _MANAGE_REFRESH_ACTION, sent=sent)
         return True
     if data.startswith(CB_MANAGE_PICK_PREFIX):
         token = data[len(CB_MANAGE_PICK_PREFIX) :]
