@@ -8,6 +8,7 @@ PARTSTAT — параметр CalDAV-строки ATTENDEE с состояние
 
 from __future__ import annotations
 
+from ..attendee_identity import attendee_matches_account
 from ._types import Event
 
 
@@ -17,26 +18,13 @@ def is_declined_event_for_user(event: Event, login: str) -> bool:
         return False
     for attendee in event.get("attendees", []):
         attendee_norm = str(attendee).casefold()
-        if login_norm in attendee_norm and "partstat=declined" in attendee_norm:
+        if attendee_matches_account(str(attendee), login) and "partstat=declined" in attendee_norm:
             return True
     return False
 
 
-def _login_match_needles(login: str) -> list[str]:
-    """Варианты логина для поиска в строке ATTENDEE (полный email и local-part)."""
-    normalized = (login or "").strip().casefold()
-    if not normalized:
-        return []
-    needles = [normalized]
-    local, sep, _domain = normalized.partition("@")
-    if sep and local and local not in needles:
-        needles.append(local)
-    return needles
-
-
 def _attendee_line_matches_login(attendee_line: str, login: str) -> bool:
-    blob = (attendee_line or "").casefold()
-    return any(needle in blob for needle in _login_match_needles(login))
+    return attendee_matches_account(attendee_line, login)
 
 
 def _partstat_from_attendee_line(attendee_line: str) -> str | None:
@@ -56,33 +44,16 @@ def _partstat_from_attendee_line(attendee_line: str) -> str | None:
 
 
 def is_pending_invitation_for_user(event: Event, login: str) -> bool:
-    """True, если пользователю нужно ответить на приглашение (NEEDS-ACTION / DELEGATED).
-
-    В отличие от ``user_partstat``, пессимистичная свёртка по строкам ATTENDEE:
-    если на один mailto несколько записей и хотя бы в одной NEEDS-ACTION —
-    приглашение неотвеченное (``user_partstat`` взял бы «лучший» ACCEPTED).
-    Строки без PARTSTAT не считаем pending — см. ``user_partstat``.
-
-    Если совпадений с логином нет, но в ICS одна (или любая) строка с
-    NEEDS-ACTION/DELEGATED — Mail.ru иногда кладёт чужой mailto/CN (алиас).
-    """
+    """Pending only for the exact address of the connected calendar account."""
     login_norm = (login or "").strip()
     if not login_norm:
         return False
-    matched_login = False
     for attendee in event.get("attendees", []):
         line = str(attendee)
         if not _attendee_line_matches_login(line, login_norm):
             continue
-        matched_login = True
         status = _partstat_from_attendee_line(line)
         if status in {"NEEDS-ACTION", "DELEGATED"}:
-            return True
-    if matched_login:
-        return False
-    for attendee in event.get("attendees", []):
-        blob = str(attendee).casefold()
-        if "partstat=needs-action" in blob or "partstat=delegated" in blob:
             return True
     return False
 

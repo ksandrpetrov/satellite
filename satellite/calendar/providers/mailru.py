@@ -215,7 +215,7 @@ class MailruCalendarProvider:
                 "Не удалось определить событие.",
                 error_code="MISSING_EVENT_URL",
             )
-        service = self._service(context.credentials)
+        service = self._service_for_invitations(context.credentials)
         try:
             service.set_attendee_partstat(event_ref.url, partstat)
         except CalDAVError as exc:

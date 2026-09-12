@@ -65,18 +65,6 @@ def apply_user_partstat_to_event(event: Event, login: str, partstat: str) -> dic
             updated = True
         else:
             attendees.append(line_str)
-    if not updated:
-        for line in ev.get("attendees", []):
-            line_str = str(line)
-            if "partstat=needs-action" in line_str.casefold():
-                attendees = [
-                    _replace_partstat_in_line(str(a), partstat_upper)
-                    if str(a) == line_str
-                    else str(a)
-                    for a in ev.get("attendees", [])
-                ]
-                updated = True
-                break
     if updated:
         ev["attendees"] = attendees
     return ev

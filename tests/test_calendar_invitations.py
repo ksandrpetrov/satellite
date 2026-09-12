@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
 from icalendar import Calendar as IcsCalendar
 from icalendar import Event as IcsEvent
 
-from satellite.calendar.caldav_client import CalDAVService
+from satellite.calendar.caldav_client import CalDAVError, CalDAVService
 from satellite.calendar.callback_tokens import event_callback_token
 from satellite.calendar.events import (
     collect_pending_invitations,
@@ -93,13 +94,13 @@ def test_collect_pending_invitations_keeps_recent_ended_with_lookback():
     assert [ev["summary"] for ev in pending] == ["May26 invite", "May29 invite"]
 
 
-def test_is_pending_when_needs_action_on_unmatched_mailto():
-    """Mail.ru: PARTSTAT на mailto-алиасе без совпадения с логином CalDAV."""
+def test_unmatched_mailto_is_not_our_invitation():
+    """An unverified alias must not be treated as the connected account."""
     ev = {
         **_ev(),
         "attendees": ["mailto:alias.other@vk.team;CN=Александра;PARTSTAT=NEEDS-ACTION"],
     }
-    assert is_pending_invitation_for_user(ev, LOGIN)
+    assert not is_pending_invitation_for_user(ev, LOGIN)
 
 
 def test_is_pending_when_duplicate_attendee_lines_disagree():
@@ -218,7 +219,7 @@ def test_set_attendee_partstat_updates_ics(monkeypatch):
         assert attendee.params["PARTSTAT"] == "ACCEPTED"
 
 
-def test_set_attendee_partstat_adds_attendee_when_missing(monkeypatch):
+def test_set_attendee_partstat_rejects_missing_attendee(monkeypatch):
     component = IcsEvent()
     component.add("uid", "u@test")
     component.add("dtstart", datetime(2026, 5, 20, 10, 0))
@@ -265,14 +266,9 @@ def test_set_attendee_partstat_adds_attendee_when_missing(monkeypatch):
         auth_username="me@mail.ru",
     )
 
-    service.set_attendee_partstat("https://fake/e.ics", "ACCEPTED")
-
-    updated = IcsCalendar.from_ical(saved["body"])
-    for vevent in updated.walk("vevent"):
-        attendee = vevent.get("ATTENDEE")
-        assert attendee is not None
-        assert attendee.params["PARTSTAT"] == "ACCEPTED"
-        assert "me@mail.ru" in str(attendee).casefold()
+    with pytest.raises(CalDAVError, match="not an attendee"):
+        service.set_attendee_partstat("https://fake/e.ics", "ACCEPTED")
+    assert saved == {}
 
 
 def test_event_callback_token_ignores_trailing_slash():
@@ -299,8 +295,8 @@ def test_find_event_by_token_when_not_pending():
     assert found["summary"] == "SocServ| Техно check up"
 
 
-def test_set_attendee_partstat_updates_pending_attendee_without_login_match(monkeypatch):
-    """Если mailto в ICS не совпал с логином, обновляем строку с NEEDS-ACTION."""
+def test_set_attendee_partstat_rejects_unmatched_attendee(monkeypatch):
+    """Never answer for an unrelated attendee or an unverified alias."""
     component = IcsEvent()
     component.add("uid", "u@test")
     component.add(
@@ -352,8 +348,6 @@ def test_set_attendee_partstat_updates_pending_attendee_without_login_match(monk
         auth_username="alex",
     )
 
-    service.set_attendee_partstat("https://fake/e.ics", "DECLINED")
-
-    updated = IcsCalendar.from_ical(saved["body"])
-    for vevent in updated.walk("vevent"):
-        assert vevent.get("ATTENDEE").params["PARTSTAT"] == "DECLINED"
+    with pytest.raises(CalDAVError, match="not an attendee"):
+        service.set_attendee_partstat("https://fake/e.ics", "DECLINED")
+    assert saved == {}

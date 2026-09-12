@@ -6,18 +6,11 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from .ical_parser import _attendee_to_str
+from .attendee_identity import attendee_matches_account
 
 
 def attendee_matches_login_variants(attendee: Any, login_variants: Sequence[str]) -> bool:
-    blob = _attendee_to_str(attendee).casefold()
-    if not blob:
-        return False
-    for variant in login_variants:
-        needle = (variant or "").strip().casefold()
-        if needle and needle in blob:
-            return True
-    return False
+    return any(attendee_matches_account(str(attendee), login) for login in login_variants)
 
 
 def bump_vevent_dtstamp(component: Any) -> None:
@@ -53,31 +46,3 @@ def update_vevent_attendee_partstat(
         attendee.params["PARTSTAT"] = partstat
         updated = True
     return updated
-
-
-def update_vevent_pending_attendee_partstat(component: Any, partstat: str) -> bool:
-    raw_attendees = component.get("ATTENDEE")
-    if raw_attendees is None:
-        return False
-    items = raw_attendees if isinstance(raw_attendees, list) else [raw_attendees]
-    for attendee in items:
-        blob = _attendee_to_str(attendee).casefold()
-        if "partstat=needs-action" in blob or "partstat=delegated" in blob:
-            attendee.params["PARTSTAT"] = partstat
-            return True
-    return False
-
-
-def add_vevent_attendee(component: Any, login: str, partstat: str) -> None:
-    mailto = (login or "").strip()
-    if not mailto:
-        raise ValueError("Login is required to add ATTENDEE")
-    component.add(
-        "attendee",
-        f"mailto:{mailto}",
-        parameters={
-            "PARTSTAT": partstat,
-            "RSVP": "TRUE",
-            "ROLE": "REQ-PARTICIPANT",
-        },
-    )

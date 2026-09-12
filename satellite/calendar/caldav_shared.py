@@ -76,23 +76,6 @@ def _update_vevent_attendee_partstat(
     return partstat_helpers.update_vevent_attendee_partstat(component, login_variants, partstat)
 
 
-def _update_vevent_pending_attendee_partstat(component: Any, partstat: str) -> bool:
-    """Обновляет первого ATTENDEE с NEEDS-ACTION/DELEGATED, если логин не совпал.
-
-    Mail.ru иногда кладёт в ICS другой mailto, чем логин CalDAV (алиас/CN), а
-    единственная строка с ожиданием ответа — с PARTSTAT=NEEDS-ACTION.
-    """
-    return partstat_helpers.update_vevent_pending_attendee_partstat(component, partstat)
-
-
-def _add_vevent_attendee(component: Any, login: str, partstat: str) -> None:
-    """Добавляет ATTENDEE для логина (Mail.ru иногда отдаёт PARTSTAT только в GET)."""
-    try:
-        partstat_helpers.add_vevent_attendee(component, login, partstat)
-    except ValueError as exc:
-        raise CalDAVError(str(exc)) from exc
-
-
 def build_candidate_urls(caldav_url: str | None, login: str) -> list[str]:
     """Возвращает порядок эндпоинтов для попыток discovery (наиболее вероятные сверху)."""
     return discovery_helpers.build_candidate_urls(caldav_url, login)

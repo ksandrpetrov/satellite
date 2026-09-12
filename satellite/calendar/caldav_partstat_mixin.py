@@ -26,7 +26,6 @@ from .caldav_shared import (
     CalendarHandle,
     EnrichStats,
     Event,
-    _add_vevent_attendee,
     _bump_vevent_dtstamp,
     _bump_vevent_sequence,
     _dav_reason,
@@ -36,7 +35,6 @@ from .caldav_shared import (
     _multiget_match_key,
     _redact_url,
     _update_vevent_attendee_partstat,
-    _update_vevent_pending_attendee_partstat,
     log,
     login_variants_for_caldav,
 )
@@ -483,17 +481,8 @@ class CalDAVPartstatMixin:
                 _bump_vevent_sequence(component)
                 updated = True
                 continue
-            if _update_vevent_pending_attendee_partstat(component, partstat):
-                _bump_vevent_dtstamp(component)
-                _bump_vevent_sequence(component)
-                updated = True
-        if not updated and vevents:
-            _add_vevent_attendee(vevents[0], self._login, partstat)
-            _bump_vevent_dtstamp(vevents[0])
-            _bump_vevent_sequence(vevents[0])
-            updated = True
         if not updated:
-            raise CalDAVError("No VEVENT in event data")
+            raise CalDAVError("Connected account is not an attendee of this event")
         self._put_event_ics_via_http(event_url, calendar.to_ical(), etag=etag)
         with self._partstat_cache_lock:
             self._partstat_cache.pop(event_url, None)
@@ -511,7 +500,7 @@ class CalDAVPartstatMixin:
             raise CalDAVError(f"Unsupported PARTSTAT: {partstat!r}")
         if not (self._login or "").strip():
             raise CalDAVError("Login is required to update PARTSTAT")
-        login_variants = login_variants_for_caldav(self._login)
+        login_variants = [self._login]
         last_timeout: requests.Timeout | None = None
         try:
             for attempt in range(2):

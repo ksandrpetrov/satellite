@@ -262,3 +262,42 @@ def test_list_events_for_analytics_uses_dedicated_provider_path(
     assert events == [{"summary": "Verified", "start": "2026-02-16"}]
     assert fake_provider.list_analytics_calls == 1
     assert fake_provider.list_events_calls == 0
+
+
+def test_partstat_uses_only_callers_connected_account(service, users, fake_provider):
+    from unittest.mock import MagicMock
+
+    from satellite.calendar.providers.base import CalendarEventRef
+
+    second_id = USER_ID + 1
+    users.upsert_from_telegram(
+        telegram_user_id=second_id,
+        chat_id=second_id,
+        username="other",
+        display_name="Other",
+        default_status=USER_STATUS_APPROVED,
+    )
+    _connect(service)
+    service.connect(
+        second_id,
+        provider_id=PROVIDER_MAILRU,
+        credentials=ProviderCredentials("other@mail.ru", "other-pw"),
+    )
+    fake_provider.set_attendee_partstat = MagicMock()
+    ref = CalendarEventRef("meeting", "https://caldav.example/primary/event.ics")
+    for user_id, address, secret in [
+        (USER_ID, LOGIN, PASSWORD),
+        (second_id, "other@mail.ru", "other-pw"),
+    ]:
+        service.set_attendee_partstat(user_id, ref, "ACCEPTED")
+        context, actual_ref, status = fake_provider.set_attendee_partstat.call_args.args
+        assert context.user_id == user_id
+        assert context.login == address
+        assert context.credentials == ProviderCredentials(address, secret)
+        assert context.primary_calendar_url == "https://caldav.example/primary/"
+        assert actual_ref == ref
+        assert status == "ACCEPTED"
+    fake_provider.set_attendee_partstat.reset_mock()
+    with pytest.raises(CalendarNotConnectedError):
+        service.set_attendee_partstat(second_id + 1, ref, "ACCEPTED")
+    fake_provider.set_attendee_partstat.assert_not_called()
