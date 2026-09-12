@@ -62,12 +62,13 @@ def unordered_list(items: Sequence[str]) -> str:
     return f"<ul>{lines}</ul>"
 
 
-def table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
+def table(headers: Sequence[str], rows: Sequence[Sequence[str]], *, centered: bool = False) -> str:
     """Таблица rich message; ячейки — уже размеченный HTML."""
-    head = "".join(f"<th>{cell}</th>" for cell in headers)
+    alignment = ' align="center"' if centered else ""
+    head = "".join(f"<th{alignment}>{cell}</th>" for cell in headers)
     body_rows = []
     for row in rows:
-        cells = "".join(f"<td>{cell}</td>" for cell in row)
+        cells = "".join(f"<td{alignment}>{cell}</td>" for cell in row)
         body_rows.append(f"<tr>{cells}</tr>")
     return f"<table><tr>{head}</tr>{''.join(body_rows)}</table>"
 

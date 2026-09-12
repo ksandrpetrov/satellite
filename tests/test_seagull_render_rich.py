@@ -48,7 +48,8 @@ def test_rich_digest_stats_table_speaks_type_and_time():
     stats = calculate_day_stats(events, date_label="Сегодня", plan_date=date(2026, 6, 12))
     texts = build_seagull_texts(stats)
     html = render_daily_digest_rich(stats, texts, tz=ZoneInfo("Europe/Moscow"))
-    assert "<th>Тип</th><th>Время</th>" in html
+    assert '<th align="center">Тип</th><th align="center">Время</th>' in html
+    assert html.count('<td align="center">') == 4
     assert "👨‍💻 Занято" in html
     assert "🧘 Свободно" in html
     assert "Показатель" not in html
