@@ -55,10 +55,15 @@ class OffsetStore:
         try:
             with self._path.open("r", encoding="utf-8") as file:
                 data = json.load(file)
-                return int(data.get("offset", 0))
+                if not isinstance(data, dict):
+                    raise ValueError("offset root must be an object")
+                offset = int(data.get("offset", 0))
+                if offset < 0:
+                    raise ValueError("offset must be nonnegative")
+                return offset
         except FileNotFoundError:
             return 0
-        except (ValueError, json.JSONDecodeError, OSError) as exc:
+        except (TypeError, ValueError, OSError) as exc:
             log.warning("Failed to load offset from %s: %s; starting from 0", self._path, exc)
             return 0
 

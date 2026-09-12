@@ -47,7 +47,7 @@ class JsonStoreBase(Generic[RecordT]):
                 raw = json.load(file)
         except FileNotFoundError:
             return {}
-        except (json.JSONDecodeError, OSError) as exc:
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
             raise self._load_error(f"cannot read valid JSON: {exc}") from exc
         if not isinstance(raw, dict):
             raise self._load_error("root value must be a JSON object")
