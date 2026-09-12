@@ -49,7 +49,7 @@ def test_pick_shows_only_selected_series_and_back_restores_hub_list():
     assert INVITATIONS_SERIES_LABEL in text
     assert "Other" not in text
     rows = _reply_markup(ctx)["inline_keyboard"]
-    assert [b["text"] for b in rows[0]] == ["✅ Принять", "❌ Отклонить", "🤔 Возможно"]
+    assert [b["text"] for b in rows[0]] == ["Принять", "Отклонить", "Может быть"]
     assert [b["callback_data"] for b in rows[0]] == [
         CB_INV_RESPOND_PREFIX + token + ":" + code for code in "adt"
     ]
@@ -64,16 +64,26 @@ def test_pick_shows_only_selected_series_and_back_restores_hub_list():
 
 
 @pytest.mark.parametrize("code", ["a", "d", "t"])
-def test_answer_returns_remaining_number_picker(code):
-    ctx, _, token = setup_picker()
-    click(ctx, CB_INV_PICK_PREFIX + token)
+def test_inline_answer_returns_remaining_meeting_blocks(code):
+    ctx, screen, token = setup_picker()
+    labels = {
+        "a": ("success", "Принять"),
+        "d": ("danger", "Отклонить"),
+        "t": ("primary", "Может быть"),
+    }
+    for action, (style, label) in labels.items():
+        assert (
+            f'<tg-button type="callback_data" style="{style}" '
+            f'data="{CB_INV_RESPOND_PREFIX}{token}:{action}">{label}</tg-button>'
+        ) in screen.rich_text
+    assert CB_INV_PICK_PREFIX not in screen.rich_text
     click(ctx, CB_INV_RESPOND_PREFIX + token + ":" + code)
     rows = _reply_markup(ctx)["inline_keyboard"]
     assert len(rows[0]) == 1
     assert rows[0][0]["text"] == "✅ Принять все"
     text = ctx.telegram.edit_message_rich.call_args.args[2]["html"]
-    assert text.count('<tg-button type="callback_data"') == 1
-    assert 'data="' + CB_INV_PICK_PREFIX + token + '"' not in text
+    assert text.count('<tg-button type="callback_data"') == 3
+    assert CB_INV_RESPOND_PREFIX + token not in text
     assert "Other" in text
     ctx.calendar_service.set_attendee_partstat.assert_called_once()
 

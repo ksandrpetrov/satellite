@@ -25,9 +25,8 @@ INVITATIONS_EMPTY_HTML = (
 )
 INVITATIONS_INTRO_HTML = (
     "<b>Приглашения</b>\n\n"
-    "Встречи, где тебя ждут как участника. Нажми «Ответить» у нужной встречи. «Принять все» примет все показанные встречи и серии."
+    "Встречи, где тебя ждут как участника. Выбери ответ под нужной встречей. «Принять все» примет все показанные встречи и серии."
 )
-INVITATIONS_PICK_LABEL = "Ответить"
 INVITATIONS_SERIES_LABEL = "Повторяется · ответ на всю серию"
 INVITATIONS_RESPOND_ACCEPTED = "Принято"
 INVITATIONS_RESPOND_DECLINED = "Отклонено"
@@ -41,18 +40,11 @@ def build_invitations_keyboard(
     *,
     from_settings_hub: bool = False,
 ) -> dict:
-    """Резервный выбор встречи: одна кнопка на блок приглашения.
+    """Резервная клавиатура: одна строка ответов на встречу.
 
     ``from_settings_hub=True`` — «⬅️ В календарь» + «Закрыть»; иначе только «Закрыть».
     """
-    buttons = [
-        {
-            "text": f"{INVITATIONS_PICK_LABEL} · {label}",
-            "callback_data": f"{CB_INV_PICK_PREFIX}{token}",
-        }
-        for token, label in events
-    ]
-    rows = [[button] for button in buttons]
+    rows = [invitation_response_buttons(token, label=label) for token, label in events]
     if events:
         rows.append(
             [
@@ -90,14 +82,19 @@ def invitations_accept_all_result(accepted: int, remaining: int, truncated: bool
     return text
 
 
+def invitation_response_buttons(token: str, *, label: str = "") -> list[dict[str, str]]:
+    suffix = f" · {label}" if label else ""
+    return [
+        styled_button(f"Принять{suffix}", f"{CB_INV_RESPOND_PREFIX}{token}:a", style="success"),
+        styled_button(f"Отклонить{suffix}", f"{CB_INV_RESPOND_PREFIX}{token}:d", style="danger"),
+        styled_button(f"Может быть{suffix}", f"{CB_INV_RESPOND_PREFIX}{token}:t", style="primary"),
+    ]
+
+
 def build_invitation_detail_keyboard(token: str) -> dict:
     return {
         "inline_keyboard": [
-            [
-                styled_button("✅ Принять", f"{CB_INV_RESPOND_PREFIX}{token}:a", style="success"),
-                styled_button("❌ Отклонить", f"{CB_INV_RESPOND_PREFIX}{token}:d", style="danger"),
-                styled_button("🤔 Возможно", f"{CB_INV_RESPOND_PREFIX}{token}:t", style="primary"),
-            ],
+            invitation_response_buttons(token),
             [{"text": "⬅️ К приглашениям", "callback_data": CB_INV_BACK}],
         ]
     }

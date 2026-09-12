@@ -133,13 +133,13 @@ def test_invitations_screen_starts_with_first_event_title_and_when() -> None:
     assert rich_text.count("QA 2.0 ВКонтакте: синк") == 1
     assert "Вт, 04.08" in rich_text
     assert "17:00–18:00" in rich_text
-    assert rich_text.count('<tg-button type="callback_data"') == 2
+    assert rich_text.count('<tg-button type="callback_data"') == 6
     assert "Следующая встреча" in text
     assert "Следующая встреча" in rich_text
     assert len(keyboard["inline_keyboard"]) == 5
     assert [row[0]["text"] for row in keyboard["inline_keyboard"][:2]] == [
-        "Ответить · 1",
-        "Ответить · 2",
+        "Принять · 1",
+        "Принять · 2",
     ]
 
 

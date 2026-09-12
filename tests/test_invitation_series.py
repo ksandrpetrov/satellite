@@ -37,8 +37,8 @@ def test_series_group_before_limit_and_render_without_mutating_events():
     assert screen.truncated
     rows = screen.keyboard["inline_keyboard"][:-3]
     assert len(rows) == 12
-    assert all(len(row) == 1 for row in rows)
-    assert len({button["callback_data"] for row in rows for button in row}) == 12
+    assert all(len(row) == 3 for row in rows)
+    assert len({button["callback_data"] for row in rows for button in row}) == 36
     assert screen.text.count(INVITATIONS_SERIES_LABEL) == 1
     assert screen.rich_text.count(INVITATIONS_SERIES_LABEL) == 1
     assert all("invitation_series" not in ev for ev in events)

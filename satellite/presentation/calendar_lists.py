@@ -16,18 +16,17 @@ from ..calendar.events import (
     parse_iso,
 )
 from ..messages_ru import (
-    CB_INV_PICK_PREFIX,
     INVITATIONS_INTRO_HTML,
-    INVITATIONS_PICK_LABEL,
     INVITATIONS_SERIES_LABEL,
     MANAGE_INTRO_HTML,
     UPCOMING_EVENTS_HEADING_HTML,
     UPCOMING_EVENTS_HEADING_PLAIN,
+    invitation_response_buttons,
     manage_partstat_label,
 )
 from .rich import (
     bold,
-    callback_button,
+    callback_buttons,
     datetime_link,
     details_block,
     divider,
@@ -163,7 +162,7 @@ def _invitation_items_rich(
         if ev.get("invitation_series"):
             sections.append(paragraph(escape_rich(INVITATIONS_SERIES_LABEL)))
         token = event_callback_token(str(ev.get("url") or ""))
-        sections.append(callback_button(INVITATIONS_PICK_LABEL, f"{CB_INV_PICK_PREFIX}{token}"))
+        sections.append(callback_buttons(invitation_response_buttons(token)))
     return sections
 
 

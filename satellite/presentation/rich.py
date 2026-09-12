@@ -62,13 +62,15 @@ def unordered_list(items: Sequence[str]) -> str:
     return f"<ul>{lines}</ul>"
 
 
-def callback_button(label: str, data: str) -> str:
-    """Bot API 10.3 callback button embedded beside its decision block."""
-    return (
-        '<tg-button-row align="left">'
-        f'<tg-button type="callback_data" style="primary" data="{escape_rich(data)}">'
-        f"{escape_rich(label)}</tg-button></tg-button-row>"
+def callback_buttons(buttons: Sequence[dict[str, str]]) -> str:
+    """Bot API 10.3 callback row embedded beside its decision block."""
+    cells = "".join(
+        f'<tg-button type="callback_data" style="{escape_rich(button["style"])}" '
+        f'data="{escape_rich(button["callback_data"])}">'
+        f"{escape_rich(button['text'])}</tg-button>"
+        for button in buttons
     )
+    return f'<tg-button-row align="left">{cells}</tg-button-row>'
 
 
 def table(headers: Sequence[str], rows: Sequence[Sequence[str]], *, centered: bool = False) -> str:
