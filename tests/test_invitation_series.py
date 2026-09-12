@@ -35,7 +35,7 @@ def test_series_group_before_limit_and_render_without_mutating_events():
     )
     assert len(screen.pending) == 12
     assert screen.truncated
-    rows = screen.keyboard["inline_keyboard"][:-2]
+    rows = screen.keyboard["inline_keyboard"][:-3]
     assert len(rows) == 3
     assert all(len(row) == 4 for row in rows)
     assert len({button["callback_data"] for row in rows for button in row}) == 12

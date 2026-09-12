@@ -12,6 +12,7 @@ from datetime import datetime
 from ...calendar.callback_tokens import event_callback_token
 from ...calendar.events import event_local_start_date, format_time_range, format_upcoming_day_header
 from ...calendar.providers.base import (
+    CalendarEventRef,
     CalendarNotConnectedError,
     CalendarProviderError,
 )
@@ -22,6 +23,7 @@ from ...invitations_view import (
     screen_from_pending,
 )
 from ...messages_ru import (
+    CB_INV_ACCEPT_ALL_PREFIX,
     CB_INV_BACK,
     CB_INV_CLOSE,
     CB_INV_PICK_PREFIX,
@@ -36,7 +38,9 @@ from ...messages_ru import (
     INVITATIONS_RESPOND_FAIL_TEXT,
     INVITATIONS_RESPOND_TENTATIVE,
     build_invitation_detail_keyboard,
+    invitation_accept_all_callback,
     invitation_detail_html,
+    invitations_accept_all_result,
 )
 from ...presentation.rich import join_blocks, paragraph
 from ..visual import pick_invitations_effect
@@ -176,7 +180,7 @@ def _optimistic_refresh_invitations(
     from_hub = _invitations_from_settings_hub(ctx, cb.user_id)
     snapshot = ctx.runtime.event_tokens.remove_invitations_pending(cb.user_id, token)
     if snapshot is not None:
-        rich_text, fallback_text, keyboard = screen_from_pending(
+        fallback_text, rich_text, keyboard = screen_from_pending(
             snapshot.pending,
             ctx.tz,
             reference_date=snapshot.moment.date(),
@@ -204,7 +208,7 @@ def _optimistic_refresh_invitations(
         now=moment,
     )
     pending = [ev for ev in pending if event_callback_token(str(ev.get("url") or "")) != token]
-    rich_text, fallback_text, keyboard = screen_from_pending(
+    fallback_text, rich_text, keyboard = screen_from_pending(
         pending,
         ctx.tz,
         reference_date=moment.date(),
@@ -297,12 +301,76 @@ def _show_cached_invitation(
     safe_answer_callback(ctx, cb)
 
 
+def _accept_all_invitations(ctx: HandlerContext, cb: IncomingCallback, data: str) -> None:
+    if cb.user_id is None or cb.chat_id is None:
+        safe_answer_callback(ctx, cb)
+        return
+    cache = ctx.runtime.event_tokens
+    snapshot = cache.get_invitations_snapshot(cb.user_id)
+    if snapshot is None or data != invitation_accept_all_callback(
+        [event_callback_token(str(ev.get("url") or "")) for ev in snapshot.pending]
+    ):
+        # A button from an older list must never accept a newly loaded selection.
+        _edit_invitations_screen(ctx, cb, show_loading=True)
+        return
+    guard = ctx.runtime.partstat_respond
+    if not guard.try_acquire(cb.chat_id, data):
+        safe_answer_callback(ctx, cb)
+        return
+    safe_answer_callback(ctx, cb)
+    accepted = 0
+    try:
+        for event in snapshot.pending:
+            url = str(event.get("url") or "")
+            token = event_callback_token(url)
+            action = f"{CB_INV_RESPOND_PREFIX}{token}"
+            if not guard.try_acquire(cb.chat_id, action):
+                continue
+            sent = False
+            try:
+                ctx.calendar_service.set_attendee_partstat(
+                    cb.user_id,
+                    CalendarEventRef(uid=str(event.get("uid") or ""), url=url),
+                    "ACCEPTED",
+                )
+                cache.remove_invitations_pending(cb.user_id, token)
+                accepted += 1
+                sent = True
+            except (CalendarNotConnectedError, CalendarProviderError):
+                log.warning("Bulk invitation response failed user_id=%s", cb.user_id)
+            finally:
+                guard.release(cb.chat_id, action, sent=sent)
+        remaining = cache.get_invitations_snapshot(cb.user_id)
+        pending = remaining.pending if remaining is not None else snapshot.pending
+        text, rich, keyboard = screen_from_pending(
+            pending,
+            ctx.tz,
+            reference_date=snapshot.moment.date(),
+            truncated=snapshot.truncated,
+            from_settings_hub=snapshot.from_settings_hub,
+        )
+        result = invitations_accept_all_result(accepted, len(pending), snapshot.truncated)
+        if not pending and snapshot.truncated:
+            text, rich = result, paragraph(result)
+        else:
+            text = f"{result}\n\n{text}"
+            rich = join_blocks([paragraph(result), rich])
+        edit_callback_rich_or_html(
+            ctx, cb, rich_html=rich, fallback_html=text, reply_markup=keyboard
+        )
+    finally:
+        guard.release(cb.chat_id, data, sent=accepted > 0)
+
+
 def route_invitations_callback(ctx: HandlerContext, cb: IncomingCallback) -> bool:
     data = (cb.data or "").strip()
     if not data:
         return False
     if not data.startswith("inv:"):
         return False
+    if data.startswith(CB_INV_ACCEPT_ALL_PREFIX):
+        _accept_all_invitations(ctx, cb, data)
+        return True
     if data == CB_INV_BACK or data.startswith(CB_INV_PICK_PREFIX):
         _show_cached_invitation(
             ctx, cb, None if data == CB_INV_BACK else data[len(CB_INV_PICK_PREFIX) :]

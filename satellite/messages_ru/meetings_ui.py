@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 from html import escape
 
 from ..presentation.html import expandable_blockquote
@@ -12,6 +13,7 @@ from .settings_ui import CB_SETTINGS_CALENDAR_BACK
 
 CB_INV_CLOSE = "inv:close"
 CB_INV_REFRESH = "inv:refresh"
+CB_INV_ACCEPT_ALL_PREFIX = "inv:all:"
 CB_INV_BACK = "inv:back"
 CB_INV_PICK_PREFIX = "inv:p:"
 CB_INV_RESPOND_PREFIX = "inv:r:"
@@ -24,7 +26,7 @@ INVITATIONS_EMPTY_HTML = (
 INVITATIONS_INTRO_HTML = (
     "<b>Приглашения</b>\n\n"
     "Встречи, где тебя ждут как участника. Выбери номер встречи, "
-    "затем ответь на приглашение."
+    "затем ответь на приглашение. «Принять все» примет все показанные встречи и серии."
 )
 INVITATIONS_SERIES_LABEL = "Повторяется · ответ на всю серию"
 INVITATIONS_RESPOND_ACCEPTED = "Принято"
@@ -47,6 +49,16 @@ def build_invitations_keyboard(
         {"text": label, "callback_data": f"{CB_INV_PICK_PREFIX}{token}"} for token, label in events
     ]
     rows = [buttons[index : index + 4] for index in range(0, len(buttons), 4)]
+    if events:
+        rows.append(
+            [
+                styled_button(
+                    "✅ Принять все",
+                    invitation_accept_all_callback([token for token, _ in events]),
+                    style="success",
+                )
+            ]
+        )
     rows.append([{"text": "🔄 Обновить", "callback_data": CB_INV_REFRESH}])
     if from_settings_hub:
         rows.append(
@@ -58,6 +70,20 @@ def build_invitations_keyboard(
     else:
         rows.append([{"text": "⬅️ Закрыть", "callback_data": CB_INV_CLOSE}])
     return {"inline_keyboard": rows}
+
+
+def invitation_accept_all_callback(tokens: list[str]) -> str:
+    digest = sha256("|".join(sorted(set(tokens))).encode()).hexdigest()[:16]
+    return f"{CB_INV_ACCEPT_ALL_PREFIX}{digest}"
+
+
+def invitations_accept_all_result(accepted: int, remaining: int, truncated: bool) -> str:
+    text = f"Принято встреч и серий: {accepted}."
+    if remaining:
+        text += f" Не удалось принять: {remaining}. Они остались в списке — попробуй ещё раз."
+    if truncated:
+        text += " Обнови список, чтобы увидеть остальные приглашения."
+    return text
 
 
 def build_invitation_detail_keyboard(token: str) -> dict:

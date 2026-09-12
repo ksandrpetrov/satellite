@@ -205,7 +205,7 @@ class EventTokenCache:
                 pending=pending,
                 login=snapshot.login,
                 moment=snapshot.moment,
-                truncated=snapshot.truncated and len(pending) >= len(snapshot.pending),
+                truncated=snapshot.truncated,
                 from_settings_hub=snapshot.from_settings_hub,
             )
             self._invitations[user_id] = (updated, cached_at)
