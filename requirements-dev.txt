@@ -20,6 +20,8 @@ colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
     #   pytest
+coverage==7.15.2
+    # via -r requirements-dev.in
 cryptography==49.0.0
     # via -r requirements.in
 distlib==0.4.3

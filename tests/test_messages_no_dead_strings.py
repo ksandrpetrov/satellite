@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import re
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,7 +53,7 @@ def _search_corpus() -> list[tuple[Path, str]]:
 
 
 def test_no_unused_public_strings_in_messages_ru() -> None:
-    corpus = _search_corpus()
+    occurrences = Counter(word for _, text in _search_corpus() for word in re.findall(r"\w+", text))
     dead: list[str] = []
 
     for module in sorted(MESSAGES_DIR.glob("*.py")):
@@ -61,10 +62,8 @@ def test_no_unused_public_strings_in_messages_ru() -> None:
         for name in _public_constants(module):
             if name in _ALLOWED_UNUSED:
                 continue
-            pattern = re.compile(rf"\b{re.escape(name)}\b")
             # Определение даёт ровно одно вхождение; всё сверх него — ссылка.
-            occurrences = sum(len(pattern.findall(text)) for _, text in corpus)
-            if occurrences <= 1:
+            if occurrences[name] <= 1:
                 dead.append(f"{module.relative_to(ROOT)}: {name}")
 
     assert not dead, (

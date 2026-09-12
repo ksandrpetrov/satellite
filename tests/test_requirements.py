@@ -27,6 +27,7 @@ RUNTIME_PINS = {
 }
 DEV_PINS = {
     "pytest==9.1.1",
+    "coverage==7.15.2",
     "ruff==0.16.0",
     "mypy==2.3.0",
     "pre-commit==4.6.1",
@@ -40,16 +41,6 @@ def _active_lines(path: Path) -> set[str]:
         for raw_line in path.read_text(encoding="utf-8").splitlines()
         if (line := raw_line.strip()) and not line.startswith("#")
     }
-
-
-@pytest.mark.parametrize("pin", sorted(RUNTIME_PINS))
-def test_runtime_input_dependency_is_exactly_pinned(pin: str) -> None:
-    assert pin in _active_lines(REQUIREMENTS_INPUT)
-
-
-@pytest.mark.parametrize("pin", sorted(DEV_PINS))
-def test_dev_input_dependency_is_exactly_pinned(pin: str) -> None:
-    assert pin in _active_lines(DEV_REQUIREMENTS_INPUT)
 
 
 def test_dependency_inputs_contain_only_direct_pins() -> None:

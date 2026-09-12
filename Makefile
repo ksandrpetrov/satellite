@@ -7,8 +7,9 @@ ENTRY := telegram_test_command.py
 DOCKER_IMAGE ?= satellite:dev
 UV ?= uv
 UV_VERSION ?= 0.11.32
+LOCK_UPGRADE ?= --upgrade
 
-.PHONY: help install install-dev deploy venv env fernet-key run test compile lint format format-check typecheck check lock lock-check check-uv clean docker-build docker-up docker-down docker-logs docker-smoke smoke-prod
+.PHONY: help install install-dev deploy venv env fernet-key run test coverage compile lint format format-check typecheck check lock lock-check check-uv clean docker-build docker-up docker-down docker-logs docker-smoke smoke-prod
 
 help:
 	@echo "Targets:"
@@ -17,6 +18,7 @@ help:
 	@echo "  make deploy         Docker-деплой на сервер (Ansible; nginx — внешний на хосте)"
 	@echo "  make run            запустить бота через venv (long-polling)"
 	@echo "  make test           pytest"
+	@echo "  make coverage       полный pytest с покрытием строк и ветвей"
 	@echo "  make compile        py_compile всех модулей (как в CI)"
 	@echo "  make lint           ruff (lint)"
 	@echo "  make format         ruff format"
@@ -65,6 +67,10 @@ run:
 test:
 	$(VENV_PY) -m pytest
 
+coverage:
+	$(VENV_PY) -m coverage run --branch --source=satellite -m pytest
+	$(VENV_PY) -m coverage report -m
+
 compile:
 	find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 $(VENV_PY) -m py_compile
 
@@ -95,13 +101,13 @@ lock: check-uv
 	$(UV) pip compile requirements.in \
 		--universal \
 		--python-version 3.11 \
-		--upgrade \
+		$(LOCK_UPGRADE) \
 		--custom-compile-command "make lock" \
 		--output-file requirements.txt
 	$(UV) pip compile requirements-dev.in \
 		--universal \
 		--python-version 3.11 \
-		--upgrade \
+		$(LOCK_UPGRADE) \
 		--custom-compile-command "make lock" \
 		--output-file requirements-dev.txt
 
@@ -112,7 +118,8 @@ lock: check-uv
 # любого апстрим-релиза, без единой правки в репозитории.
 # Обновление версий — осознанное, через `make lock` (там есть --upgrade).
 lock-check: check-uv
-	@TMP_DIR="$$(mktemp -d)"; \
+	@set -euo pipefail; \
+	TMP_DIR="$$(mktemp -d)"; \
 	trap 'rm -rf "$$TMP_DIR"' EXIT; \
 	cp requirements.txt requirements-dev.txt "$$TMP_DIR/"; \
 	$(UV) pip compile requirements.in \
