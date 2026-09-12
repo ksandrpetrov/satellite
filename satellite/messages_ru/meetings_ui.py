@@ -24,6 +24,7 @@ INVITATIONS_INTRO_HTML = (
     "Встречи, где тебя ждут как участника. Нажми кнопку под событием — "
     "ответ улетит в календарь."
 )
+INVITATIONS_SERIES_LABEL = "Повторяется · ответ на всю серию"
 INVITATIONS_RESPOND_ACCEPTED = "Принято"
 INVITATIONS_RESPOND_DECLINED = "Отклонено"
 INVITATIONS_RESPOND_TENTATIVE = "Может быть"

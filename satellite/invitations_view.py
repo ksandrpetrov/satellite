@@ -10,14 +10,17 @@ from .calendar.callback_tokens import event_callback_token
 from .calendar.event_token_cache import EventTokenCache
 from .calendar.events import (
     collect_pending_invitations,
+    event_ends_after,
     event_local_start_date,
     format_invitation_list_lines,
     format_time_range,
     format_upcoming_day_header,
+    sort_key,
 )
 from .calendar.user_calendar_service import UserCalendarService
 from .messages_ru import (
     INVITATIONS_EMPTY_HTML,
+    INVITATIONS_SERIES_LABEL,
     build_invitations_keyboard,
     invitations_list_html,
 )
@@ -78,9 +81,26 @@ def collect_pending_from_events(
         login,
         tz,
         now=now,
-        max_events=MAX_INVITATIONS + 1,
+        max_events=len(events),
         lookback_days=INVITATION_LOOKBACK_DAYS,
     )
+    # Answer callbacks address a complete CalDAV resource, so the list must use
+    # the same unit. Group before the screen limit, not after expanding recurrences.
+    by_url: dict[str, list[Event]] = {}
+    for event in pending:
+        by_url.setdefault(str(event["url"]), []).append(dict(event))
+    grouped: list[Event] = []
+    for occurrences in by_url.values():
+        representative = next(
+            (ev for ev in occurrences if event_ends_after(ev, tz, moment=now)),
+            occurrences[-1],
+        )
+        item = dict(representative)
+        item["invitation_series"] = len(occurrences) > 1 or any(
+            ev.get("rrule") or "RECURRENCE-ID" in (ev.get("raw_keys") or []) for ev in occurrences
+        )
+        grouped.append(item)
+    pending = sorted(grouped, key=lambda ev: sort_key(ev, tz))
     truncated = len(pending) > MAX_INVITATIONS
     if truncated:
         pending = pending[:MAX_INVITATIONS]
@@ -106,7 +126,16 @@ def screen_from_pending(
         preview_when_parts.append(format_upcoming_day_header(preview_day, reference_date))
     preview_when_parts.append(format_time_range(preview_event, tz))
     preview_when = " · ".join(preview_when_parts)
-    body = format_invitation_list_lines(pending, tz, reference_date)
+    display_events = [
+        dict(
+            ev,
+            summary=f"{ev.get('summary') or '—'} · {INVITATIONS_SERIES_LABEL}"
+            if ev.get("invitation_series")
+            else ev.get("summary"),
+        )
+        for ev in pending
+    ]
+    body = format_invitation_list_lines(display_events, tz, reference_date)
     keyboard_rows = [
         (event_callback_token(str(ev.get("url") or "")), str(idx + 1))
         for idx, ev in enumerate(pending)
@@ -118,7 +147,7 @@ def screen_from_pending(
         truncated=truncated,
     )
     rich_text = invitations_list_rich_html(
-        body_events=pending,
+        body_events=display_events,
         tz=tz,
         reference_date=reference_date,
         preview_title=preview_title,
