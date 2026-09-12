@@ -187,3 +187,82 @@ def test_bot_contexts_share_runtime_with_scheduler_but_other_bots_are_isolated(t
             second.shutdown()
     finally:
         first.shutdown()
+
+
+@pytest.mark.parametrize("error_type", ["telegram", "unexpected"])
+def test_polling_caps_backoff_and_resets_after_success(error_type) -> None:
+    from types import SimpleNamespace
+
+    from satellite.telegram_bot.api import TelegramError
+
+    bot = _bare_bot()
+    bot._settings = SimpleNamespace(bot=SimpleNamespace(long_poll_timeout_sec=30))
+    bot._offset_tracker = SimpleNamespace(polling_offset=100)
+    ctx = object()
+    bot._build_handler_context = MagicMock(return_value=ctx)
+    bot._sleep_interruptible = MagicMock()
+    bot._dispatcher = MagicMock()
+    updates = [{"update_id": 100}, {"update_id": 101}]
+    failure = (
+        TelegramError("unavailable") if error_type == "telegram" else RuntimeError("unexpected")
+    )
+    responses = iter([failure] * 7 + [updates, failure, []])
+
+    def poll(offset, *, timeout):
+        result = next(responses)
+        if isinstance(result, Exception):
+            raise result
+        if result == []:
+            bot._stop_event.set()
+        return result
+
+    def dispatch(_ctx, update):
+        bot._offset_tracker.polling_offset = update["update_id"] + 1
+
+    bot._telegram.get_updates.side_effect = poll
+    bot._dispatcher.dispatch_update.side_effect = dispatch
+    bot._main_loop()
+
+    assert [call.args[0] for call in bot._sleep_interruptible.call_args_list] == [
+        1,
+        2,
+        4,
+        8,
+        16,
+        30,
+        30,
+        1,
+    ]
+    assert [call.args for call in bot._dispatcher.dispatch_update.call_args_list] == [
+        (ctx, updates[0]),
+        (ctx, updates[1]),
+    ]
+    assert bot._telegram.get_updates.call_count == 10
+    assert bot._telegram.get_updates.call_args.args == (102,)
+    assert all(call.kwargs == {"timeout": 30} for call in bot._telegram.get_updates.call_args_list)
+
+
+def test_shutdown_during_batch_does_not_dispatch_remaining_updates() -> None:
+    bot = _bare_bot()
+    ctx = object()
+    bot._build_handler_context = MagicMock(return_value=ctx)
+    updates = [{"update_id": 1}, {"update_id": 2}]
+    bot._poll_updates_or_backoff = MagicMock(return_value=updates)
+    bot._dispatcher = MagicMock()
+    bot._dispatcher.dispatch_update.side_effect = lambda *_: bot._stop_event.set()
+
+    bot._main_loop()
+
+    bot._dispatcher.dispatch_update.assert_called_once_with(ctx, updates[0])
+    bot._poll_updates_or_backoff.assert_called_once()
+
+
+def test_backoff_wait_stops_promptly_when_shutdown_is_requested(monkeypatch) -> None:
+    monkeypatch.setattr("satellite.telegram_bot.bot.time.monotonic", lambda: 0.0)
+    bot = _bare_bot()
+    bot._stop_event.wait = MagicMock(side_effect=lambda **_: bot._stop_event.set())
+
+    bot._sleep_interruptible(30)
+
+    bot._stop_event.wait.assert_called_once_with(timeout=0.5)
+    assert bot._stop_event.is_set()
