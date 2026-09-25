@@ -114,21 +114,17 @@ class CalDAVError(RuntimeError):
     """Поднимается, если ни один candidate URL не ответил успешно."""
 
 
-def _extract_attendees_status(payload: bytes | str) -> tuple[list[str], str | None] | None:
-    """(attendees, status) из ICS полного ресурса (GET или calendar-multiget)."""
-    parsed = parse_calendar_events(payload, calendar_name="")
-    if not parsed:
-        return None
-    attendees: list[str] = []
-    status: str | None = None
-    for ev in parsed:
-        for attendee in ev.get("attendees", []) or []:
-            if attendee not in attendees:
-                attendees.append(str(attendee))
-        ev_status = ev.get("status")
-        if ev_status and status is None:
-            status = str(ev_status)
-    return attendees, status
+class CalDAVPartstatUnconfirmedError(CalDAVError):
+    """A write may have succeeded, but the requested participant state is unverified."""
+
+
+class CalDAVConflictError(CalDAVError):
+    """The event changed since it was read; a fresh resource is required."""
+
+
+def _extract_partstat_components(payload: bytes | str) -> list[Event] | None:
+    """Keep each recurrence's attendees and cancellation status separate."""
+    return parse_calendar_events(payload, calendar_name="") or None
 
 
 def _multiget_match_key(url: str) -> str:

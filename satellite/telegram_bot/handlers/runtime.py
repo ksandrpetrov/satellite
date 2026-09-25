@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 from ...calendar.event_token_cache import EventTokenCache
 from ...calendar.providers.base import CalendarListEntry
 from .action_guard import ActionGuard
+from .partstat_results import PartstatResultStore
 
 if TYPE_CHECKING:
     from .calendar_view import CalendarListResult
@@ -56,6 +57,7 @@ class UserCache(Generic[T]):
 @dataclass
 class HandlerRuntime:
     event_tokens: EventTokenCache = field(default_factory=EventTokenCache)
+    partstat_results: PartstatResultStore = field(default_factory=PartstatResultStore)
     calendar_lists: UserCache[CalendarListResult] = field(default_factory=lambda: UserCache(60.0))
     foreign_lists: UserCache[tuple[CalendarListEntry, ...]] = field(
         default_factory=lambda: UserCache(60.0)
@@ -72,3 +74,4 @@ class HandlerRuntime:
     manage_open: ActionGuard = field(default_factory=lambda: ActionGuard(cooldown_sec=10.0))
     manage_refresh: ActionGuard = field(default_factory=lambda: ActionGuard(cooldown_sec=10.0))
     partstat_respond: ActionGuard = field(default_factory=lambda: ActionGuard(cooldown_sec=5.0))
+    partstat_write: ActionGuard = field(default_factory=lambda: ActionGuard(cooldown_sec=0.0))

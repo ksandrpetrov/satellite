@@ -88,7 +88,7 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
         self._closed = False
         # _cache читается без блокировки — присваивание атомарно под GIL.
         self._cache: _DiscoveryResult | None = None
-        self._partstat_cache: dict[str, tuple[list[str], str | None] | None] = {}
+        self._partstat_cache: dict[str, list[Event] | None] = {}
         # Keep-alive пул: PARTSTAT GET/PUT идут пачками, новый TLS на каждый — дорого.
         self._http = _new_http_session()
 

@@ -48,11 +48,13 @@ python -m pytest
 - **lock-check** — generated locks соответствуют `requirements*.in`;
 - **ruff** — `ruff check` и `ruff format --check` (блокирующий);
 - **mypy** — `mypy satellite` (блокирующий);
-- **py_compile** — все модули `satellite/` и `tests/`;
-- **pytest** — `pytest -q`.
+- **py_compile** — все модули `satellite/`, `tests/` и `browser_tests/`;
+- **pytest** — `pytest -q`;
+- **Playwright Chromium** — `make browser-test`, обязательный этап на обеих версиях Python.
 
 Перед коммитом локально: `make check`
-(= lock-check + lint + format-check + typecheck + compile + test — тот же набор, что в CI).
+(= lock-check + lint + format-check + typecheck + compile + test).
+Перед выпуском также `make browser-test`; в CI оба набора обязательны.
 
 На каждый push в `main` или тег `v*` workflow
 [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) сначала вызывает тот же
@@ -61,6 +63,31 @@ python -m pytest
 выполняется **только** для `main` (и при ручном **Run workflow**); тег `v*` лишь публикует
 semver-образ. После деплоя CI вызывает [`smoke-prod.sh`](../scripts/smoke-prod.sh).
 Подробности и секреты — [deploy/README.md](../deploy/README.md).
+
+## Браузерные регрессии Web App
+
+```bash
+venv/bin/python -m pip install -r requirements-dev.txt
+venv/bin/python -m playwright install chromium
+make browser-test
+```
+
+В Linux для установки системных библиотек браузера: `python -m playwright install --with-deps chromium`.
+Playwright закреплён в `requirements-dev.in`; браузер соответствует этой версии пакета.
+Тесты запускают настоящий WebAppServer, UserCalendarService, TokenVault и отдельный
+UserStore во временной директории. Только удалённый calendar provider заменён
+управляемым провайдером в памяти. Реальные календари, Telegram и продовые данные
+не используются. Проверяются даты (включая DST и границы года), подключение,
+создание/удаление, видимое подтверждение, просроченный доступ, отказ записи,
+сетевая ошибка и мобильная вёрстка с длинными названиями.
+
+Скриншоты и трассы лежат в игнорируемом `test-results/`. CI сохраняет их при
+падении браузерных тестов. Открыть трассу: `venv/bin/python -m playwright show-trace <trace.zip>`.
+
+CalDAV round-trip регрессии — `tests/test_partstat_confirmation.py`: локальный
+HTTP-сервер выполняет реальные GET/HEAD/PUT с ETag, потерей ответа, конфликтом,
+повреждённым ICS и частично сохранённой серией. Discovery в этих тестах
+предзаполнен; поведение внешних Mail.ru/Telegram проверяется отдельно от стенда.
 
 ## Покрытие строк и ветвей
 

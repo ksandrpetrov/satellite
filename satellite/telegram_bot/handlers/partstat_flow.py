@@ -22,8 +22,9 @@ from ...calendar.providers.base import (
     CalendarNotConnectedError,
     CalendarProviderError,
 )
+from ...messages_ru import PARTSTAT_BUSY_TEXT, partstat_progress, partstat_progress_keyboard
 from .context import HandlerContext, IncomingCallback
-from .delivery import ack_callback_with_loading, safe_answer_callback
+from .delivery import ack_callback_with_loading, replay_partstat_result, safe_answer_callback
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +56,20 @@ def find_event_by_token(events: list, token: str):
     return None
 
 
+def response_event(ctx: HandlerContext, user_id: int, token: str, events: list) -> dict:
+    event = find_event_by_token(events, token)
+    if event is not None:
+        series = bool(
+            event.get("invitation_series")
+            or event.get("rrule")
+            or "RECURRENCE-ID" in (event.get("raw_keys") or [])
+        )
+        count = sum(event_callback_token(str(item.get("url") or "")) == token for item in events)
+        return {**event, "invitation_series": series or count > 1}
+    cached = ctx.runtime.event_tokens.lookup(user_id, token)
+    return {"summary": cached.summary, "invitation_series": cached.series} if cached else {}
+
+
 def parse_respond_data(data: str, prefix: str) -> tuple[str, str, str] | None:
     """Возвращает ``(token, code, partstat)`` или ``None`` при невалидном payload."""
     if not data.startswith(prefix):
@@ -68,6 +83,35 @@ def parse_respond_data(data: str, prefix: str) -> tuple[str, str, str] | None:
     if not partstat:
         return None
     return token, code, partstat
+
+
+def acquire_response(ctx: HandlerContext, user_id: int, token: str, partstat: str) -> bool:
+    """Serialize a resource across screens, deduplicating only the same decision."""
+    if not ctx.runtime.partstat_write.try_acquire(user_id, token):
+        return False
+    if not ctx.runtime.partstat_respond.try_acquire(user_id, f"partstat:{token}:{partstat}"):
+        ctx.runtime.partstat_write.release(user_id, token)
+        return False
+    return True
+
+
+def release_response(
+    ctx: HandlerContext, user_id: int, token: str, partstat: str, *, confirmed: bool
+) -> None:
+    ctx.runtime.partstat_respond.release(user_id, f"partstat:{token}:{partstat}", sent=confirmed)
+    if confirmed:
+        for previous in PARTSTAT_BY_CODE.values():
+            if previous != partstat:
+                ctx.runtime.partstat_respond.release(user_id, f"partstat:{token}:{previous}")
+    ctx.runtime.partstat_write.release(user_id, token)
+
+
+def sync_response_caches(ctx: HandlerContext, user_id: int, token: str, partstat: str) -> None:
+    cache = ctx.runtime.event_tokens
+    cache.remove_invitations_pending(user_id, token)
+    managed = cache.get_manage_snapshot(user_id)
+    if managed is not None:
+        cache.update_manage_partstat(user_id, token, managed.login, partstat)
 
 
 def _resolve_event_ref(
@@ -101,21 +145,17 @@ class PartstatFlow:
 
     Параметры:
     - ``prefix``: префикс callback_data (``inv:r:`` / ``mng:r:``).
-    - ``fail_text``: toast при ошибке CalDAV / сетевой ошибке.
-    - ``toast_by_code``: ``{'a': '...', 'd': '...', 't': '...'}`` — toast после
-      успешного ответа.
     - ``log_name``: префикс для логов (``Invitation`` / ``Manage``).
     - ``fetch_events``: ``(ctx, user_id) -> list`` — полный список событий
       при cache miss (включая не-pending).
     - ``optimistic_refresh_view``: перерисовать экран из кэша без CalDAV;
       ``fallback_events`` — результат единственного fallback-fetch при cache miss.
     - ``on_not_found``: ``(ctx, cb)`` — событие не найдено даже после fallback.
-    - ``on_fail``: ``(ctx, cb)`` — CalDAV PUT не удался (callback уже ack).
+    - ``on_fail``: ``(ctx, cb, error_code)`` — запись не подтверждена (callback уже ack).
     """
 
     prefix: str
-    fail_text: str
-    toast_by_code: Mapping[str, str]
+    refresh_callback: str
     log_name: str
     fetch_events: Callable[[HandlerContext, int], list]
     optimistic_refresh_view: Callable[
@@ -123,8 +163,7 @@ class PartstatFlow:
         None,
     ]
     on_not_found: Callable[[HandlerContext, IncomingCallback], None]
-    on_fail: Callable[[HandlerContext, IncomingCallback], None]
-    loading_status_html: str | None = None
+    on_fail: Callable[[HandlerContext, IncomingCallback, str], None]
 
 
 def respond_partstat(
@@ -139,33 +178,33 @@ def respond_partstat(
         safe_answer_callback(ctx, cb)
         return
     token, code, partstat = parsed
-    action_key = f"{flow.prefix}{token}"
-    if not ctx.runtime.partstat_respond.try_acquire(cb.chat_id, action_key):
+    if replay_partstat_result(ctx, cb):
+        return
+    if not acquire_response(ctx, cb.user_id, token, partstat):
         # Дубль того же ответа на ту же встречу: молча ack-аем callback,
         # чтобы Telegram-кнопка не «вращалась», но никаких send/effect/toast.
-        safe_answer_callback(ctx, cb)
+        safe_answer_callback(ctx, cb, text=PARTSTAT_BUSY_TEXT)
         return
     sent = False
     try:
-        fallback_toast = next(iter(flow.toast_by_code.values()))
-        toast = flow.toast_by_code.get(code, fallback_toast)
-        cache = ctx.runtime.event_tokens
-        cached = cache.lookup(cb.user_id, token)
-        if cached is None and flow.loading_status_html is not None:
-            ack_callback_with_loading(
-                ctx,
-                cb,
-                status_html=flow.loading_status_html,
-                toast=toast,
-            )
-        else:
-            safe_answer_callback(ctx, cb, text=toast)
-        event_ref, fallback_events = _resolve_event_ref(
+        progress = partstat_progress(partstat)
+        ack_callback_with_loading(
             ctx,
-            cb.user_id,
-            token,
-            fetch_events=flow.fetch_events,
+            cb,
+            status_html=progress,
+            toast=progress,
+            reply_markup=partstat_progress_keyboard(flow.refresh_callback),
         )
+        try:
+            event_ref, fallback_events = _resolve_event_ref(
+                ctx,
+                cb.user_id,
+                token,
+                fetch_events=flow.fetch_events,
+            )
+        except CalendarProviderError as exc:
+            flow.on_fail(ctx, cb, exc.error_code)
+            return
         if event_ref is None or not event_ref.url:
             log.warning(
                 "%s respond: event not found by token user_id=%s token=%s",
@@ -176,6 +215,7 @@ def respond_partstat(
             flow.on_not_found(ctx, cb)
             return
         try:
+            ctx.runtime.partstat_results.invalidate(cb.user_id, token)
             ctx.calendar_service.set_attendee_partstat(
                 cb.user_id,
                 CalendarEventRef(uid=event_ref.uid, url=event_ref.url),
@@ -188,9 +228,12 @@ def respond_partstat(
                 cb.user_id,
                 getattr(exc, "error_code", exc.__class__.__name__),
             )
-            flow.on_fail(ctx, cb)
+            flow.on_fail(ctx, cb, exc.error_code)
             return
-        flow.optimistic_refresh_view(ctx, cb, token, partstat, fallback_events)
         sent = True
+        try:
+            flow.optimistic_refresh_view(ctx, cb, token, partstat, fallback_events)
+        finally:
+            sync_response_caches(ctx, cb.user_id, token, partstat)
     finally:
-        ctx.runtime.partstat_respond.release(cb.chat_id, action_key, sent=sent)
+        release_response(ctx, cb.user_id, token, partstat, confirmed=sent)

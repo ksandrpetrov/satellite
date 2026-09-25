@@ -131,3 +131,37 @@ def test_upcoming_releases_guard_after_caldav_failure(
     cal.list_calls.clear()
     handle_message(ctx, make_msg(text="/upcoming", chat_id=CHAT_ID, user_id=USER_ID, update_id=8))
     assert len(cal.list_calls) == 1
+
+
+def test_recurring_upcoming_uses_each_occurrence_time_and_link():
+    from zoneinfo import ZoneInfo
+
+    from satellite.calendar.events import build_upcoming_events_groups
+    from satellite.presentation.calendar_lists import upcoming_events_rich_html
+    from satellite.presentation.rich import datetime_link
+
+    tz = ZoneInfo("Europe/Moscow")
+    starts = ["2026-09-25T10:00:00+03:00", "2026-09-26T15:00:00+03:00"]
+    events = [
+        {
+            "uid": "series",
+            "url": "https://cal/series.ics",
+            "summary": "Series",
+            "dtstart": starts[0],
+            "dtend": "2026-09-25T11:00:00+03:00",
+        },
+        {
+            "uid": "series",
+            "url": "https://cal/series.ics",
+            "summary": "Moved occurrence",
+            "dtstart": starts[1],
+            "dtend": "2026-09-26T16:00:00+03:00",
+        },
+    ]
+    groups = build_upcoming_events_groups(events, tz, date(2026, 9, 25))
+    assert [group["events"][0]["start"] for group in groups] == starts
+    rich = upcoming_events_rich_html(events, tz, date(2026, 9, 25))
+    assert datetime_link("10:00–11:00", int(datetime.fromisoformat(starts[0]).timestamp())) in rich
+    assert datetime_link("15:00–16:00", int(datetime.fromisoformat(starts[1]).timestamp())) in rich
+    assert rich.count("10:00–11:00") == 1
+    assert rich.count("15:00–16:00") == 1

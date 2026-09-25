@@ -21,7 +21,6 @@ import logging
 from datetime import date, datetime, timedelta
 
 from ...calendar.callback_tokens import event_callback_token
-from ...calendar.event_token_cache import apply_user_partstat_to_event
 from ...calendar.events import (
     collect_manageable_events,
     event_index_marker,
@@ -46,29 +45,33 @@ from ...messages_ru import (
     MANAGE_EMPTY_HTML,
     MANAGE_FETCH_STATUS,
     MANAGE_NOT_FOUND_TEXT,
-    MANAGE_RESPOND_ACCEPTED,
-    MANAGE_RESPOND_DECLINED,
     MANAGE_RESPOND_FAIL_TEXT,
-    MANAGE_RESPOND_TENTATIVE,
+    PARTSTAT_UNCONFIRMED_TEXT,
     build_manage_detail_keyboard,
     build_manage_list_keyboard,
+    invitation_response_result,
     manage_detail_html,
     manage_list_html,
+    partstat_progress_keyboard,
 )
 from ...presentation.calendar_lists import (
     manage_detail_rich_html,
     manage_list_body_lines,
     manage_list_rich_html,
 )
+from ...presentation.rich import join_blocks, paragraph
+from ..presenters.bundle import ScreenBundle
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
     ack_callback_with_loading,
+    deliver_partstat_result,
     edit_callback_message,
     edit_callback_rich_or_html,
+    replay_partstat_result,
     safe_answer_callback,
 )
-from .partstat_flow import PartstatFlow, find_event_by_token, respond_partstat
+from .partstat_flow import PartstatFlow, find_event_by_token, respond_partstat, response_event
 from .streaming_caldav import StreamingCaldavResult, run_streaming_caldav_message
 
 log = logging.getLogger(__name__)
@@ -270,6 +273,18 @@ def _optimistic_refresh_list(
         return
     cache = ctx.runtime.event_tokens
     existing = cache.get_manage_snapshot(cb.user_id)
+    event = response_event(
+        ctx, cb.user_id, token, existing.events if existing else fallback_events or []
+    )
+    result = invitation_response_result(
+        str((event or {}).get("summary") or "—"),
+        partstat,
+        series=bool(
+            (event or {}).get("invitation_series")
+            or (event or {}).get("rrule")
+            or "RECURRENCE-ID" in ((event or {}).get("raw_keys") or [])
+        ),
+    )
     if existing is not None:
         snapshot = cache.update_manage_partstat(
             cb.user_id,
@@ -284,58 +299,42 @@ def _optimistic_refresh_list(
                 reference_date=snapshot.moment.date(),
                 truncated=snapshot.truncated,
             )
-            edit_callback_rich_or_html(
+            deliver_partstat_result(
                 ctx,
                 cb,
-                rich_html=rich_text,
-                fallback_html=fallback_text,
-                reply_markup=keyboard,
+                ScreenBundle(
+                    join_blocks([paragraph(result), rich_text]),
+                    f"{result}\n\n{fallback_text}",
+                    keyboard,
+                ),
+                tokens=(token,),
+                allow_retry=False,
             )
             return
-    if fallback_events is not None:
-        connected = ctx.calendar_service.require_connection(cb.user_id)
-        login = connected.context.login
-        moment = datetime.now(tz=ctx.tz)
-        manageable = collect_manageable_events(
-            fallback_events,
-            login,
-            ctx.tz,
-            now=moment,
-            max_events=_MAX_EVENTS + 1,
-        )
-        truncated = len(manageable) > _MAX_EVENTS
-        if truncated:
-            manageable = manageable[:_MAX_EVENTS]
-        events = [
-            apply_user_partstat_to_event(ev, login, partstat)
-            if event_callback_token(str(ev.get("url") or "")) == token
-            else ev
-            for ev in manageable
-        ]
-        rich_text, fallback_text, keyboard = _build_list_screen(
-            events,
-            tz=ctx.tz,
-            reference_date=moment.date(),
-            truncated=truncated,
-        )
-        edit_callback_rich_or_html(
-            ctx,
-            cb,
-            rich_html=rich_text,
-            fallback_html=fallback_text,
-            reply_markup=keyboard,
-        )
-        return
-    _refresh_list(ctx, cb, ack=False)
-
-
-def _on_fail(ctx: HandlerContext, cb: IncomingCallback) -> None:
-    edit_callback_rich_or_html(
+    deliver_partstat_result(
         ctx,
         cb,
-        rich_html=MANAGE_RESPOND_FAIL_TEXT,
-        fallback_html=MANAGE_RESPOND_FAIL_TEXT,
-        reply_markup=None,
+        ScreenBundle(paragraph(result), result, partstat_progress_keyboard(CB_MANAGE_REFRESH)),
+        tokens=(token,),
+        allow_retry=False,
+    )
+
+
+def _on_fail(ctx: HandlerContext, cb: IncomingCallback, error_code: str) -> None:
+    token = (cb.data or "")[len(CB_MANAGE_RESPOND_PREFIX) :].rsplit(":", 1)[0]
+    error_text = (
+        PARTSTAT_UNCONFIRMED_TEXT
+        if error_code == "PARTSTAT_UPDATE_UNCONFIRMED"
+        else MANAGE_RESPOND_FAIL_TEXT
+    )
+    deliver_partstat_result(
+        ctx,
+        cb,
+        ScreenBundle(
+            paragraph(error_text), error_text, build_manage_detail_keyboard(token, partstat=None)
+        ),
+        tokens=(token,),
+        allow_retry=True,
     )
 
 
@@ -345,14 +344,8 @@ def _on_not_found(ctx: HandlerContext, cb: IncomingCallback) -> None:
 
 _FLOW = PartstatFlow(
     prefix=CB_MANAGE_RESPOND_PREFIX,
-    fail_text=MANAGE_RESPOND_FAIL_TEXT,
-    toast_by_code={
-        "a": MANAGE_RESPOND_ACCEPTED,
-        "d": MANAGE_RESPOND_DECLINED,
-        "t": MANAGE_RESPOND_TENTATIVE,
-    },
+    refresh_callback=CB_MANAGE_REFRESH,
     log_name="Manage",
-    loading_status_html=MANAGE_FETCH_STATUS,
     fetch_events=_fetch_manageable_events_only,
     optimistic_refresh_view=_optimistic_refresh_list,
     on_not_found=_on_not_found,
@@ -369,6 +362,8 @@ def route_manage_events_callback(ctx: HandlerContext, cb: IncomingCallback) -> b
         safe_answer_callback(ctx, cb)
         return True
     if data in (CB_MANAGE_BACK, CB_MANAGE_REFRESH):
+        if replay_partstat_result(ctx, cb, undelivered_only=True):
+            return True
         if cb.chat_id is None:
             return True
         if not ctx.runtime.manage_refresh.try_acquire(cb.chat_id, _MANAGE_REFRESH_ACTION):

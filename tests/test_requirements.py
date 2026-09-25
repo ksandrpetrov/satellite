@@ -32,6 +32,7 @@ DEV_PINS = {
     "mypy==2.3.0",
     "pre-commit==4.6.1",
     "uv==0.11.32",
+    "playwright==1.63.0",
 }
 
 

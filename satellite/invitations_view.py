@@ -20,6 +20,7 @@ from .calendar.events import (
 from .calendar.user_calendar_service import UserCalendarService
 from .messages_ru import (
     INVITATIONS_EMPTY_HTML,
+    INVITATIONS_MORE_TEXT,
     INVITATIONS_SERIES_LABEL,
     build_invitations_keyboard,
     invitations_list_html,
@@ -116,7 +117,7 @@ def screen_from_pending(
     from_settings_hub: bool = False,
 ) -> tuple[str, str, dict]:
     if not pending:
-        empty = INVITATIONS_EMPTY_HTML
+        empty = INVITATIONS_MORE_TEXT if truncated else INVITATIONS_EMPTY_HTML
         return empty, empty, build_invitations_keyboard([], from_settings_hub=from_settings_hub)
     preview_event = pending[0]
     preview_title = str(preview_event.get("summary") or "—")

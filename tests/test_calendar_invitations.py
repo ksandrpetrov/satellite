@@ -185,7 +185,9 @@ def test_set_attendee_partstat_updates_ics(monkeypatch):
         status_code = 204
 
     def fake_get(self, url, **kwargs):
-        return _GetResp()
+        response = _GetResp()
+        response.content = saved.get("body", ics_bytes)
+        return response
 
     def fake_put(self, url, data=None, **kwargs):
         saved["body"] = data
