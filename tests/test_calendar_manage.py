@@ -18,11 +18,9 @@ from satellite.messages_ru import (
     CB_MANAGE_RESPOND_PREFIX,
     MANAGE_CLOSED_TEXT,
     MANAGE_EMPTY_HTML,
-    MANAGE_RESPOND_ACCEPTED,
-    MANAGE_RESPOND_DECLINED,
-    MANAGE_RESPOND_TENTATIVE,
     build_manage_detail_keyboard,
     build_manage_list_keyboard,
+    partstat_progress,
 )
 from satellite.telegram_bot.handlers import (
     IncomingCallback,
@@ -395,9 +393,10 @@ def test_manage_respond_calls_set_attendee_partstat_and_refreshes(monkeypatch):
     assert args.args[2] == "DECLINED"
     ctx.calendar_service.list_events_for_invitations.assert_not_called()
 
-    # answerCallbackQuery с тостом «Отклонено»
+    # Toast acknowledges work; the edited message contains the confirmed result.
     ack = ctx.telegram.answer_callback_query.call_args
-    assert ack.kwargs.get("text") == MANAGE_RESPOND_DECLINED
+    assert ack.kwargs.get("text") == partstat_progress("DECLINED")
+    assert "Отклонено" in callback_edit_html(ctx.telegram)
 
 
 def test_manage_respond_cache_miss_uses_single_fetch_fallback(monkeypatch):
@@ -422,7 +421,7 @@ def test_manage_respond_cache_miss_uses_single_fetch_fallback(monkeypatch):
     ctx.calendar_service.set_attendee_partstat.assert_called_once()
 
 
-def test_manage_respond_accept_uses_accept_toast(monkeypatch):
+def test_manage_respond_accept_keeps_confirmed_result(monkeypatch):
     import satellite.telegram_bot.handlers.calendar_manage as cm
 
     now = datetime(2026, 5, 21, 10, 0, tzinfo=TZ)
@@ -444,10 +443,11 @@ def test_manage_respond_accept_uses_accept_toast(monkeypatch):
     args = ctx.calendar_service.set_attendee_partstat.call_args
     assert args.args[2] == "ACCEPTED"
     ack = ctx.telegram.answer_callback_query.call_args
-    assert ack.kwargs.get("text") == MANAGE_RESPOND_ACCEPTED
+    assert ack.kwargs.get("text") == partstat_progress("ACCEPTED")
+    assert "Принято" in callback_edit_html(ctx.telegram)
 
 
-def test_manage_respond_tentative_uses_tentative_toast(monkeypatch):
+def test_manage_respond_tentative_keeps_confirmed_result(monkeypatch):
     import satellite.telegram_bot.handlers.calendar_manage as cm
 
     now = datetime(2026, 5, 21, 10, 0, tzinfo=TZ)
@@ -469,7 +469,8 @@ def test_manage_respond_tentative_uses_tentative_toast(monkeypatch):
     args = ctx.calendar_service.set_attendee_partstat.call_args
     assert args.args[2] == "TENTATIVE"
     ack = ctx.telegram.answer_callback_query.call_args
-    assert ack.kwargs.get("text") == MANAGE_RESPOND_TENTATIVE
+    assert ack.kwargs.get("text") == partstat_progress("TENTATIVE")
+    assert "Может быть" in callback_edit_html(ctx.telegram)
 
 
 def test_manage_close_callback_clears_keyboard():

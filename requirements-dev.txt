@@ -32,6 +32,8 @@ filelock==3.32.2
     # via
     #   python-discovery
     #   virtualenv
+greenlet==3.5.6
+    # via playwright
 h11==0.16.0
     # via urllib3-future
 icalendar==7.2.2
@@ -71,12 +73,16 @@ pillow==12.3.0
     # via -r requirements.in
 platformdirs==4.11.0
     # via virtualenv
+playwright==1.63.0
+    # via -r requirements-dev.in
 pluggy==1.6.0
     # via pytest
 pre-commit==4.6.1
     # via -r requirements-dev.in
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
+pyee==13.0.1
+    # via playwright
 pygments==2.20.0
     # via pytest
 pytest==9.1.1
@@ -110,6 +116,7 @@ typing-extensions==4.16.0
     # via
     #   icalendar
     #   mypy
+    #   pyee
 tzdata==2026.3
     # via
     #   icalendar

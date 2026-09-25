@@ -137,7 +137,7 @@
     .day-group { margin-bottom: 12px; }
     .day-group:last-child { margin-bottom: 0; }
     .day-header { font-weight: 600; font-size: 0.95rem; margin-bottom: 6px; }
-    .event-line { padding: 4px 0; font-size: 0.95rem; }
+    .event-line { padding: 4px 0; font-size: 0.95rem; overflow-wrap: anywhere; }
     .event-line .when { color: var(--hint); }
     .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
     .chip-row button {
@@ -165,7 +165,7 @@
       margin: 12px 0;
       line-height: 1.5;
     }
-    .confirm-box .ev-title { font-weight: 600; }
+    .confirm-box .ev-title { font-weight: 600; overflow-wrap: anywhere; }
     .row-actions { display: flex; gap: 8px; margin-top: 12px; }
     .row-actions button { margin-top: 0; flex: 1; }
     .spinner {
@@ -615,7 +615,10 @@
     const UPCOMING_DAYS = 7;
     const DURATION_PRESETS_MIN = [15, 30, 45, 60];
 
-    function isoDate(d) { return d.toISOString().slice(0, 10); }
+    function isoDate(d) {
+      return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'),
+        String(d.getDate()).padStart(2, '0')].join('-');
+    }
 
     function localToday() {
       const d = new Date();
@@ -727,8 +730,8 @@
       try {
         const qs = url ? `?url=${encodeURIComponent(url)}` : '';
         await api('DELETE', `/api/calendar/events/${encodeURIComponent(uid)}${qs}`);
+        await loadEvents();
         showStatus('eventsStatus', 'Событие удалено.', 'ok');
-        loadEvents();
       } catch (e) {
         showStatus('eventsStatus', e.message || 'Не удалось удалить событие.', 'err');
         btn.disabled = false;
@@ -877,8 +880,8 @@
           start: createDraft.eventDate + 'T' + createDraft.startTime + ':00',
           duration_minutes: createDraft.durationMinutes,
         });
-        showStatus('createStatus', '✅ Событие создано в вашем календаре.', 'ok');
         resetCreateWizard();
+        showStatus('createStatus', '✅ Событие создано в вашем календаре.', 'ok');
       } catch (e) {
         if (e.code === 'not_connected') {
           showStatus('createStatus', 'Сначала подключите календарь.', 'err');

@@ -35,14 +35,25 @@ jobs:
         if: matrix.python-version == '3.12'
         run: make lock-check
       - name: Ruff lint
-        run: python -m ruff check satellite tests
+        run: python -m ruff check satellite tests browser_tests
       - name: Ruff format check
-        run: python -m ruff format --check satellite tests
+        run: python -m ruff format --check satellite tests browser_tests
       - name: Mypy
         run: python -m mypy satellite
       - name: Compile check
         run: |
-          find satellite tests -name '*.py' ! -name '._*' -print0 \
+          find satellite tests browser_tests -name '*.py' ! -name '._*' -print0 \
             | xargs -0 python -m py_compile
       - name: Pytest
         run: python -m pytest -q
+      - name: Install browser
+        run: python -m playwright install --with-deps chromium
+      - name: Browser regressions
+        run: make browser-test VENV_PY=python
+      - name: Browser evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure-${{ matrix.python-version }}
+          path: test-results/
+          retention-days: 7

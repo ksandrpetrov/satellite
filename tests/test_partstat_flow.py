@@ -49,8 +49,7 @@ def test_partstat_respond_dedup_within_cooldown() -> None:
 
     flow = PartstatFlow(
         prefix=CB_INV_RESPOND_PREFIX,
-        fail_text="fail",
-        toast_by_code={"a": "ok"},
+        refresh_callback="inv:refresh",
         log_name="Test",
         fetch_events=lambda _ctx, _uid: events,
         optimistic_refresh_view=MagicMock(),

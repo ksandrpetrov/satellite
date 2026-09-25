@@ -15,6 +15,7 @@ from caldav.lib.error import DAVError
 from caldav.lib.url import URL as CaldavURL
 from icalendar import Calendar as IcsCalendar
 
+from .caldav_partstat import calendar_attendee_partstats
 from .caldav_shared import (
     _INVITATION_MISSING_ATTENDEES_BUDGET_SEC,
     _INVITATION_MISSING_ATTENDEES_REFRESH_LIMIT,
@@ -22,7 +23,9 @@ from .caldav_shared import (
     _INVITATION_VERIFY_FORWARD_DAYS,
     _MULTIGET_CHUNK_SIZE,
     _PARTSTAT_GET_MAX_WORKERS,
+    CalDAVConflictError,
     CalDAVError,
+    CalDAVPartstatUnconfirmedError,
     CalendarHandle,
     EnrichStats,
     Event,
@@ -30,7 +33,7 @@ from .caldav_shared import (
     _bump_vevent_sequence,
     _dav_reason,
     _dav_status,
-    _extract_attendees_status,
+    _extract_partstat_components,
     _handle_for_event_url,
     _multiget_match_key,
     _redact_url,
@@ -58,7 +61,7 @@ class CalDAVPartstatMixin:
     _partstat_refresh_budget_sec: float
     _partstat_update_timeout_sec: float
     _cache: _DiscoveryResult | None
-    _partstat_cache: dict[str, tuple[list[str], str | None] | None]
+    _partstat_cache: dict[str, list[Event] | None]
     _partstat_cache_lock: threading.Lock
 
     def _http_get(self, url: str, **kwargs: Any) -> requests.Response:
@@ -160,15 +163,37 @@ class CalDAVPartstatMixin:
         return (4, sort_key(ev, tz))
 
     @staticmethod
-    def _apply_partstat_refresh_to_event(
-        ev: Event, refreshed: tuple[list[str], str | None] | None
-    ) -> None:
+    def _apply_partstat_refresh_to_event(ev: Event, refreshed: list[Event] | None) -> None:
         if refreshed is None:
             return
-        attendees, status = refreshed
+        components = [
+            item for item in refreshed if not ev.get("uid") or item.get("uid") == ev["uid"]
+        ]
+        master = next((item for item in components if not item.get("recurrence_id")), None)
+
+        def identity(value: Any) -> Any:
+            try:
+                return datetime.fromisoformat(str(value))
+            except (ValueError, TypeError):
+                return value
+
+        occurrence = identity(ev.get("recurrence_id") or ev.get("dtstart"))
+        exception = next(
+            (
+                item
+                for item in components
+                if item.get("recurrence_id") and identity(item["recurrence_id"]) == occurrence
+            ),
+            None,
+        )
+        selected = exception or master
+        if selected is None:
+            return
+        attendees = selected.get("attendees") or (master or {}).get("attendees")
         if attendees:
             ev["attendees"] = list(attendees)
-        if status is not None and not ev.get("status"):
+        status = selected.get("status") or (master or {}).get("status")
+        if status is not None:
             ev["status"] = status
 
     def _enrich_invitation_missing_attendees(
@@ -354,8 +379,8 @@ class CalDAVPartstatMixin:
     @staticmethod
     def _extract_multiget_response(
         obj: Any, requested: dict[str, str]
-    ) -> tuple[str, tuple[list[str], str | None]] | None:
-        """(исходный URL, (attendees, status)) из одного multiget-ответа или None."""
+    ) -> tuple[str, list[Event]] | None:
+        """(исходный URL, компоненты серии) из одного multiget-ответа или None."""
         try:
             original = requested.get(_multiget_match_key(str(getattr(obj, "url", "") or "")))
             if original is None:
@@ -363,11 +388,11 @@ class CalDAVPartstatMixin:
             data = getattr(obj, "data", None)
             if not data:
                 return None
-            result = _extract_attendees_status(data)
+            result = _extract_partstat_components(data)
         except Exception as exc:  # noqa: BLE001 - битый ответ не должен валить батч
             log.debug("CalDAV multiget response skipped: %s", exc.__class__.__name__)
             return None
-        if result is None or not result[0]:
+        if result is None or not any(item.get("attendees") for item in result):
             # ATTENDEE нет и здесь — не доверяем (возможен тот же стрип, что в
             # calendar-query REPORT); событие остаётся кандидатом per-event GET.
             return None
@@ -468,11 +493,36 @@ class CalDAVPartstatMixin:
         *,
         partstat: str,
         login_variants: Sequence[str],
-    ) -> None:
+        version_hint: str | None = None,
+    ) -> bool:
         with self._partstat_cache_lock:
             self._partstat_cache.pop(event_url, None)
         payload, etag = self._get_event_ics_via_http(event_url)
         calendar = IcsCalendar.from_ical(payload)
+        expected = calendar_attendee_partstats(calendar, login_variants)
+        if not expected:
+            raise CalDAVError("Connected account is not an attendee of this event")
+        if all(all(status == partstat for status in states) for states in expected.values()):
+            return True
+        if not etag:
+            if version_hint is None:
+                head = self._http_head(
+                    event_url,
+                    auth=(self._auth_username(), self._app_password),
+                    timeout=self._partstat_update_timeout_sec,
+                )
+                head_etag = head.headers.get("ETag") if head.status_code == 200 else None
+                if not head_etag:
+                    raise CalDAVError("Cannot safely update event without ETag")
+                # HEAD may describe a newer version than the first GET. Read its
+                # body again before using that version in a conditional write.
+                return self._set_attendee_partstat_once(
+                    event_url,
+                    partstat=partstat,
+                    login_variants=login_variants,
+                    version_hint=head_etag,
+                )
+            etag = version_hint
         updated = False
         vevents = list(calendar.walk("vevent"))
         for component in vevents:
@@ -483,16 +533,34 @@ class CalDAVPartstatMixin:
                 continue
         if not updated:
             raise CalDAVError("Connected account is not an attendee of this event")
-        self._put_event_ics_via_http(event_url, calendar.to_ical(), etag=etag)
-        with self._partstat_cache_lock:
-            self._partstat_cache.pop(event_url, None)
+        write_uncertain = False
+        try:
+            self._put_event_ics_via_http(event_url, calendar.to_ical(), etag=etag)
+        except (requests.RequestException, OSError, CalDAVPartstatUnconfirmedError):
+            # A lost PUT response says nothing about whether the server committed it.
+            write_uncertain = True
+        try:
+            verified_payload, _ = self._get_event_ics_via_http(event_url)
+            observed = calendar_attendee_partstats(
+                IcsCalendar.from_ical(verified_payload), login_variants
+            )
+        except (CalDAVError, requests.RequestException, OSError, ValueError) as exc:
+            raise CalDAVPartstatUnconfirmedError("Cannot verify invitation response") from exc
+        if expected.keys() <= observed.keys() and all(
+            all(status == partstat for status in states) for states in observed.values()
+        ):
+            return True
+        # Retry a lost write only when a fresh read confirms the original states.
+        # Missing components or a third-party answer must never be overwritten.
+        if write_uncertain and observed == expected:
+            return False
+        raise CalDAVPartstatUnconfirmedError("Calendar has not confirmed invitation response")
 
     def set_attendee_partstat(self, event_url: str, partstat: str) -> None:
-        """Обновляет PARTSTAT текущего пользователя в ATTENDEE события.
+        """Условный PUT сохраняет всю серию; GET подтверждает каждый ответ.
 
-        Загрузка/сохранение через HTTP (как PARTSTAT refresh): у Mail.ru тот же
-        auth, что и для GET. ``caldav.Event.save()`` с ``only_this_recurrence=True``
-        по умолчанию ломает повторяющиеся приглашения; прямой PUT + SEQUENCE надёжнее.
+        Потерянный ответ записи проверяем до повтора, конфликт версии
+        разрешаем новым чтением. Сигнатура фасада остаётся прежней.
         """
         normalized = (partstat or "").strip().upper()
         allowed = {"ACCEPTED", "DECLINED", "TENTATIVE", "NEEDS-ACTION", "DELEGATED"}
@@ -501,26 +569,27 @@ class CalDAVPartstatMixin:
         if not (self._login or "").strip():
             raise CalDAVError("Login is required to update PARTSTAT")
         login_variants = [self._login]
-        last_timeout: requests.Timeout | None = None
         try:
             for attempt in range(2):
                 try:
-                    self._set_attendee_partstat_once(
+                    confirmed = self._set_attendee_partstat_once(
                         event_url, partstat=normalized, login_variants=login_variants
                     )
-                    return
-                except requests.Timeout as exc:
-                    last_timeout = exc
+                    if confirmed:
+                        return
+                except CalDAVConflictError:
+                    if attempt:
+                        raise
+                except requests.Timeout:
+                    if attempt:
+                        raise
                     log.warning(
-                        "PARTSTAT update timeout attempt=%s url=%s timeout=%ss",
+                        "PARTSTAT initial read timeout attempt=%s url=%s timeout=%ss",
                         attempt + 1,
                         _redact_url(event_url),
                         self._partstat_update_timeout_sec,
                     )
-            if last_timeout is not None:
-                raise CalDAVError(
-                    f"Network error during PARTSTAT update: {last_timeout}"
-                ) from last_timeout
+            raise CalDAVPartstatUnconfirmedError("Invitation write could not be confirmed")
         except DAVError as exc:
             log.warning(
                 "CalDAV set_attendee_partstat failed url=%s status=%s: %s",
@@ -535,6 +604,9 @@ class CalDAVPartstatMixin:
             raise CalDAVError(f"Network error during PARTSTAT update: {exc}") from exc
         except (ConnectionError, TimeoutError, OSError) as exc:
             raise CalDAVError(f"Network error during PARTSTAT update: {exc}") from exc
+        finally:
+            with self._partstat_cache_lock:
+                self._partstat_cache.pop(event_url, None)
 
     def _partstat_refresh_budget_left(self, started_at: float) -> bool:
         if self._partstat_refresh_limit <= 0:
@@ -581,27 +653,13 @@ class CalDAVPartstatMixin:
     def _put_event_ics_via_http(
         self, event_url: str, ics: bytes, *, etag: str | None = None
     ) -> None:
-        """PUT обновлённого ICS с If-Match, если сервер отдал ETag."""
+        """PUT обновлённого ICS только с версией прочитанного ресурса."""
         auth = (self._auth_username(), self._app_password)
         headers = {"Content-Type": "text/calendar; charset=utf-8"}
         if etag:
             headers["If-Match"] = etag
         else:
-            try:
-                head = self._http_head(
-                    event_url,
-                    auth=auth,
-                    timeout=self._partstat_update_timeout_sec,
-                )
-                head_etag = head.headers.get("ETag")
-                if head_etag:
-                    headers["If-Match"] = head_etag
-            except requests.RequestException as exc:
-                log.debug(
-                    "PARTSTAT update HEAD failed url=%s: %s",
-                    _redact_url(event_url),
-                    exc.__class__.__name__,
-                )
+            raise CalDAVError("Cannot safely update event without ETag")
         response = self._http_put(
             event_url,
             data=ics,
@@ -609,16 +667,20 @@ class CalDAVPartstatMixin:
             headers=headers,
             timeout=self._partstat_update_timeout_sec,
         )
+        if response.status_code == 412:
+            raise CalDAVConflictError("Event changed during invitation response")
+        if response.status_code >= 500:
+            raise CalDAVPartstatUnconfirmedError("Server failed during invitation write")
         if response.status_code not in (200, 201, 204):
             raise CalDAVError(f"Failed to save event ICS (HTTP {response.status_code})")
 
-    def _refresh_attendees_via_get(self, event_url: str) -> tuple[list[str], str | None] | None:
+    def _refresh_attendees_via_get(self, event_url: str) -> list[Event] | None:
         """Доп. GET на ресурс события: mail.ru CalDAV в REPORT иногда выкидывает
         ATTENDEE, но в одиночном GET возвращает строку с PARTSTAT для логина,
         под которым мы авторизованы. Это единственный способ получить статус
         для системно-импортированных событий (no local ATTENDEE list).
 
-        Возвращает (attendees, status) или None при сетевой ошибке.
+        Возвращает компоненты серии или None при сетевой ошибке.
         """
         with self._partstat_cache_lock:
             cached = self._partstat_cache.get(event_url)
@@ -645,7 +707,7 @@ class CalDAVPartstatMixin:
                 _redact_url(event_url),
             )
             return None
-        result = _extract_attendees_status(response.content)
+        result = _extract_partstat_components(response.content)
         if result is None:
             return None
         with self._partstat_cache_lock:

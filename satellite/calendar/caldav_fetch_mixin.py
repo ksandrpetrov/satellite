@@ -50,7 +50,11 @@ class CalDAVFetchMixin:
     def _has_user_partstat(self, events: Sequence[Event]) -> bool:
         raise NotImplementedError
 
-    def _refresh_attendees_via_get(self, event_url: str) -> tuple[list[str], str | None] | None:
+    def _refresh_attendees_via_get(self, event_url: str) -> list[Event] | None:
+        raise NotImplementedError
+
+    @staticmethod
+    def _apply_partstat_refresh_to_event(ev: Event, refreshed: list[Event] | None) -> None:
         raise NotImplementedError
 
     def fetch_events_in_range(
@@ -264,14 +268,8 @@ class CalDAVFetchMixin:
                 ):
                     refreshed = self._refresh_attendees_via_get(event_url)
                     refresh_count += 1
-                    if refreshed is not None:
-                        attendees, status = refreshed
-                        if attendees or status is not None:
-                            for ev in parsed:
-                                if attendees and not ev.get("attendees"):
-                                    ev["attendees"] = list(attendees)
-                                if status is not None and not ev.get("status"):
-                                    ev["status"] = status
+                    for ev in parsed:
+                        self._apply_partstat_refresh_to_event(ev, refreshed)
                 out.extend(parsed)
         if target_calendar_name and not matched_calendar:
             log.warning(

@@ -9,7 +9,7 @@ UV ?= uv
 UV_VERSION ?= 0.11.32
 LOCK_UPGRADE ?= --upgrade
 
-.PHONY: help install install-dev deploy venv env fernet-key run test coverage compile lint format format-check typecheck check lock lock-check check-uv clean docker-build docker-up docker-down docker-logs docker-smoke smoke-prod
+.PHONY: help install install-dev deploy venv env fernet-key run test browser-test coverage compile lint format format-check typecheck check lock lock-check check-uv clean docker-build docker-up docker-down docker-logs docker-smoke smoke-prod
 
 help:
 	@echo "Targets:"
@@ -18,6 +18,7 @@ help:
 	@echo "  make deploy         Docker-деплой на сервер (Ansible; nginx — внешний на хосте)"
 	@echo "  make run            запустить бота через venv (long-polling)"
 	@echo "  make test           pytest"
+	@echo "  make browser-test   Playwright: Web App в изолированном браузерном стенде"
 	@echo "  make coverage       полный pytest с покрытием строк и ветвей"
 	@echo "  make compile        py_compile всех модулей (как в CI)"
 	@echo "  make lint           ruff (lint)"
@@ -67,21 +68,24 @@ run:
 test:
 	$(VENV_PY) -m pytest
 
+browser-test:
+	$(VENV_PY) -m pytest browser_tests -q
+
 coverage:
 	$(VENV_PY) -m coverage run --branch --source=satellite -m pytest
 	$(VENV_PY) -m coverage report -m
 
 compile:
-	find satellite tests -name '*.py' ! -name '._*' -print0 | xargs -0 $(VENV_PY) -m py_compile
+	find satellite tests browser_tests -name '*.py' ! -name '._*' -print0 | xargs -0 $(VENV_PY) -m py_compile
 
 lint:
-	$(VENV_PY) -m ruff check satellite tests
+	$(VENV_PY) -m ruff check satellite tests browser_tests
 
 format:
-	$(VENV_PY) -m ruff format satellite tests
+	$(VENV_PY) -m ruff format satellite tests browser_tests
 
 format-check:
-	$(VENV_PY) -m ruff format --check satellite tests
+	$(VENV_PY) -m ruff format --check satellite tests browser_tests
 
 typecheck:
 	$(VENV_PY) -m mypy satellite

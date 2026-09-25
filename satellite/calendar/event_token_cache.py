@@ -27,6 +27,8 @@ Event = Mapping[str, Any]
 class CachedEventRef:
     url: str
     uid: str
+    summary: str = ""
+    series: bool = False
 
 
 @dataclass(frozen=True)
@@ -113,6 +115,10 @@ class EventTokenCache:
                 now,
             )
             for ev in all_events:
+                self._register_event(user_id, ev, cached_at=now)
+            # Grouped cards carry series identity even when expanded REPORT
+            # occurrences omit RRULE and RECURRENCE-ID.
+            for ev in pending:
                 self._register_event(user_id, ev, cached_at=now)
 
     def register_manage_screen(
@@ -235,6 +241,15 @@ class EventTokenCache:
             return
         token = event_callback_token(url)
         self._tokens[(user_id, token)] = _TokenEntry(
-            ref=CachedEventRef(url=url, uid=str(event.get("uid") or "")),
+            ref=CachedEventRef(
+                url=url,
+                uid=str(event.get("uid") or ""),
+                summary=str(event.get("summary") or ""),
+                series=bool(
+                    event.get("invitation_series")
+                    or event.get("rrule")
+                    or "RECURRENCE-ID" in (event.get("raw_keys") or [])
+                ),
+            ),
             cached_at=cached_at,
         )

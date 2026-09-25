@@ -10,6 +10,7 @@ from datetime import date, tzinfo
 
 from ...security.token_vault import ProviderCredentials
 from ..caldav_client import CalDAVError, CalDAVService
+from ..caldav_shared import CalDAVPartstatUnconfirmedError
 from ..selection import effective_enabled_calendar_urls_from_parts
 from .base import (
     CalendarConnectionStatus,
@@ -218,6 +219,11 @@ class MailruCalendarProvider:
         service = self._service_for_invitations(context.credentials)
         try:
             service.set_attendee_partstat(event_ref.url, partstat)
+        except CalDAVPartstatUnconfirmedError as exc:
+            raise CalendarProviderError(
+                "Не удалось подтвердить ответ в календаре.",
+                error_code="PARTSTAT_UPDATE_UNCONFIRMED",
+            ) from exc
         except CalDAVError as exc:
             log.warning(
                 "Mail.ru set_attendee_partstat failed: %s",

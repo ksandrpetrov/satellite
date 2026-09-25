@@ -126,6 +126,7 @@ def build_upcoming_events_groups(
                 {
                     "marker": event_index_marker(idx),
                     "time_range": format_time_range(ev, tz),
+                    "start": ev.get("dtstart"),
                     "title": str(ev.get("summary") or ev.get("title") or "—"),
                     "uid": ev.get("uid") or ev.get("id"),
                     "url": ev.get("url"),

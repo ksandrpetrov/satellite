@@ -109,13 +109,18 @@ def test_series_ics_updates_master_and_exception(status, monkeypatch):
     payload = (
         "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n" + "".join(components) + "END:VCALENDAR\r\n"
     ).encode()
-    monkeypatch.setattr(
-        service, "_get_event_ics_via_http", MagicMock(return_value=(payload, '"etag"'))
-    )
     put = MagicMock()
+    get = MagicMock(
+        side_effect=lambda *args, **kwargs: (
+            put.call_args.args[1] if put.called else payload,
+            '"etag"',
+        )
+    )
+    monkeypatch.setattr(service, "_get_event_ics_via_http", get)
     monkeypatch.setattr(service, "_put_event_ics_via_http", put)
     service.set_attendee_partstat("https://cal/series.ics", status)
     put.assert_called_once()
+    assert get.call_count == 2
     assert put.call_args.kwargs["etag"] == '"etag"'
     updated = Calendar.from_ical(put.call_args.args[1]).walk("VEVENT")
     assert len(updated) == 2

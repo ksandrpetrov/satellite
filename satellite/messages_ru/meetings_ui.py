@@ -33,6 +33,51 @@ INVITATIONS_RESPOND_DECLINED = "Отклонено"
 INVITATIONS_RESPOND_TENTATIVE = "Может быть"
 INVITATIONS_RESPOND_FAIL_TEXT = "Не удалось обновить ответ. Попробуй позже."
 INVITATIONS_CLOSED_TEXT = "📨 Чайка свернула список приглашений."
+PARTSTAT_BUSY_TEXT = "Ответ уже обрабатывается. Дождись результата."
+PARTSTAT_UNCONFIRMED_TEXT = (
+    "Не удалось подтвердить ответ в календаре. Он мог сохраниться. "
+    "Повтори проверку — Чайка сначала проверит текущий статус."
+)
+INVITATIONS_MORE_TEXT = "Обнови список, чтобы увидеть остальные приглашения."
+
+
+def partstat_progress(partstat: str) -> str:
+    return {
+        "ACCEPTED": "Принимаю…",
+        "DECLINED": "Отклоняю…",
+        "TENTATIVE": "Отправляю ответ «Может быть»…",
+    }[partstat]
+
+
+def partstat_progress_keyboard(refresh_callback: str) -> dict:
+    return {
+        "inline_keyboard": [[{"text": "🔄 Проверить результат", "callback_data": refresh_callback}]]
+    }
+
+
+def invitations_accept_all_progress(processed: int, total: int, accepted: int) -> str:
+    return f"⏳ Принимаю встречи и серии… Обработано {processed} из {total}. Принято: {accepted}."
+
+
+def invitation_response_result(
+    title: str, partstat: str, *, series: bool, status: str = "confirmed"
+) -> str:
+    title = escape(title[:80] + ("…" if len(title) > 80 else ""), quote=False)
+    if status == "unconfirmed":
+        label = "⚠️ Ответ пока не подтверждён"
+    elif status == "failed":
+        label = "❌ Не удалось обновить ответ"
+    elif status == "busy":
+        label = "⏳ Ещё обрабатывается"
+    else:
+        label = {
+            "ACCEPTED": "✅ Принята вся серия" if series else f"✅ {INVITATIONS_RESPOND_ACCEPTED}",
+            "DECLINED": "❌ Отклонена вся серия"
+            if series
+            else f"❌ {INVITATIONS_RESPOND_DECLINED}",
+            "TENTATIVE": f"🤔 {INVITATIONS_RESPOND_TENTATIVE}" + (" — вся серия" if series else ""),
+        }[partstat]
+    return f"{label}: <b>{title}</b>."
 
 
 def build_invitations_keyboard(
@@ -73,12 +118,18 @@ def invitation_accept_all_callback(tokens: list[str]) -> str:
     return f"{CB_INV_ACCEPT_ALL_PREFIX}{digest}"
 
 
-def invitations_accept_all_result(accepted: int, remaining: int, truncated: bool) -> str:
+def invitations_accept_all_result(
+    accepted: int, remaining: int, truncated: bool, *, unconfirmed: int = 0, busy: int = 0
+) -> str:
     text = f"Принято встреч и серий: {accepted}."
     if remaining:
         text += f" Не удалось принять: {remaining}. Они остались в списке — попробуй ещё раз."
+    if unconfirmed:
+        text += f" Результат пока не подтверждён: {unconfirmed}. {PARTSTAT_UNCONFIRMED_TEXT}"
+    if busy:
+        text += f" Ещё обрабатывается: {busy}. Обнови список перед повтором."
     if truncated:
-        text += " Обнови список, чтобы увидеть остальные приглашения."
+        text += f" {INVITATIONS_MORE_TEXT}"
     return text
 
 
@@ -149,9 +200,6 @@ MANAGE_EMPTY_HTML = (
 MANAGE_CLOSED_TEXT = "🛠 Чайка свернула список встреч."
 MANAGE_NOT_FOUND_TEXT = "Встреча не нашлась — обновите список."
 MANAGE_RESPOND_FAIL_TEXT = "Не удалось обновить статус. Попробуй позже."
-MANAGE_RESPOND_ACCEPTED = "✅ Принято"
-MANAGE_RESPOND_DECLINED = "❌ Отклонено"
-MANAGE_RESPOND_TENTATIVE = "🤔 Может быть"
 
 _MANAGE_PARTSTAT_LABEL_RU = {
     "ACCEPTED": "✅ принято",

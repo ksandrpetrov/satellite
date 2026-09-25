@@ -97,10 +97,10 @@ def edit_callback_rich_or_html(
     rich_html: str,
     fallback_html: str,
     reply_markup: dict | None,
-) -> None:
+) -> bool:
     """Редактирует callback-сообщение rich HTML с fallback."""
     if cb.chat_id is None or cb.message_id is None:
-        return
+        return False
     try:
         edit_rich_or_html(
             ctx.telegram,
@@ -110,19 +110,21 @@ def edit_callback_rich_or_html(
             fallback_html=fallback_html,
             reply_markup=reply_markup,
         )
+        return True
     except TelegramError as exc:
         log.info("Edit callback rich message ignored: %s", exc)
     except Exception as error:  # noqa: BLE001
         log.warning("Unexpected error editing rich callback message: %s", error)
+    return False
 
 
 def edit_callback_bundle(
     ctx: HandlerContext,
     cb: IncomingCallback,
     bundle: ScreenBundle,
-) -> None:
+) -> bool:
     """Редактирует callback-сообщение из ``ScreenBundle``."""
-    edit_callback_rich_or_html(
+    return edit_callback_rich_or_html(
         ctx,
         cb,
         rich_html=bundle.rich_html,
@@ -131,24 +133,79 @@ def edit_callback_bundle(
     )
 
 
+def deliver_partstat_result(
+    ctx: HandlerContext,
+    cb: IncomingCallback,
+    bundle: ScreenBundle,
+    *,
+    tokens: tuple[str, ...],
+    allow_retry: bool,
+) -> bool:
+    """Save the calendar outcome before attempting to show it in Telegram."""
+    if cb.user_id is None or cb.chat_id is None or cb.message_id is None:
+        return False
+    receipt = ctx.runtime.partstat_results.save(
+        (cb.user_id, cb.chat_id, cb.message_id, cb.data or ""),
+        bundle,
+        tokens,
+        allow_retry=allow_retry,
+    )
+    delivered = edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=bundle.rich_html,
+        fallback_html=bundle.fallback_html,
+        reply_markup=bundle.reply_markup,
+    )
+    if delivered:
+        ctx.runtime.partstat_results.mark_delivered(receipt)
+    return delivered
+
+
+def replay_partstat_result(
+    ctx: HandlerContext, cb: IncomingCallback, *, undelivered_only: bool = False
+) -> bool:
+    """Recover a receipt without another write; failed decisions can then be retried."""
+    if cb.user_id is None or cb.chat_id is None or cb.message_id is None:
+        return False
+    store = ctx.runtime.partstat_results
+    if undelivered_only:
+        receipt = store.undelivered(cb.user_id, cb.chat_id, cb.message_id)
+    else:
+        receipt = store.get((cb.user_id, cb.chat_id, cb.message_id, cb.data or ""))
+        if receipt is not None and receipt.delivered and receipt.allow_retry:
+            return False
+    if receipt is None:
+        return False
+    safe_answer_callback(ctx, cb)
+    bundle = receipt.bundle
+    if edit_callback_rich_or_html(
+        ctx,
+        cb,
+        rich_html=bundle.rich_html,
+        fallback_html=bundle.fallback_html,
+        reply_markup=bundle.reply_markup,
+    ):
+        store.mark_delivered(receipt)
+    return True
+
+
 def edit_callback_message(
     ctx: HandlerContext,
     cb: IncomingCallback,
     text: str,
     reply_markup: dict | None,
-) -> None:
+) -> bool:
     """Редактирует сообщение, к которому привязана inline-кнопка.
 
     ВАЖНО: НИКОГДА не делаем fallback на ``send_message``. Иначе любой повторный
     callback (Telegram переотдаёт его при offset-рассинхроне или при двойном
     тапе пользователя) превращается в дубль сообщения «🕘 Напиши новое время…»
-    и тому подобных экранов — пользователь видит спам. Если edit не удался,
-    содержимое экрана у пользователя уже корректное (мы редактируем на ТО ЖЕ
-    состояние, что и в прошлый раз), либо это устаревший callback, который уже
-    отработан. В обоих случаях молча выходим.
+    и тому подобных экранов — пользователь видит спам. Возвращает признак
+    доставки, чтобы caller мог сохранить и повторно показать результат.
     """
     if cb.chat_id is None or cb.message_id is None:
-        return
+        return False
     try:
         ctx.telegram.edit_message_text(
             cb.chat_id,
@@ -156,8 +213,14 @@ def edit_callback_message(
             text,
             reply_markup=reply_markup,
         )
+        return True
     except TelegramError as exc:
+        if "message is not modified" in str(exc).lower():
+            return True
         log.info("Edit callback message ignored: %s", exc)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Unexpected error editing callback message: %s", exc)
+    return False
 
 
 def respond_callback_nav(

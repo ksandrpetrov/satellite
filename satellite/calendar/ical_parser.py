@@ -74,6 +74,7 @@ def parse_event(component: Any, calendar_name: str) -> dict[str, Any]:
             dtend_value = None
     else:
         dtend_value = dtend.dt if dtend else None
+    recurrence_id = component.get("RECURRENCE-ID")
     created = component.get("CREATED")
     last_modified = component.get("LAST-MODIFIED")
 
@@ -90,6 +91,7 @@ def parse_event(component: Any, calendar_name: str) -> dict[str, Any]:
         "categories": _categories_to_list(component.get("CATEGORIES")),
         "dtstart": _to_serializable(dtstart.dt if dtstart else None),
         "dtend": _to_serializable(dtend_value),
+        "recurrence_id": _to_serializable(recurrence_id.dt if recurrence_id else None),
         "created": _to_serializable(created.dt if created else None),
         "last_modified": _to_serializable(last_modified.dt if last_modified else None),
         "rrule": _rrule_to_dict(component.get("RRULE")),

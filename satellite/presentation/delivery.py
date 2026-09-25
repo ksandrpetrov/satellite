@@ -88,13 +88,20 @@ def edit_rich_or_html(
             reply_markup=rich_reply_markup(rich_html, reply_markup),
         )
     except TelegramError as exc:
+        if "message is not modified" in str(exc).lower():
+            return None
         if is_rich_message_unavailable(exc):
             log.info("editMessageRich unavailable, using legacy HTML: %s", exc)
         else:
             log.warning("editMessageRich failed, falling back to legacy HTML: %s", exc)
-    return telegram.edit_message_text(
-        chat_id,
-        message_id,
-        fallback_html,
-        reply_markup=reply_markup,
-    )
+    try:
+        return telegram.edit_message_text(
+            chat_id,
+            message_id,
+            fallback_html,
+            reply_markup=reply_markup,
+        )
+    except TelegramError as exc:
+        if "message is not modified" in str(exc).lower():
+            return None
+        raise

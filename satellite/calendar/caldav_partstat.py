@@ -13,6 +13,26 @@ def attendee_matches_login_variants(attendee: Any, login_variants: Sequence[str]
     return any(attendee_matches_account(str(attendee), login) for login in login_variants)
 
 
+def calendar_attendee_partstats(
+    calendar: Any, login_variants: Sequence[str]
+) -> dict[tuple[str, str], tuple[str, ...]]:
+    """Keep master and exception states separate when verifying a series response."""
+    states = {}
+    for component in calendar.walk("vevent"):
+        raw = component.get("ATTENDEE")
+        attendees = raw if isinstance(raw, list) else [raw] if raw is not None else []
+        matching = [a for a in attendees if attendee_matches_login_variants(a, login_variants)]
+        if not matching:
+            continue
+        recurrence = component.get("RECURRENCE-ID")
+        recurrence_key = recurrence.to_ical().decode() if recurrence is not None else ""
+        key = (str(component.get("UID") or ""), recurrence_key)
+        if key in states:
+            raise ValueError("Duplicate event component identity")
+        states[key] = tuple(str(a.params.get("PARTSTAT", "")).upper() for a in matching)
+    return states
+
+
 def bump_vevent_dtstamp(component: Any) -> None:
     for prop in ("dtstamp", "DTSTAMP"):
         if prop in component:

@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from ...calendar.callback_tokens import event_callback_token
 from ...calendar.events import event_local_start_date, format_time_range, format_upcoming_day_header
@@ -17,7 +16,6 @@ from ...calendar.providers.base import (
     CalendarProviderError,
 )
 from ...invitations_view import (
-    collect_pending_from_events,
     fetch_invitation_events,
     load_pending_invitations_screen,
     screen_from_pending,
@@ -33,28 +31,38 @@ from ...messages_ru import (
     INVITATIONS_BUSY_TEXT,
     INVITATIONS_CLOSED_TEXT,
     INVITATIONS_FETCH_STATUS,
-    INVITATIONS_RESPOND_ACCEPTED,
-    INVITATIONS_RESPOND_DECLINED,
     INVITATIONS_RESPOND_FAIL_TEXT,
-    INVITATIONS_RESPOND_TENTATIVE,
+    PARTSTAT_BUSY_TEXT,
+    PARTSTAT_UNCONFIRMED_TEXT,
     build_invitation_detail_keyboard,
+    build_invitations_keyboard,
     invitation_accept_all_callback,
     invitation_detail_html,
+    invitation_response_result,
+    invitations_accept_all_progress,
     invitations_accept_all_result,
+    partstat_progress_keyboard,
 )
 from ...presentation.rich import join_blocks, paragraph
+from ..presenters.bundle import ScreenBundle
 from ..visual import pick_invitations_effect
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingCallback, IncomingMessage
 from .delivery import (
     ack_callback_with_loading,
+    deliver_partstat_result,
     edit_callback_message,
     edit_callback_rich_or_html,
+    replay_partstat_result,
     safe_answer_callback,
 )
 from .partstat_flow import (
     PartstatFlow,
+    acquire_response,
+    release_response,
     respond_partstat,
+    response_event,
+    sync_response_caches,
 )
 from .partstat_flow import (
     find_event_by_token as _find_event_by_token,
@@ -172,12 +180,20 @@ def _optimistic_refresh_invitations(
     ctx: HandlerContext,
     cb: IncomingCallback,
     token: str,
-    _partstat: str,
+    partstat: str,
     fallback_events: list | None,
 ) -> None:
     if cb.user_id is None or cb.chat_id is None:
         return
-    from_hub = _invitations_from_settings_hub(ctx, cb.user_id)
+    original = ctx.runtime.event_tokens.get_invitations_snapshot(cb.user_id)
+    event = response_event(
+        ctx, cb.user_id, token, original.pending if original else fallback_events or []
+    )
+    result = invitation_response_result(
+        str((event or {}).get("summary") or "—"),
+        partstat,
+        series=bool((event or {}).get("invitation_series") or (event or {}).get("rrule")),
+    )
     snapshot = ctx.runtime.event_tokens.remove_invitations_pending(cb.user_id, token)
     if snapshot is not None:
         fallback_text, rich_text, keyboard = screen_from_pending(
@@ -187,40 +203,24 @@ def _optimistic_refresh_invitations(
             truncated=snapshot.truncated,
             from_settings_hub=snapshot.from_settings_hub,
         )
-        edit_callback_rich_or_html(
+        deliver_partstat_result(
             ctx,
             cb,
-            rich_html=rich_text,
-            fallback_html=fallback_text,
-            reply_markup=keyboard,
+            ScreenBundle(
+                join_blocks([paragraph(result), rich_text]),
+                f"{result}\n\n{fallback_text}",
+                keyboard,
+            ),
+            tokens=(token,),
+            allow_retry=False,
         )
         return
-    if fallback_events is None:
-        _edit_invitations_screen(ctx, cb, ack=False, from_settings_hub=from_hub)
-        return
-    connected = ctx.calendar_service.require_connection(cb.user_id)
-    login = connected.context.login
-    moment = datetime.now(tz=ctx.tz)
-    pending, truncated = collect_pending_from_events(
-        fallback_events,
-        login,
-        ctx.tz,
-        now=moment,
-    )
-    pending = [ev for ev in pending if event_callback_token(str(ev.get("url") or "")) != token]
-    fallback_text, rich_text, keyboard = screen_from_pending(
-        pending,
-        ctx.tz,
-        reference_date=moment.date(),
-        truncated=truncated,
-        from_settings_hub=from_hub,
-    )
-    edit_callback_rich_or_html(
+    deliver_partstat_result(
         ctx,
         cb,
-        rich_html=rich_text,
-        fallback_html=fallback_text,
-        reply_markup=keyboard,
+        ScreenBundle(paragraph(result), result, partstat_progress_keyboard(CB_INV_REFRESH)),
+        tokens=(token,),
+        allow_retry=False,
     )
 
 
@@ -232,21 +232,22 @@ def _on_not_found(ctx: HandlerContext, cb: IncomingCallback) -> None:
     _edit_invitations_screen(ctx, cb, toast=INVITATIONS_RESPOND_FAIL_TEXT, ack=False)
 
 
-def _on_fail(ctx: HandlerContext, cb: IncomingCallback) -> None:
+def _on_fail(ctx: HandlerContext, cb: IncomingCallback, error_code: str) -> None:
     token = (cb.data or "")[len(CB_INV_RESPOND_PREFIX) :].rsplit(":", 1)[0]
-    _show_cached_invitation(ctx, cb, token, error=True)
+    _show_cached_invitation(
+        ctx,
+        cb,
+        token,
+        error_text=PARTSTAT_UNCONFIRMED_TEXT
+        if error_code == "PARTSTAT_UPDATE_UNCONFIRMED"
+        else INVITATIONS_RESPOND_FAIL_TEXT,
+    )
 
 
 _FLOW = PartstatFlow(
     prefix=CB_INV_RESPOND_PREFIX,
-    fail_text=INVITATIONS_RESPOND_FAIL_TEXT,
-    toast_by_code={
-        "a": INVITATIONS_RESPOND_ACCEPTED,
-        "d": INVITATIONS_RESPOND_DECLINED,
-        "t": INVITATIONS_RESPOND_TENTATIVE,
-    },
+    refresh_callback=CB_INV_REFRESH,
     log_name="Invitation",
-    loading_status_html=INVITATIONS_FETCH_STATUS,
     fetch_events=_fetch_all_for_token_lookup,
     optimistic_refresh_view=_optimistic_refresh_invitations,
     on_not_found=_on_not_found,
@@ -255,13 +256,24 @@ _FLOW = PartstatFlow(
 
 
 def _show_cached_invitation(
-    ctx: HandlerContext, cb: IncomingCallback, token: str | None, *, error: bool = False
+    ctx: HandlerContext, cb: IncomingCallback, token: str | None, *, error_text: str | None = None
 ) -> None:
     if cb.user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
     snapshot = ctx.runtime.event_tokens.get_invitations_snapshot(cb.user_id)
     if snapshot is None:
+        if error_text:
+            deliver_partstat_result(
+                ctx,
+                cb,
+                ScreenBundle(
+                    paragraph(error_text), error_text, partstat_progress_keyboard(CB_INV_REFRESH)
+                ),
+                tokens=(token,) if token else (),
+                allow_retry=True,
+            )
+            return
         # An expired screen must be refreshed before choosing an event again.
         _edit_invitations_screen(ctx, cb, show_loading=True)
         return
@@ -277,8 +289,20 @@ def _show_cached_invitation(
                 when=when,
                 series=bool(event.get("invitation_series")),
             )
-            if error:
-                text += f"\n\n{INVITATIONS_RESPOND_FAIL_TEXT}"
+            if error_text:
+                text += f"\n\n{error_text}"
+                deliver_partstat_result(
+                    ctx,
+                    cb,
+                    ScreenBundle(
+                        join_blocks([paragraph(part) for part in text.split("\n\n")]),
+                        text,
+                        build_invitation_detail_keyboard(token),
+                    ),
+                    tokens=(token,),
+                    allow_retry=True,
+                )
+                return
             edit_callback_rich_or_html(
                 ctx,
                 cb,
@@ -305,60 +329,111 @@ def _accept_all_invitations(ctx: HandlerContext, cb: IncomingCallback, data: str
     if cb.user_id is None or cb.chat_id is None:
         safe_answer_callback(ctx, cb)
         return
+    if replay_partstat_result(ctx, cb):
+        return
     cache = ctx.runtime.event_tokens
     snapshot = cache.get_invitations_snapshot(cb.user_id)
     if snapshot is None or data != invitation_accept_all_callback(
         [event_callback_token(str(ev.get("url") or "")) for ev in snapshot.pending]
     ):
-        # A button from an older list must never accept a newly loaded selection.
         _edit_invitations_screen(ctx, cb, show_loading=True)
         return
     guard = ctx.runtime.partstat_respond
     if not guard.try_acquire(cb.chat_id, data):
-        safe_answer_callback(ctx, cb)
+        safe_answer_callback(ctx, cb, text=PARTSTAT_BUSY_TEXT)
         return
-    safe_answer_callback(ctx, cb)
+    safe_answer_callback(ctx, cb, text=invitations_accept_all_progress(0, len(snapshot.pending), 0))
     accepted = 0
+    # The receipt always describes the selected batch, even if the scheduler
+    # replaces the user's cached screen or its TTL expires during a request.
+    outcomes: list[tuple[dict, str]] = []
+    progress_keyboard = partstat_progress_keyboard(CB_INV_REFRESH)
+    edit_callback_message(
+        ctx, cb, invitations_accept_all_progress(0, len(snapshot.pending), 0), progress_keyboard
+    )
     try:
         for event in snapshot.pending:
             url = str(event.get("url") or "")
             token = event_callback_token(url)
-            action = f"{CB_INV_RESPOND_PREFIX}{token}"
-            if not guard.try_acquire(cb.chat_id, action):
+            if not acquire_response(ctx, cb.user_id, token, "ACCEPTED"):
+                outcomes.append((event, "busy"))
                 continue
-            sent = False
+            confirmed = False
             try:
+                ctx.runtime.partstat_results.invalidate(cb.user_id, token)
                 ctx.calendar_service.set_attendee_partstat(
                     cb.user_id,
                     CalendarEventRef(uid=str(event.get("uid") or ""), url=url),
                     "ACCEPTED",
                 )
-                cache.remove_invitations_pending(cb.user_id, token)
+                sync_response_caches(ctx, cb.user_id, token, "ACCEPTED")
                 accepted += 1
-                sent = True
-            except (CalendarNotConnectedError, CalendarProviderError):
-                log.warning("Bulk invitation response failed user_id=%s", cb.user_id)
+                confirmed = True
+                outcomes.append((event, "confirmed"))
+            except CalendarProviderError as exc:
+                status = (
+                    "unconfirmed" if exc.error_code == "PARTSTAT_UPDATE_UNCONFIRMED" else "failed"
+                )
+                outcomes.append((event, status))
+                log.warning(
+                    "Bulk invitation response user_id=%s status=%s code=%s",
+                    cb.user_id,
+                    status,
+                    exc.error_code,
+                )
             finally:
-                guard.release(cb.chat_id, action, sent=sent)
-        remaining = cache.get_invitations_snapshot(cb.user_id)
-        pending = remaining.pending if remaining is not None else snapshot.pending
-        text, rich, keyboard = screen_from_pending(
-            pending,
-            ctx.tz,
-            reference_date=snapshot.moment.date(),
-            truncated=snapshot.truncated,
-            from_settings_hub=snapshot.from_settings_hub,
-        )
-        result = invitations_accept_all_result(accepted, len(pending), snapshot.truncated)
-        if not pending and snapshot.truncated:
-            text, rich = result, paragraph(result)
-        else:
-            text = f"{result}\n\n{text}"
-            rich = join_blocks([paragraph(result), rich])
-        edit_callback_rich_or_html(
-            ctx, cb, rich_html=rich, fallback_html=text, reply_markup=keyboard
-        )
+                release_response(ctx, cb.user_id, token, "ACCEPTED", confirmed=confirmed)
+            if len(outcomes) < len(snapshot.pending):
+                edit_callback_message(
+                    ctx,
+                    cb,
+                    invitations_accept_all_progress(len(outcomes), len(snapshot.pending), accepted),
+                    progress_keyboard,
+                )
     finally:
+        # Retain every confirmed write even when an unexpected later error aborts
+        # the handler. Unattempted resources remain visibly unresolved.
+        outcomes.extend((event, "busy") for event in snapshot.pending[len(outcomes) :])
+        counts = {
+            status: sum(s == status for _, s in outcomes)
+            for status in ("failed", "unconfirmed", "busy")
+        }
+        summary = invitations_accept_all_result(
+            accepted,
+            counts["failed"],
+            snapshot.truncated,
+            unconfirmed=counts["unconfirmed"],
+            busy=counts["busy"],
+        )
+        lines = [summary]
+        remaining_buttons = []
+        tokens = []
+        for index, (event, status) in enumerate(outcomes, 1):
+            token = event_callback_token(str(event.get("url") or ""))
+            tokens.append(token)
+            lines.append(
+                f"{index}. "
+                + invitation_response_result(
+                    str(event.get("summary") or "—"),
+                    "ACCEPTED",
+                    series=bool(event.get("invitation_series")),
+                    status=status,
+                )
+            )
+            if status != "confirmed":
+                remaining_buttons.append((token, str(index)))
+        keyboard = build_invitations_keyboard(
+            remaining_buttons, from_settings_hub=snapshot.from_settings_hub
+        )
+        deliver_partstat_result(
+            ctx,
+            cb,
+            ScreenBundle(
+                join_blocks([paragraph(line) for line in lines]), "\n\n".join(lines), keyboard
+            ),
+            tokens=tuple(tokens),
+            allow_retry=accepted == 0,
+        )
         guard.release(cb.chat_id, data, sent=accepted > 0)
 
 
@@ -381,6 +456,8 @@ def route_invitations_callback(ctx: HandlerContext, cb: IncomingCallback) -> boo
         safe_answer_callback(ctx, cb)
         return True
     if data == CB_INV_REFRESH:
+        if replay_partstat_result(ctx, cb, undelivered_only=True):
+            return True
         if cb.chat_id is None:
             return True
         if not ctx.runtime.invitations_refresh.try_acquire(cb.chat_id, _INVITATIONS_REFRESH_ACTION):

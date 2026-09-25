@@ -89,15 +89,6 @@ def _time_range_rich(event: dict[str, Any], tz: tzinfo) -> str:
     return escape_rich(label)
 
 
-def _events_by_url(events) -> dict[str, dict[str, Any]]:
-    lookup: dict[str, dict[str, Any]] = {}
-    for ev in events:
-        url = ev.get("url")
-        if url:
-            lookup[str(url)] = ev
-    return lookup
-
-
 def upcoming_events_rich_html(
     events,
     tz: tzinfo,
@@ -116,7 +107,6 @@ def upcoming_events_rich_html(
     if not groups:
         return ""
 
-    by_url = _events_by_url(events)
     blocks: list[str] = [section_heading(UPCOMING_EVENTS_HEADING_PLAIN, level=2)]
     for group in groups:
         raw_header = str(group["header"])
@@ -128,9 +118,9 @@ def upcoming_events_rich_html(
         li_parts: list[str] = []
         for item in items:
             title = escape_rich(str(item["title"]))
-            ev = by_url.get(str(item.get("url") or ""))
-            if ev is not None:
-                time_html = _time_range_rich(ev, tz)
+            unix = _event_start_unix({"dtstart": item.get("start")}, tz)
+            if unix is not None:
+                time_html = datetime_link(str(item["time_range"]), unix)
             else:
                 time_html = escape_rich(str(item["time_range"]))
             li_parts.append(f"{item['marker']} {time_html} — {title}")
