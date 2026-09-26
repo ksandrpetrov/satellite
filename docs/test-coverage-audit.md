@@ -7,6 +7,11 @@
 **См. также:** [карта документов](README.md) · [testing.md](testing.md) ·
 [telegram-ux.md](telegram-ux.md) · [AGENTS.md](../AGENTS.md)
 
+Последняя проверка корректности данных: [аудит 2026-09-26](product-correctness-audit-2026-09-26.md).
+Сквозные регрессии CalDAV → продукт находятся в
+[`test_product_correctness.py`](../tests/test_product_correctness.py); браузерные проверки
+локального времени, DST и ввода — в [`browser_tests/test_webapp.py`](../browser_tests/test_webapp.py).
+
 ## Содержание
 
 - [Легенда](#легенда)

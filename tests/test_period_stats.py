@@ -272,3 +272,46 @@ def test_regular_meeting_during_lunch_counts_as_load():
 
     assert report.current.total_busy == 60
     assert report.current.total_free == 5 * 480 - 60
+
+
+def test_uid_is_case_sensitive_and_different_events_must_not_be_collapsed():
+    monday = date(2026, 5, 11)
+    event = {**_caldav_ev("Same title", monday, 10, 11), "uid": "Meeting-A"}
+    other = {**event, "uid": "meeting-a"}
+    report = build_analytics_report([event, other], monday, tz=TZ, login=LOGIN)
+    assert report.current.total_meetings == 2
+    assert report.current.total_overlaps == 1
+    assert report.quality.duplicate_occurrences_dropped == 0
+
+
+def test_week_count_does_not_include_event_ending_before_monday():
+    monday = date(2026, 5, 11)
+    event = {
+        **_caldav_ev("Sunday", monday - timedelta(days=1), 23, 23),
+        "dtend": "2026-05-11T00:00:00+00:00",
+    }
+    report = build_analytics_report([event], monday, tz=TZ, login=LOGIN)
+    assert report.current.total_meetings == 0
+    assert report.previous.total_meetings == 0  # Sunday is outside the working week.
+
+
+def test_invalid_duration_does_not_inflate_week_count():
+    monday = date(2026, 5, 11)
+    events = [
+        _caldav_ev("Zero", monday, 10, 10),
+        _caldav_ev("Inverted", monday, 11, 10),
+        _caldav_ev("Valid", monday, 10, 11),
+    ]
+    report = build_analytics_report(events, monday, tz=TZ, login=LOGIN)
+    assert report.current.total_meetings == 1
+    assert report.current.days[0].meetings_count == 1
+
+
+def test_cancelled_copy_wins_regardless_of_calendar_response_order():
+    monday = date(2026, 5, 11)
+    event = {**_caldav_ev("Cancelled", monday, 10, 11), "uid": "cancelled", "status": "CONFIRMED"}
+    cancelled = {**event, "status": "CANCELLED"}
+    for events in ([event, cancelled], [cancelled, event]):
+        report = build_analytics_report(events, monday, tz=TZ, login=LOGIN)
+        assert report.current.total_meetings == 0
+        assert report.current.total_busy == 0

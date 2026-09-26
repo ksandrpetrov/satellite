@@ -55,6 +55,23 @@ def test_plan_builder_renders_seagull_digest_for_user():
     assert fake.calls[0]["target_date"] == date(2026, 5, 11)
 
 
+def test_shared_calendar_duplicate_does_not_create_phantom_overlap():
+    event = _caldav_ev("Shared meeting", 10, 0, 11, 0, uid="same", status="CONFIRMED")
+    builder = PlanBuilder(
+        calendar_service=_FakeCalendarService([event, {**event, "calendar": "Shared"}]),
+        plan_config=PlanConfig(),
+        tz=TZ,
+    )
+    bundle = builder.build_plan_bundle(
+        telegram_user_id=7,
+        target_date=date(2026, 5, 11),
+        reference_date=date(2026, 5, 11),
+    )
+    assert bundle.fallback_html.count("Shared meeting") == 1
+    assert bundle.rich_html.count("Shared meeting") == 1
+    assert "👨‍💻 Занято: 1 ч" in bundle.fallback_html
+
+
 def test_plan_builder_filters_cancelled_and_lunch_and_renders_footer():
     events = [
         _caldav_ev("Дейли", 10, 0, 10, 30),

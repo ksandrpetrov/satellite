@@ -118,6 +118,10 @@ class CalDAVPartstatUnconfirmedError(CalDAVError):
     """A write may have succeeded, but the requested participant state is unverified."""
 
 
+class CalDAVCreateUnconfirmedError(CalDAVError):
+    """Creation may have succeeded; retrying in another calendar can duplicate it."""
+
+
 class CalDAVConflictError(CalDAVError):
     """The event changed since it was read; a fresh resource is required."""
 

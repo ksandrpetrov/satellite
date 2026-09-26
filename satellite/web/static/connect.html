@@ -625,6 +625,16 @@
       return new Date(d.getFullYear(), d.getMonth(), d.getDate());
     }
 
+    function localStartIso(eventDate, startTime) {
+      const d = new Date(eventDate + 'T' + startTime + ':00');
+      const pad = (n) => String(n).padStart(2, '0');
+      if (Number.isNaN(d.getTime()) || isoDate(d) !== eventDate ||
+          pad(d.getHours()) + ':' + pad(d.getMinutes()) !== startTime) return null;
+      const offset = -d.getTimezoneOffset();
+      return eventDate + 'T' + startTime + ':00' + (offset >= 0 ? '+' : '-') +
+        pad(Math.floor(Math.abs(offset) / 60)) + ':' + pad(Math.abs(offset) % 60);
+    }
+
     function setCreateDefaults() {
       const today = localToday();
       document.getElementById('evDate').value = isoDate(today);
@@ -842,12 +852,16 @@
             return;
           }
           createDraft.startTime = startVal;
+          if (!localStartIso(createDraft.eventDate, startVal)) {
+            showStatus('createStatus', copyText('create_invalid_local_time'), 'err');
+            return;
+          }
           showCreateStep('duration');
           return;
         }
         if (step === 'duration') {
-          const minutes = parseInt(document.getElementById('evDuration').value, 10);
-          if (!minutes || minutes <= 0 || minutes > 24 * 60) {
+          const minutes = Number(document.getElementById('evDuration').value);
+          if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 24 * 60) {
             showStatus('createStatus', '⚠️ Укажите длительность в минутах, например 60', 'err');
             return;
           }
@@ -875,9 +889,11 @@
       const btn = document.getElementById('createConfirmBtn');
       btn.disabled = true;
       try {
+        const start = localStartIso(createDraft.eventDate, createDraft.startTime);
+        if (!start) throw new Error(copyText('create_invalid_local_time'));
         await api('POST', '/api/calendar/events', {
           title: createDraft.title,
-          start: createDraft.eventDate + 'T' + createDraft.startTime + ':00',
+          start,
           duration_minutes: createDraft.durationMinutes,
         });
         resetCreateWizard();

@@ -15,7 +15,11 @@ from satellite.calendar.providers.base import (
     UserCalendarContext,
 )
 from satellite.calendar.providers.mailru import MailruCalendarProvider
-from satellite.messages_ru import CREATE_EVENT_FAILED_HTML, ERR_CALDAV_UNAVAILABLE_TEXT
+from satellite.messages_ru import (
+    CREATE_EVENT_FAILED_HTML,
+    CREATE_EVENT_UNCONFIRMED_HTML,
+    ERR_CALDAV_UNAVAILABLE_TEXT,
+)
 from satellite.security.token_vault import ProviderCredentials
 from satellite.telegram_bot.handlers.calendar_create import _create_failure_text
 
@@ -72,6 +76,11 @@ def test_create_failure_text_maps_create_failed():
 def test_create_failure_text_maps_caldav_unavailable():
     exc = CalendarProviderError("x", error_code="CALDAV_UNAVAILABLE")
     assert _create_failure_text(exc) == ERR_CALDAV_UNAVAILABLE_TEXT
+
+
+def test_create_failure_text_requires_check_before_repeating_unconfirmed_write():
+    exc = CalendarProviderError("x", error_code="CREATE_UNCONFIRMED")
+    assert _create_failure_text(exc) == CREATE_EVENT_UNCONFIRMED_HTML
 
 
 def test_service_cache_is_threadsafe_and_credential_aware():

@@ -10,6 +10,9 @@ import pytest
 
 from satellite.calendar.caldav_client import CalDAVError, CalDAVService, CalendarHandle
 from satellite.calendar.caldav_shared import _DiscoveryResult
+from satellite.calendar.providers.base import CalendarProviderError, UserCalendarContext
+from satellite.calendar.providers.mailru import MailruCalendarProvider
+from satellite.security.token_vault import ProviderCredentials
 
 DAY = date(2026, 9, 12)
 
@@ -114,3 +117,76 @@ def test_strict_mode_rejects_unparseable_event_instead_of_empty_calendar(
     ]
     with pytest.raises(CalDAVError, match="could not be parsed"):
         service.fetch_events_in_range(DAY, DAY, tz=UTC, calendar_url=handles[0].url, strict=True)
+
+
+def test_strict_range_requires_every_selected_calendar(calendar_service):
+    service, handles, _ = calendar_service
+    handles[0].obj.search.return_value = [event("available", 9)]
+    with pytest.raises(CalDAVError, match="not found"):
+        service.fetch_events_in_range(
+            DAY,
+            DAY,
+            tz=UTC,
+            calendar_urls=[handles[0].url, "https://cal/missing/"],
+            strict=True,
+        )
+    handles[0].obj.search.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "not an ical at all",
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:broken\r\n"
+        "DTSTART:garbage\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        event("valid", 9).data.replace(
+            "END:VCALENDAR",
+            "BEGIN:VEVENT\r\nUID:broken\r\nDTSTART:garbage\r\nEND:VEVENT\r\nEND:VCALENDAR",
+        ),
+    ],
+)
+def test_strict_range_rejects_corruption_even_with_other_valid_events(calendar_service, body):
+    service, handles, _ = calendar_service
+    handles[0].obj.search.return_value = [SimpleNamespace(data=body, url="https://cal/bad.ics")]
+    with pytest.raises(CalDAVError, match="could not be parsed"):
+        service.fetch_events_in_range(DAY, DAY, tz=UTC, calendar_url=handles[0].url, strict=True)
+
+
+def test_valid_recurrence_without_occurrences_is_not_corrupt(calendar_service):
+    service, handles, _ = calendar_service
+    raw = event("weekly", 9)
+    raw.data = raw.data.replace("END:VEVENT", "RRULE:FREQ=WEEKLY;COUNT=2\r\nEND:VEVENT")
+    handles[0].obj.search.side_effect = [ValueError("server cannot expand"), [raw]]
+    assert (
+        service.fetch_events_in_range(
+            date(2026, 9, 13),
+            date(2026, 9, 13),
+            tz=UTC,
+            calendar_url=handles[0].url,
+            strict=True,
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "operation", ["list_events", "list_events_for_invitations", "list_events_for_analytics"]
+)
+def test_provider_never_returns_partial_data(calendar_service, monkeypatch, operation):
+    service, handles, _ = calendar_service
+    handles[0].obj.search.return_value = []
+    handles[1].obj.search.side_effect = RuntimeError("REPORT unavailable")
+    provider = MailruCalendarProvider()
+    monkeypatch.setattr(provider, "_service", lambda credentials: service)
+    monkeypatch.setattr(provider, "_service_for_invitations", lambda credentials: service)
+    context = UserCalendarContext(
+        1,
+        "mailru",
+        ProviderCredentials("audit@example.test", "test"),
+        handles[0].url,
+        tuple(handle.url for handle in handles),
+        "audit@example.test",
+    )
+    with pytest.raises(CalendarProviderError) as raised:
+        getattr(provider, operation)(context, start_date=DAY, end_date=DAY, tz=UTC)
+    assert raised.value.error_code == "CALDAV_UNAVAILABLE"

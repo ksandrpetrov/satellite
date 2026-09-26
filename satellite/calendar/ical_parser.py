@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from datetime import date, datetime, timedelta
 from typing import Any
 
 from icalendar import Calendar
+
+
+class CalendarParseError(ValueError):
+    """The calendar response cannot be used as a complete source of events."""
 
 
 def _to_serializable(value: Any) -> Any:
@@ -99,25 +102,36 @@ def parse_event(component: Any, calendar_name: str) -> dict[str, Any]:
     }
 
 
-def parse_calendar_events(ics_text: str | bytes, calendar_name: str) -> list[dict[str, Any]]:
+def parse_calendar_events(
+    ics_text: str | bytes, calendar_name: str, *, strict: bool = False
+) -> list[dict[str, Any]]:
     """Парсит ICS-блок и возвращает список словарей по каждому VEVENT.
 
-    На некорректных ICS возвращает пустой список (вместо падения), чтобы один
-    битый ивент не валил отправку плана целиком.
+    По умолчанию сохраняет доступные события. Для пользовательских отчётов
+    strict=True запрещает выдавать частичный результат при повреждённом ICS.
     """
-    if isinstance(ics_text, bytes):
-        ics_text = ics_text.decode("utf-8", errors="replace")
     try:
+        if isinstance(ics_text, bytes):
+            ics_text = ics_text.decode("utf-8", errors="strict" if strict else "replace")
         calendar = Calendar.from_ical(ics_text)
-    except Exception:  # noqa: BLE001 - icalendar бросает разное на битых данных
+        if strict and calendar.name != "VCALENDAR":
+            raise CalendarParseError("Expected VCALENDAR")
+        components = calendar.walk()
+    except Exception as exc:  # noqa: BLE001 - icalendar бросает разное на битых данных
+        if strict:
+            raise CalendarParseError("Invalid calendar response") from exc
         return []
 
     events: list[dict[str, Any]] = []
-    for component in _walk_components(calendar):
+    for component in components:
         if component.name == "VEVENT":
             try:
+                if strict:
+                    _validate_component(component)
                 events.append(parse_event(component, calendar_name))
-            except Exception:  # noqa: BLE001 - один битый VEVENT не должен валить всё
+            except Exception as exc:  # noqa: BLE001 - non-strict callers allow partial data
+                if strict:
+                    raise CalendarParseError("Invalid calendar event") from exc
                 continue
     return events
 
@@ -128,28 +142,55 @@ def parse_calendar_events_in_range(
     *,
     range_start: datetime,
     range_end: datetime,
+    strict: bool = False,
 ) -> list[dict[str, Any]]:
     """Expand a recurrence set locally when the CalDAV server cannot do it."""
     from recurring_ical_events import of
 
-    if isinstance(ics_text, bytes):
-        ics_text = ics_text.decode("utf-8", errors="replace")
     try:
+        if isinstance(ics_text, bytes):
+            ics_text = ics_text.decode("utf-8", errors="strict" if strict else "replace")
         calendar = Calendar.from_ical(ics_text)
+        if strict:
+            if calendar.name != "VCALENDAR":
+                raise CalendarParseError("Expected VCALENDAR")
+            for component in calendar.walk("VEVENT"):
+                _validate_component(component)
         components = of(calendar, skip_bad_series=False).between(range_start, range_end)
-    except Exception:  # noqa: BLE001 - strictness is decided by the range caller
+    except Exception as exc:  # noqa: BLE001 - strictness is decided by the range caller
+        if strict:
+            raise CalendarParseError("Invalid calendar recurrence") from exc
         return []
     events: list[dict[str, Any]] = []
     for component in components:
         try:
             events.append(parse_event(component, calendar_name))
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            if strict:
+                raise CalendarParseError("Invalid calendar occurrence") from exc
             continue
     return events
 
 
-def _walk_components(calendar: Any) -> Iterable[Any]:
-    try:
-        yield from calendar.walk()
-    except Exception:  # noqa: BLE001
-        return
+def _validate_component(component: Any) -> None:
+    """icalendar may retain invalid properties as errors instead of raising."""
+    if component.errors:
+        raise CalendarParseError("Invalid event properties")
+    start = component.get("DTSTART")
+    if start is None or not isinstance(start.dt, date):
+        raise CalendarParseError("Missing event start")
+    end = component.get("DTEND")
+    duration = component.get("DURATION")
+    if end is not None:
+        if duration is not None or type(start.dt) is not type(end.dt):
+            raise CalendarParseError("Inconsistent event interval")
+        if end.dt <= start.dt:
+            raise CalendarParseError("Event end must be after its start")
+    if duration is not None:
+        if not isinstance(duration.dt, timedelta) or duration.dt <= timedelta(0):
+            raise CalendarParseError("Event duration must be positive")
+        if not isinstance(start.dt, datetime) and duration.dt.seconds:
+            raise CalendarParseError("All-day duration must use whole days")
+    # Parsing the original components also catches malformed exceptions before
+    # recurrence expansion can silently drop them.
+    parse_event(component, "")

@@ -16,13 +16,14 @@ from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
 from satellite.calendar.event_exclusions import EventExclusionPolicy, EventTitleOverride
+from satellite.config import PlanConfig
 from satellite.digest_utils import (
     is_digest_day_allowed,
     resolve_target_date,
     toggle_digest_days_bitmask,
 )
 from satellite.invitations_view import InvitationsScreen
-from satellite.plan_service import PlanTextBundle
+from satellite.plan_service import PlanBuilder, PlanTextBundle
 from satellite.scheduler import DigestScheduler
 from satellite.scheduler_policy import should_fire_for_user, should_fire_pending_for_user
 from satellite.subscriptions import (
@@ -36,6 +37,53 @@ from satellite.telegram_bot.api import TelegramError
 from satellite.users import USER_STATUS_APPROVED, UserStore
 
 TZ = ZoneInfo("Europe/Moscow")
+
+
+def test_daily_digest_uses_each_subscribers_timezone_for_events_and_rendering(tmp_path):
+    instant = datetime.fromisoformat("2026-05-11T23:30:00+00:00")
+    scheduler, store, telegram = _make_scheduler(tmp_path=tmp_path, now=instant)
+    scheduler._now_fn = lambda zone: instant.astimezone(zone)
+    scheduler._plan_builder = PlanBuilder(
+        calendar_service=scheduler._calendar_service,
+        plan_config=PlanConfig(),
+        tz=TZ,
+    )
+    zones = {1: "America/New_York", 2: "Asia/Tokyo"}
+    for uid, zone in zones.items():
+        store.update_settings(
+            uid,
+            f"user{uid}",
+            digest_enabled=True,
+            digest_time="08:00",
+            digest_timezone=zone,
+        )
+
+    def events_for_user(uid, day, *, tz):
+        local = instant.astimezone(ZoneInfo(zones[uid])).replace(hour=10, minute=0)
+        return [
+            {
+                "uid": str(uid),
+                "summary": f"Local meeting {uid}",
+                "dtstart": local.isoformat(),
+                "dtend": local.replace(hour=11).isoformat(),
+            }
+        ], "audit@example.test"
+
+    scheduler._calendar_service.fetch_events_for_day.side_effect = events_for_user
+    try:
+        assert scheduler.tick() == 2
+        for call in scheduler._calendar_service.fetch_events_for_day.call_args_list:
+            uid, day = call.args
+            assert call.kwargs["tz"] == ZoneInfo(zones[uid])
+            assert day == instant.astimezone(ZoneInfo(zones[uid])).date()
+        assert telegram.send_rich_message.call_count == 2
+        for call in telegram.send_rich_message.call_args_list:
+            assert "10:00" in call.args[1]["html"]
+            assert "11:00" in call.args[1]["html"]
+        assert store.get(1).last_digest_sent_date == "2026-05-11"
+        assert store.get(2).last_digest_sent_date == "2026-05-12"
+    finally:
+        scheduler.stop()
 
 
 def _at(year, month, day, hour, minute):

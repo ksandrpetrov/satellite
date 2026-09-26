@@ -38,6 +38,9 @@ WEBAPP_COPY: dict[str, Any] = {
     "create_confirm_title": "Создать событие?",
     "create_cancel": "❌ Отмена",
     "create_confirm": "✅ Создать",
+    "create_invalid_local_time": (
+        "Это время недоступно из-за перевода часов. Выберите другое время."
+    ),
     "duration_min_suffix": " мин",
     "telegram_errors": {
         "no_init_data": (

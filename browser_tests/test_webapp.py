@@ -52,7 +52,52 @@ def test_local_today_tomorrow_and_submitted_date(
     expect(page.locator("#evTitle")).to_have_value("")
     assert len(app.provider.created) == 1
     assert app.provider.created[0].start.date().isoformat() == today
+    submitted_local = app.provider.created[0].start.astimezone(ZoneInfo(timezone))
+    assert (submitted_local.hour, submitted_local.minute) == (10, 30)
+    assert submitted_local.date().isoformat() == today
     assert app.provider.created[0].end - app.provider.created[0].start == timedelta(hours=1)
+
+
+def test_nonexistent_dst_time_is_not_silently_shifted(app, page_factory):
+    app.connect()
+    page = page_factory(timezone="America/New_York", instant="2026-03-08T06:00:00+00:00")
+    open_create(page, app)
+    page.locator(".wizard-step.active .create-next").click()
+    page.locator("#evStart").fill("02:30")
+    page.locator(".wizard-step.active .create-next").click()
+    expect(page.locator("#createStatus")).to_contain_text("перевода часов")
+    expect(page.locator("#evStart")).to_be_visible()
+    assert not app.provider.created
+
+
+def test_fractional_duration_is_not_silently_truncated(app, page_factory):
+    app.connect()
+    page = page_factory()
+    open_create(page, app)
+    confirm_form(page, duration="1.9")
+    expect(page.locator("#evDuration")).to_be_visible()
+    expect(page.locator("#createStatus")).to_contain_text("длительность в минутах")
+    assert not app.provider.created
+
+
+def test_failed_calendar_load_is_not_shown_as_empty_list(app, page_factory):
+    app.connect()
+    page = page_factory()
+    page.goto(app.url, wait_until="networkidle")
+    page.route(
+        "**/api/calendar/events*",
+        lambda route: route.fulfill(
+            status=502,
+            content_type="application/json",
+            body='{"error":"CALDAV_UNAVAILABLE","message":"Не удалось загрузить календарь"}',
+        ),
+    )
+    page.locator('[data-tab="events"]').click()
+    expect(page.locator("#eventsStatus")).to_contain_text("Не удалось загрузить календарь")
+    expect(page.locator("#eventsList")).not_to_contain_text("встреч нет")
+    page.unroute("**/api/calendar/events*")
+    page.locator("#refreshBtn").click()
+    expect(page.locator("#eventsList")).to_contain_text("встреч нет")
 
 
 def test_connect_create_delete_disconnect_on_mobile(app, page_factory):

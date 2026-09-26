@@ -10,7 +10,7 @@ from datetime import date, tzinfo
 
 from ...security.token_vault import ProviderCredentials
 from ..caldav_client import CalDAVError, CalDAVService
-from ..caldav_shared import CalDAVPartstatUnconfirmedError
+from ..caldav_shared import CalDAVCreateUnconfirmedError, CalDAVPartstatUnconfirmedError
 from ..selection import effective_enabled_calendar_urls_from_parts
 from .base import (
     CalendarConnectionStatus,
@@ -136,6 +136,7 @@ class MailruCalendarProvider:
                 end_date,
                 tz=tz,
                 calendar_urls=calendar_urls,
+                strict=True,
             )
         except CalDAVError as exc:
             raise CalendarProviderError(
@@ -166,6 +167,7 @@ class MailruCalendarProvider:
                 calendar_urls=calendar_urls,
                 enrich_partstat=True,
                 invitation_partstat_verify=True,
+                strict=True,
             )
         except CalDAVError as exc:
             raise CalendarProviderError(
@@ -261,6 +263,11 @@ class MailruCalendarProvider:
                     location=payload.location,
                     description=payload.description,
                 )
+            except CalDAVCreateUnconfirmedError as exc:
+                raise CalendarProviderError(
+                    "Event creation could not be confirmed",
+                    error_code="CREATE_UNCONFIRMED",
+                ) from exc
             except CalDAVError as exc:
                 last_exc = exc
                 log.warning(

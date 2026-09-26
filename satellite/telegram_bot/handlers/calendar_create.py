@@ -33,6 +33,7 @@ from ...messages_ru import (
     CREATE_EVENT_INVALID_DURATION,
     CREATE_EVENT_INVALID_TIME,
     CREATE_EVENT_SUCCESS_HTML,
+    CREATE_EVENT_UNCONFIRMED_HTML,
     ERR_CALDAV_UNAVAILABLE_TEXT,
     build_create_confirm_keyboard,
     build_create_date_keyboard,
@@ -280,6 +281,8 @@ def _confirm_create(ctx: HandlerContext, cb: IncomingCallback) -> None:
 
 
 def _create_failure_text(exc: CalendarProviderError) -> str:
+    if exc.error_code == "CREATE_UNCONFIRMED":
+        return CREATE_EVENT_UNCONFIRMED_HTML
     if exc.error_code == "CREATE_FAILED":
         return CREATE_EVENT_FAILED_HTML
     if exc.error_code in {"NO_CALENDAR", "CALENDAR_NOT_CONNECTED"}:

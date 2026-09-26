@@ -18,7 +18,7 @@ from .caldav_shared import (
     log,
 )
 from .events import day_bounds
-from .ical_parser import parse_calendar_events, parse_calendar_events_in_range
+from .ical_parser import CalendarParseError, parse_calendar_events, parse_calendar_events_in_range
 from .url_utils import normalize_calendar_url as _normalize_calendar_url
 
 if TYPE_CHECKING:
@@ -81,6 +81,10 @@ class CalDAVFetchMixin:
         handles = self._filter_handles_by_urls(result.calendars, urls)
         if urls and not handles:
             raise CalDAVError("Selected calendar(s) not found for user")
+        if strict and urls:
+            found = {_normalize_calendar_url(handle.url) for handle in handles}
+            if any(_normalize_calendar_url(url) not in found for url in urls):
+                raise CalDAVError("Selected calendar(s) not found for user")
         range_start, _ = day_bounds(start_date, tz)
         _, range_end = day_bounds(end_date, tz)
         report_started = time.monotonic()
@@ -173,25 +177,20 @@ class CalDAVFetchMixin:
         try:
             for raw_event in events_iter:
                 if server_expanded:
-                    parsed = parse_calendar_events(raw_event.data, handle.name)
+                    parsed = parse_calendar_events(raw_event.data, handle.name, strict=strict)
                 else:
                     parsed = parse_calendar_events_in_range(
                         raw_event.data,
                         handle.name,
                         range_start=range_start,
                         range_end=range_end,
+                        strict=strict,
                     )
-                raw_data = raw_event.data
-                has_vevent = (
-                    b"BEGIN:VEVENT" in raw_data
-                    if isinstance(raw_data, bytes)
-                    else ("BEGIN:VEVENT" in str(raw_data))
-                )
-                if strict and has_vevent and not parsed:
-                    raise CalDAVError("Calendar event could not be parsed")
                 for ev in parsed:
                     ev["url"] = str(getattr(raw_event, "url", "") or "")
                 local.extend(parsed)
+        except CalendarParseError as exc:
+            raise CalDAVError("Calendar event could not be parsed") from exc
         except CalDAVError:
             raise
         except Exception as exc:  # noqa: BLE001

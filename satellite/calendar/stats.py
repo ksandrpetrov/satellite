@@ -222,7 +222,11 @@ def calculate_day_stats(
     normalized = [ev for ev in events if not ev.is_cancelled and ev.end_minutes > ev.start_minutes]
     normalized.sort(key=lambda e: (e.start_minutes, e.end_minutes))
 
-    raw_intervals: list[Interval] = [e.interval for e in normalized]
+    # Расписание сохраняет приглашения, но нагрузка считается только по
+    # подтверждённым встречам и собственным событиям (как в аналитике).
+    raw_intervals: list[Interval] = [
+        e.interval for e in normalized if not e.is_pending and not e.is_tentative
+    ]
 
     # Занятое время: мерджим интервалы, клипим к рабочему дню.
     clipped_workday = [

@@ -67,6 +67,12 @@ def test_event_occurs_on_multi_day_all_day_with_exclusive_end():
     assert not event_occurs_on(ev, date(2026, 5, 13), TZ)
 
 
+def test_timed_event_ending_at_midnight_does_not_belong_to_next_day():
+    ev = _ev(dtstart="2026-05-10T23:00:00+03:00", dtend="2026-05-11T00:00:00+03:00")
+    assert event_occurs_on(ev, date(2026, 5, 10), TZ)
+    assert not event_occurs_on(ev, date(2026, 5, 11), TZ)
+
+
 def test_is_all_day_event_for_date_value():
     ev = _ev(dtstart="2026-05-11", dtend="2026-05-12")
     assert is_all_day_event(ev, TZ)

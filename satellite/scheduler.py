@@ -23,6 +23,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import replace
 from datetime import date, datetime, tzinfo
 from enum import Enum, auto
 from zoneinfo import ZoneInfo
@@ -342,7 +343,13 @@ class DigestScheduler:
         weather_in_plan = user_record.weather_in_plan_enabled if user_record is not None else True
         try:
             exclusion_policy = self._meeting_exclusions.policy_for_user(telegram_user_id)
-            plan_bundle = self._plan_builder.build_plan_bundle(
+            user_tz = self._user_tz(sub.digest_timezone)
+            builder = self._plan_builder
+            if user_tz != self._tz:
+                # An immutable per-delivery copy keeps concurrent subscribers'
+                # dates, event times and rich datetime links in their own zone.
+                builder = replace(builder, tz=user_tz)
+            plan_bundle = builder.build_plan_bundle(
                 telegram_user_id=telegram_user_id,
                 target_date=target_date,
                 reference_date=today,

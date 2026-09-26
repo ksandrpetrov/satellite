@@ -213,3 +213,55 @@ def test_random_intervals_match_independent_minute_grid_oracle():
         assert stats.busy_minutes == len(occupied)
         assert stats.free_minutes == max(0, 480 - len(occupied))
         assert stats.overlaps_count == overlaps
+
+
+@pytest.mark.parametrize("flag", ["is_pending", "is_tentative"])
+def test_unconfirmed_meetings_stay_visible_without_reserving_time(flag):
+    unconfirmed = make_event("Invitation", "09:00", "20:00", **{flag: True})
+    confirmed = make_event("Confirmed", "10:00", "11:00")
+    stats = calculate_day_stats([unconfirmed, confirmed], date_label="", plan_date=_PD)
+
+    assert stats.events == (unconfirmed, confirmed)
+    assert stats.meetings_count == 2
+    assert stats.first_meeting_start == "09:00"
+    assert stats.last_meeting_end == "20:00"
+    assert (stats.busy_minutes, stats.free_minutes, stats.overlaps_count) == (60, 420, 0)
+
+    only_invitation = calculate_day_stats([unconfirmed], date_label="", plan_date=_PD)
+    assert only_invitation.events == (unconfirmed,)
+    assert (only_invitation.busy_minutes, only_invitation.free_minutes) == (0, 480)
+
+
+def test_mixed_statuses_match_independent_minute_grid_oracle():
+    rng = random.Random(20260926)
+    for _ in range(300):
+        events = []
+        accepted = []
+        for index in range(rng.randrange(20)):
+            start = rng.randrange(1440)
+            end = rng.randint(start + 1, 1440)
+            status = rng.choice(("accepted", "pending", "tentative", "cancelled"))
+            events.append(
+                NormalizedEvent(
+                    str(index),
+                    start,
+                    end,
+                    is_pending=status == "pending",
+                    is_tentative=status == "tentative",
+                    is_cancelled=status == "cancelled",
+                )
+            )
+            if status == "accepted":
+                accepted.append((start, end))
+        stats = calculate_day_stats(events, date_label="", plan_date=_PD)
+        occupied = {
+            minute for start, end in accepted for minute in range(max(start, 600), min(end, 1140))
+        }
+        assert stats.busy_minutes == len(occupied)
+        assert stats.free_minutes == max(0, 480 - len(occupied))
+        assert stats.overlaps_count == sum(
+            bool(set(range(a, b)) & set(range(c, d)))
+            for i, (a, b) in enumerate(accepted)
+            for c, d in accepted[i + 1 :]
+        )
+        assert stats.meetings_count == sum(not ev.is_cancelled for ev in events)
