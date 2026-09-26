@@ -341,6 +341,35 @@ def test_list_events_serializes_payload(started_server):
     assert body["events"][0]["uid"] == "u1"
 
 
+@pytest.mark.parametrize(
+    "query", ["from=2026-02-30", "to=invalid", "from=2026-01-01&to=2026-13-01"]
+)
+def test_invalid_explicit_range_is_not_silently_replaced_with_today(started_server, query):
+    _server, users, calendar, base = started_server
+    _approve_user(users, 401, with_calendar=True)
+    status, body = _http(
+        "GET", base + "/api/calendar/events?" + query, init_data=_make_init_data(401)
+    )
+    assert status == 400
+    assert body["error"] == "invalid_range"
+    calendar.list_events.assert_not_called()
+
+
+@pytest.mark.parametrize("duration", [1.9, True, "1.9"])
+def test_create_event_does_not_truncate_invalid_duration(started_server, duration):
+    _server, users, calendar, base = started_server
+    _approve_user(users, 401, with_calendar=True)
+    status, body = _http(
+        "POST",
+        base + "/api/calendar/events",
+        init_data=_make_init_data(401),
+        body={"title": "Exact time", "start": "2026-05-12T10:00", "duration_minutes": duration},
+    )
+    assert status == 400
+    assert body["error"] == "invalid_duration"
+    calendar.create_event.assert_not_called()
+
+
 def test_create_event_validates_dates(started_server):
     _server, users, _calendar, base = started_server
     _approve_user(users, 500, with_calendar=True)

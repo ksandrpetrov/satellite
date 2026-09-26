@@ -12,7 +12,7 @@ from uuid import uuid4
 import requests
 from caldav.calendarobjectresource import Event as CaldavEvent
 from caldav.davclient import DAVClient
-from caldav.lib.error import DAVError
+from caldav.lib.error import AuthorizationError, DAVError
 from icalendar import Calendar as IcsCalendar
 from icalendar import Event as IcsEvent
 
@@ -26,6 +26,7 @@ from .caldav_shared import (
     _PARTSTAT_REFRESH_TIMEOUT_SEC,
     _PARTSTAT_UPDATE_TIMEOUT_SEC,
     DEFAULT_CALDAV_URL,
+    CalDAVCreateUnconfirmedError,
     CalDAVError,
     CalendarHandle,
     EnrichStats,
@@ -212,20 +213,44 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
         ics.add("prodid", "-//Satellite Bot//calendar//RU")
         ics.add("version", "2.0")
         ics.add_component(component)
+        event_url = f"{handle.url.rstrip('/')}/{uid}.ics"
         try:
             handle.obj.add_event(ics.to_ical())
-        except DAVError as exc:
+        except AuthorizationError as exc:
+            # An explicit permission rejection is safe to retry in a writable calendar.
+            raise CalDAVError("Calendar rejected event creation") from exc
+        except Exception as exc:  # noqa: BLE001 - the PUT outcome may be uncertain
             log.warning(
-                "CalDAV create_event failed url=%s status=%s: %s",
+                "CalDAV create_event outcome uncertain url=%s error_type=%s",
                 _redact_url(handle.url),
-                _dav_status(exc),
-                _dav_reason(exc),
+                type(exc).__name__,
             )
-            raise CalDAVError(f"Failed to create event: {exc}") from exc
-        except (ConnectionError, TimeoutError, OSError) as exc:
-            raise CalDAVError(f"Network error during create: {exc}") from exc
-        event_url = f"{handle.url.rstrip('/')}/{uid}.ics"
+            if not self._created_event_is_saved(event_url, component):
+                raise CalDAVCreateUnconfirmedError(
+                    "Could not confirm event creation; check the calendar before retrying"
+                ) from exc
         return uid, event_url
+
+    def _created_event_is_saved(self, event_url: str, expected: IcsEvent) -> bool:
+        """Reconcile a lost PUT response by reading back this attempt's unique resource."""
+        try:
+            payload, _ = self._get_event_ics_via_http(event_url)
+            calendar = IcsCalendar.from_ical(payload)
+            events = calendar.walk("vevent")
+            if calendar.name != "VCALENDAR" or len(events) != 1:
+                return False
+            saved = events[0]
+            if any(
+                str(saved.get(field, "")) != str(expected.get(field, ""))
+                for field in ("uid", "summary", "location", "description")
+            ):
+                return False
+            return all(
+                getattr(saved.get(field), "dt", None) == expected.decoded(field)
+                for field in ("dtstart", "dtend")
+            )
+        except Exception:  # noqa: BLE001 - failure to verify must never trigger another PUT
+            return False
 
     def update_event(
         self,

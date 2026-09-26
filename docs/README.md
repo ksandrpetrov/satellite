@@ -43,6 +43,7 @@ Production Telegram-бот: CalDAV → метрики дня → HTML-дайдж
 | [troubleshooting.md](troubleshooting.md) | Типичные сбои: env, CalDAV, Web App, дайджест, deploy, миграция logs |
 | [refactor-log.md](refactor-log.md) | История архитектурных фаз и инварианты после рефакторинга |
 | [test-coverage-audit.md](test-coverage-audit.md) | Сценарий → код → тесты (release-blocking карта) |
+| [product-correctness-audit-2026-09-26.md](product-correctness-audit-2026-09-26.md) | Проверка данных и бизнес-логики: воспроизведения, исправления, сквозные тесты и ограничения |
 | [deploy/README.md](../deploy/README.md) | Ansible, GHCR, секреты Actions, локальный compose |
 | [AGENTS.md](../AGENTS.md) | Карта модулей, инварианты, антипаттерны, скрипты — для AI и новых разработчиков |
 

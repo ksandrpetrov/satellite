@@ -240,6 +240,14 @@ telegram_test_command.py
   `foreign_calendar_entries` (план/дайджест vs «чужие» календари).
 - `satellite/calendar/caldav_client.py` — Mail.ru CalDAV discovery, cache, day
   search, optional PARTSTAT refresh.
+- Чтение плана, приглашений и аналитики строгое: ошибка любого выбранного
+  календаря, отсутствующий выбранный URL или повреждённый VEVENT прерывают
+  весь результат. Пустой корректный диапазон остаётся допустимым результатом.
+- Создание после неопределённого ответа PUT подтверждается чтением конкретного
+  ресурса с UID этой попытки. Без подтверждения возвращается `CREATE_UNCONFIRMED`,
+  без записи во второй календарь. Явный отказ доступа допускает другой календарь.
+- `satellite/calendar/event_identity.py` — общий дедуп плана и аналитики:
+  точный UID (с учётом регистра) + начало + конец; отменённая копия имеет приоритет.
 - `satellite/calendar/constants.py` — domain constants (lunch marker, all-day label).
 - `satellite/calendar/events/` — пакет (раньше один файл `events.py`).
   Фасад `__init__.py` re-export'ит публичный API, импорты
@@ -265,6 +273,13 @@ telegram_test_command.py
 Important invariants:
 
 - Overlapping intervals are merged before busy-time calculation.
+- NEEDS-ACTION, DELEGATED и TENTATIVE остаются в расписании, но не занимают
+  время и не создают пересечений. Счётчик встреч, первая и последняя встреча
+  дневного плана относятся ко всему видимому расписанию; недельная аналитика
+  считает подтверждённые встречи и собственные события.
+- DTEND эксклюзивен, включая полночь: закончившаяся в 00:00 встреча не
+  попадает в следующий день или неделю. Невалидные интервалы не увеличивают
+  недельный счётчик встреч.
 - `calculate_day_stats` accepts only `NormalizedEvent`. Tests use
   `tests/conftest.py::make_event`. Production path: CalDAV dict →
   `normalize_caldav_event` → `NormalizedEvent`.
@@ -342,6 +357,10 @@ candidate-копию, под одним lock пишет `tmp → flush → fsync
 
 `satellite/scheduler.py` is a single background thread. It polls active
 subscriptions every 30 seconds in each user's timezone.
+
+Дневной план строится копией `PlanBuilder` с `digest_timezone` подписки:
+часовой пояс применяется и к расписанию отправки, и к запросу/рендеру событий.
+Общий экземпляр не меняется при параллельной доставке другим пользователям.
 
 Two independent per-user schedules live in the same `DigestSettings`
 record:

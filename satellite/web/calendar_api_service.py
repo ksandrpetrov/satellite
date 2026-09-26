@@ -15,6 +15,7 @@ from ..calendar.providers.base import (
     CalendarProviderError,
 )
 from ..calendar.providers.registry import PROVIDER_IDS, PROVIDER_MAILRU, PROVIDER_YANDEX
+from ..messages_ru import CREATE_EVENT_UNCONFIRMED_HTML
 from ..security.token_vault import ProviderCredentials
 from ..users import UserStore, UserStorePersistenceError
 from .errors import error_payload
@@ -105,10 +106,10 @@ class CalendarApiService:
             days = parse_positive_int(query.get("days"), default=_UPCOMING_VIEW_DAYS)
             if days is None or days > 31:
                 return self._error(HTTPStatus.BAD_REQUEST, "invalid_days")
-            end_date = today + timedelta(days=days)
+            upcoming_end = today + timedelta(days=days)
             try:
                 events = self._calendar.list_events(
-                    user_id, start_date=today, end_date=end_date, tz=self._tz
+                    user_id, start_date=today, end_date=upcoming_end, tz=self._tz
                 )
             except CalendarNotConnectedError:
                 return self._error(HTTPStatus.CONFLICT, "not_connected")
@@ -126,8 +127,12 @@ class CalendarApiService:
                 },
             )
 
-        start_date = parse_date(query.get("from")) or today
-        end_date = parse_date(query.get("to")) or (today + timedelta(days=_EVENTS_DEFAULT_DAYS))
+        start_raw, end_raw = query.get("from"), query.get("to")
+        start_date, end_date = parse_date(start_raw), parse_date(end_raw)
+        if (start_raw and start_date is None) or (end_raw and end_date is None):
+            return self._error(HTTPStatus.BAD_REQUEST, "invalid_range")
+        start_date = start_date or today
+        end_date = end_date or (today + timedelta(days=_EVENTS_DEFAULT_DAYS))
         if end_date < start_date:
             return self._error(HTTPStatus.BAD_REQUEST, "invalid_range")
         try:
@@ -165,7 +170,7 @@ class CalendarApiService:
             end = parse_datetime(end_raw, self._tz)
         elif duration_raw is not None:
             try:
-                minutes = int(duration_raw)
+                minutes = int(str(duration_raw))
             except (TypeError, ValueError):
                 minutes = 0
             if minutes <= 0 or minutes > 24 * 60:
@@ -215,4 +220,7 @@ class CalendarApiService:
     def _provider_error(
         exc: CalendarProviderError, *, status: HTTPStatus = HTTPStatus.BAD_GATEWAY
     ) -> ApiResult:
-        return ApiResult(status, {"error": exc.error_code, "message": str(exc)})
+        message = (
+            CREATE_EVENT_UNCONFIRMED_HTML if exc.error_code == "CREATE_UNCONFIRMED" else str(exc)
+        )
+        return ApiResult(status, {"error": exc.error_code, "message": message})

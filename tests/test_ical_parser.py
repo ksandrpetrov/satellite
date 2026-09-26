@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
 
+import pytest
+
 from satellite.calendar.ical_parser import (
+    CalendarParseError,
     parse_calendar_events,
     parse_calendar_events_in_range,
 )
@@ -97,3 +100,77 @@ def test_local_recurrence_expansion_keeps_occurrences_in_requested_range():
 
     assert len(events) == 1
     assert events[0]["dtstart"].startswith("2026-05-11T07:00")
+
+
+def test_recurrence_exdates_rdates_and_moved_exception():
+    ics = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n"
+        "UID:series@test\r\nSUMMARY:Series\r\n"
+        "DTSTART:20260511T070000Z\r\nDTEND:20260511T080000Z\r\n"
+        "RRULE:FREQ=DAILY;COUNT=4\r\nEXDATE:20260512T070000Z\r\n"
+        "RDATE:20260520T070000Z\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:series@test\r\nSUMMARY:Moved\r\n"
+        "RECURRENCE-ID:20260513T070000Z\r\n"
+        "DTSTART:20260515T120000Z\r\nDTEND:20260515T130000Z\r\n"
+        "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+    events = parse_calendar_events_in_range(
+        ics,
+        "Test",
+        strict=True,
+        range_start=datetime(2026, 5, 11, tzinfo=UTC),
+        range_end=datetime(2026, 5, 21, tzinfo=UTC),
+    )
+    assert sorted(event["dtstart"] for event in events) == [
+        "2026-05-11T07:00:00+00:00",
+        "2026-05-14T07:00:00+00:00",
+        "2026-05-15T12:00:00+00:00",
+        "2026-05-20T07:00:00+00:00",
+    ]
+    assert next(event for event in events if event["summary"] == "Moved")["recurrence_id"] == (
+        "2026-05-13T07:00:00+00:00"
+    )
+
+
+def test_recurrence_preserves_local_wall_clock_across_dst():
+    ics = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n"
+        "UID:dst@test\r\nSUMMARY:Weekly\r\n"
+        "DTSTART;TZID=Europe/Berlin:20260322T100000\r\n"
+        "DTEND;TZID=Europe/Berlin:20260322T110000\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=2\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+    events = parse_calendar_events_in_range(
+        ics,
+        "Test",
+        strict=True,
+        range_start=datetime(2026, 3, 22, tzinfo=UTC),
+        range_end=datetime(2026, 3, 30, tzinfo=UTC),
+    )
+    assert sorted(event["dtstart"] for event in events) == [
+        "2026-03-22T10:00:00+01:00",
+        "2026-03-29T10:00:00+02:00",
+    ]
+
+
+@pytest.mark.parametrize(
+    "properties",
+    [
+        "DTSTART:20260511T100000Z\r\nDTEND:20260511T090000Z\r\n",
+        "DTSTART:20260511T100000Z\r\nDURATION:-PT1H\r\n",
+        "DTSTART;VALUE=DATE:20260511\r\nDTEND:20260512T090000Z\r\n",
+    ],
+)
+def test_strict_parser_rejects_invalid_event_intervals(properties):
+    ics = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:broken\r\n"
+        + properties
+        + "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+    with pytest.raises(CalendarParseError):
+        parse_calendar_events(ics, "Test", strict=True)
+
+
+def test_strict_parser_does_not_replace_corrupted_utf8_with_plausible_title():
+    with pytest.raises(CalendarParseError):
+        parse_calendar_events(_ICS.encode().replace("Дейли".encode(), b"\xff"), "Test", strict=True)

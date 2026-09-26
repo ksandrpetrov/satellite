@@ -100,6 +100,7 @@ satellite/
     caldav_partstat.py   # чистые хелперы мутации ATTENDEE/PARTSTAT в ICS
     callback_tokens.py   # короткие стабильные токены для callback_data (≤64 байт)
     event_exclusions.py  # политика исключения событий по точному названию
+    event_identity.py   # дедуп встреч по UID + времени; общий для плана и аналитики
     event_token_cache.py # кэш токен→событие для /invitations и /manage
     url_utils.py         # URL-хелперы без зависимости от CalDAV (разрыв циклов)
     events/                # пакет: facade __init__ + _types (Event, алиасы) + _time

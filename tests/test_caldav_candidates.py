@@ -346,13 +346,18 @@ def test_require_handle_invalidates_cache_on_miss():
     service._do_discovery = real_discovery  # type: ignore[method-assign]
 
 
-def test_create_event_converts_dav_error_to_caldav_error():
-    """DAVError (включая PutError при 400/415 от Mail.ru) должен подниматься
-    как CalDAVError, чтобы провайдер вернул понятный CREATE_FAILED код, а
-    `_run` не оборачивал его в общий «Календарь недоступен»."""
+def test_create_event_converts_dav_error_to_caldav_error(monkeypatch):
+    """DAVError без подтверждения записи остаётся типизированным CalDAVError,
+    чтобы провайдер сообщил неопределённый результат создания, а `_run`
+    не оборачивал его в общий «Календарь недоступен»."""
     stub = _StubCalendarObj()
     stub.raise_on_save = PutError("HTTP 400 Bad Request")
     service = _service_with_handle("https://fake/calendars/primary/", stub)
+
+    def unavailable_readback(_url):
+        raise CalDAVError("Readback unavailable")
+
+    monkeypatch.setattr(service, "_get_event_ics_via_http", unavailable_readback)
     tz = ZoneInfo("Europe/Moscow")
     with pytest.raises(CalDAVError):
         service.create_event(

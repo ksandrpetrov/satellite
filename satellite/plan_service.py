@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import date, tzinfo
 
 from .calendar.event_exclusions import EventExclusionPolicy
+from .calendar.event_identity import deduplicate_event_occurrences
 from .calendar.events import filter_events_for_user
 from .calendar.stats import DayCalendarStats, NormalizedEvent, WorkdayOptions
 from .calendar.user_calendar_service import UserCalendarService
@@ -133,6 +134,7 @@ class PlanBuilder:
             tz=self.tz,
         )
         caldav_elapsed = time.monotonic() - caldav_started
+        events, _ = deduplicate_event_occurrences(events, self.tz, login=login)
         visible, hidden_meals = filter_events_for_user(
             events,
             target_date,

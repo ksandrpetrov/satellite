@@ -70,7 +70,9 @@ def event_occurs_on(event: Event, target_date: date, tz: tzinfo) -> bool:
     if end is None:
         end_date = start_date
     elif isinstance(end, datetime):
-        end_date = _to_local(end, tz).date()
+        # DTEND is exclusive for timed events too: midnight belongs to the
+        # preceding day, not the following day/week.
+        end_date = (_to_local(end, tz) - timedelta(microseconds=1)).date()
     else:
         # all-day VEVENT: DTEND эксклюзивен (следующий день после последнего)
         end_date = end - timedelta(days=1)
