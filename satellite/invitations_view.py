@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any, cast
 
-from .calendar.callback_tokens import event_callback_token
+from .calendar.callback_tokens import event_token
 from .calendar.event_token_cache import EventTokenCache
 from .calendar.events import (
     collect_pending_invitations,
@@ -17,6 +17,7 @@ from .calendar.events import (
     format_upcoming_day_header,
     sort_key,
 )
+from .calendar.providers.base import CalendarProviderError
 from .calendar.user_calendar_service import UserCalendarService
 from .messages_ru import (
     INVITATIONS_EMPTY_HTML,
@@ -66,6 +67,8 @@ def fetch_invitation_events(
         end_date=end,
         tz=tz,
     )
+    if events:
+        login = str(events[0].get("_calendar_login") or login)
     return events, login, moment
 
 
@@ -137,10 +140,7 @@ def screen_from_pending(
         for ev in pending
     ]
     body = format_invitation_list_lines(display_events, tz, reference_date)
-    keyboard_rows = [
-        (event_callback_token(str(ev.get("url") or "")), str(idx + 1))
-        for idx, ev in enumerate(pending)
-    ]
+    keyboard_rows = [(event_token(ev), str(idx + 1)) for idx, ev in enumerate(pending)]
     text = invitations_list_html(
         body_lines=body,
         preview_title=preview_title,
@@ -175,6 +175,7 @@ def load_pending_invitations_screen(
     from_settings_hub: bool = False,
 ) -> InvitationsScreen:
     """Загружает CalDAV, фильтрует pending и собирает текст + inline-клавиатуру."""
+    revision = event_tokens.begin_read(user_id)
     events, login, moment = fetch_invitation_events(
         calendar_service,
         user_id,
@@ -190,15 +191,20 @@ def load_pending_invitations_screen(
         truncated=truncated,
         from_settings_hub=from_settings_hub,
     )
-    event_tokens.register_invitations_screen(
+    registered = event_tokens.register_invitations_screen(
         user_id,
         pending=pending,
         all_events=events,
+        expected_revision=revision,
         login=login,
         moment=moment,
         truncated=truncated,
         from_settings_hub=from_settings_hub,
     )
+    if not registered:
+        raise CalendarProviderError(
+            "Calendar view changed", error_code="CALENDAR_CONNECTION_CHANGED"
+        )
     return InvitationsScreen(
         pending=pending,
         text=text,

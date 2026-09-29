@@ -279,3 +279,8 @@ def build_approved_main_keyboard() -> dict:
         "is_persistent": True,
         "input_field_placeholder": BOT_INPUT_PLACEHOLDER,
     }
+
+
+CALENDAR_CONNECTION_CHANGED_TEXT = (
+    "Подключение календаря изменилось. Обновите список встреч и повторите действие."
+)

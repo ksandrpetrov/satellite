@@ -265,3 +265,21 @@ def test_confirmed_response_survives_disconnect_during_refresh():
     click(ctx, CB_INV_RESPOND_PREFIX + token + ":a")
     assert "Принята вся серия" in result_text(ctx)
     ctx.telegram.send_message.assert_not_called()
+
+
+def test_receipt_from_previous_connection_is_not_replayed():
+    from satellite.telegram_bot.handlers.delivery import replay_partstat_result
+
+    ctx, _, token = setup_picker()
+    cb = make_callback(
+        data=CB_INV_RESPOND_PREFIX + token + ":a", chat_id=CHAT_ID, user_id=USER_ID, message_id=123
+    )
+    ctx.runtime.partstat_results.save(
+        (USER_ID, CHAT_ID, 123, cb.data),
+        ScreenBundle("Old calendar result", "Old calendar result", None),
+        (token,),
+        allow_retry=False,
+        connection_id="old-connection",
+    )
+    ctx.calendar_service.connection_id.return_value = "new-connection"
+    assert not replay_partstat_result(ctx, cb)

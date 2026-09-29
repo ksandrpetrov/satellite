@@ -21,6 +21,7 @@ class PartstatReceipt:
     allow_retry: bool
     created_at: float
     delivered: bool = False
+    connection_id: str = ""
 
 
 class PartstatResultStore:
@@ -37,12 +38,23 @@ class PartstatResultStore:
                 del self._items[key]
 
     def save(
-        self, key: ResultKey, bundle: ScreenBundle, tokens: tuple[str, ...], *, allow_retry: bool
+        self,
+        key: ResultKey,
+        bundle: ScreenBundle,
+        tokens: tuple[str, ...],
+        *,
+        allow_retry: bool,
+        connection_id: str = "",
     ) -> PartstatReceipt:
         with self._lock:
             self._prune()
             item = PartstatReceipt(
-                key, copy.deepcopy(bundle), tokens, allow_retry, time.monotonic()
+                key,
+                copy.deepcopy(bundle),
+                tokens,
+                allow_retry,
+                time.monotonic(),
+                connection_id=connection_id,
             )
             self._items[key] = item
             self._items.move_to_end(key)

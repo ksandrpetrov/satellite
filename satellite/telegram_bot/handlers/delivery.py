@@ -144,11 +144,21 @@ def deliver_partstat_result(
     """Save the calendar outcome before attempting to show it in Telegram."""
     if cb.user_id is None or cb.chat_id is None or cb.message_id is None:
         return False
+    connection_id = next(
+        (
+            ref.connection_id
+            for token in tokens
+            if (ref := ctx.runtime.event_tokens.lookup(cb.user_id, token)) is not None
+            and ref.connection_id
+        ),
+        "",
+    )
     receipt = ctx.runtime.partstat_results.save(
         (cb.user_id, cb.chat_id, cb.message_id, cb.data or ""),
         bundle,
         tokens,
         allow_retry=allow_retry,
+        connection_id=connection_id,
     )
     delivered = edit_callback_rich_or_html(
         ctx,
@@ -176,6 +186,10 @@ def replay_partstat_result(
         if receipt is not None and receipt.delivered and receipt.allow_retry:
             return False
     if receipt is None:
+        return False
+    if receipt.connection_id and receipt.connection_id != ctx.calendar_service.connection_id(
+        cb.user_id
+    ):
         return False
     safe_answer_callback(ctx, cb)
     bundle = receipt.bundle

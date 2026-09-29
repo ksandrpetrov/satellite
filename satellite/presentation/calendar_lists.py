@@ -6,7 +6,7 @@ from datetime import date, datetime, tzinfo
 from html import escape
 from typing import Any
 
-from ..calendar.callback_tokens import event_callback_token
+from ..calendar.callback_tokens import event_token
 from ..calendar.events import (
     build_upcoming_events_groups,
     event_index_marker,
@@ -151,7 +151,7 @@ def _invitation_items_rich(
         sections.append(paragraph(when))
         if ev.get("invitation_series"):
             sections.append(paragraph(escape_rich(INVITATIONS_SERIES_LABEL)))
-        token = event_callback_token(str(ev.get("url") or ""))
+        token = event_token(ev)
         sections.append(callback_buttons(invitation_response_buttons(token)))
     return sections
 

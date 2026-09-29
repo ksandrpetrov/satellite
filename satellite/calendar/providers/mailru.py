@@ -5,8 +5,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, tzinfo
+from functools import wraps
+from typing import Any, TypeVar, cast
 
 from ...security.token_vault import ProviderCredentials
 from ..caldav_client import CalDAVError, CalDAVService
@@ -53,6 +56,23 @@ class _CachedServicePair:
                 log.exception("Failed to close Mail.ru CalDAV service kind=%s", label)
 
 
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def _account_operation(fn: _F) -> _F:
+    """Keep a cached client alive until its account operation has finished."""
+
+    @wraps(fn)
+    def wrapped(self, context, *args, **kwargs):
+        key = context.credentials.login.strip().casefold()
+        with self._service_instances_lock:
+            lock = self._account_locks.setdefault(key, threading.RLock())
+        with lock:
+            return fn(self, context, *args, **kwargs)
+
+    return cast(_F, wrapped)
+
+
 class MailruCalendarProvider:
     provider_id = PROVIDER_ID
 
@@ -60,6 +80,7 @@ class MailruCalendarProvider:
         self._cache_ttl_sec = cache_ttl_sec
         self._service_instances: dict[str, _CachedServicePair] = {}
         self._service_instances_lock = threading.Lock()
+        self._account_locks: dict[str, threading.RLock] = {}
 
     def close(self) -> None:
         with self._service_instances_lock:
@@ -76,9 +97,15 @@ class MailruCalendarProvider:
     ) -> tuple[bool, str | None, str | None]:
         if credentials.is_empty():
             return False, None, "INVALID_CREDENTIALS"
-        seed = (caldav_url or "").strip() or None
+        seed = (caldav_url or credentials.caldav_url or DEFAULT_CALDAV_URL).strip()
+        # Validation must neither poison the active cache nor reuse stale discovery.
+        service = CalDAVService(
+            caldav_url=seed,
+            login=credentials.login.strip(),
+            app_password=credentials.secret,
+            cache_ttl_sec=self._cache_ttl_sec,
+        )
         try:
-            service = self._service(credentials, caldav_url=seed)
             primary = service.primary_calendar_url()
             if not primary:
                 return False, None, "NO_CALENDAR"
@@ -94,7 +121,10 @@ class MailruCalendarProvider:
         except Exception:  # noqa: BLE001
             log.exception("Unexpected Mail.ru validation error")
             return False, None, "CALENDAR_ERROR"
+        finally:
+            service.close()
 
+    @_account_operation
     def list_calendars(self, context: UserCalendarContext) -> list[CalendarListEntry]:
         service = self._service(context.credentials)
         try:
@@ -115,6 +145,7 @@ class MailruCalendarProvider:
             status=status if ok else (code or "error").lower(),
         )
 
+    @_account_operation
     def list_events(
         self,
         context: UserCalendarContext,
@@ -144,6 +175,7 @@ class MailruCalendarProvider:
                 error_code="CALDAV_UNAVAILABLE",
             ) from exc
 
+    @_account_operation
     def list_events_for_invitations(
         self,
         context: UserCalendarContext,
@@ -160,7 +192,7 @@ class MailruCalendarProvider:
         if not calendar_urls:
             raise CalendarProviderError("Календарь не настроен.", error_code="NO_CALENDAR")
         try:
-            return service.fetch_events_in_range(
+            events = service.fetch_events_in_range(
                 start_date,
                 end_date,
                 tz=tz,
@@ -169,12 +201,16 @@ class MailruCalendarProvider:
                 invitation_partstat_verify=True,
                 strict=True,
             )
+            if any(event.get("_partstat_unverified") for event in events):
+                raise CalDAVError("Could not verify all invitation statuses")
+            return events
         except CalDAVError as exc:
             raise CalendarProviderError(
                 "Календарь временно недоступен. Попробуйте позже.",
                 error_code="CALDAV_UNAVAILABLE",
             ) from exc
 
+    @_account_operation
     def list_events_for_analytics(
         self,
         context: UserCalendarContext,
@@ -207,6 +243,7 @@ class MailruCalendarProvider:
                 error_code="CALDAV_UNAVAILABLE",
             ) from exc
 
+    @_account_operation
     def set_attendee_partstat(
         self,
         context: UserCalendarContext,
@@ -220,7 +257,9 @@ class MailruCalendarProvider:
             )
         service = self._service_for_invitations(context.credentials)
         try:
-            service.set_attendee_partstat(event_ref.url, partstat)
+            service.set_attendee_partstat(
+                event_ref.url, partstat, expected_uid=event_ref.uid or None
+            )
         except CalDAVPartstatUnconfirmedError as exc:
             raise CalendarProviderError(
                 "Не удалось подтвердить ответ в календаре.",
@@ -236,6 +275,7 @@ class MailruCalendarProvider:
                 error_code="PARTSTAT_UPDATE_FAILED",
             ) from exc
 
+    @_account_operation
     def create_event(
         self,
         context: UserCalendarContext,
@@ -283,6 +323,7 @@ class MailruCalendarProvider:
             error_code="CREATE_FAILED",
         ) from last_exc
 
+    @_account_operation
     def update_event(
         self,
         context: UserCalendarContext,
@@ -319,6 +360,7 @@ class MailruCalendarProvider:
             ) from exc
         return CalendarEventRef(uid=event_ref.uid, url=event_ref.url)
 
+    @_account_operation
     def delete_event(
         self,
         context: UserCalendarContext,
@@ -365,6 +407,7 @@ class MailruCalendarProvider:
         caldav_url: str | None = None,
     ) -> _CachedServicePair:
         key = credentials.login.strip().casefold()
+        caldav_url = caldav_url or credentials.caldav_url
         seed = (caldav_url or DEFAULT_CALDAV_URL).strip()
         seed_key = seed.rstrip("/")
         fingerprint = hashlib.sha256(f"{key}\0{credentials.secret}".encode()).hexdigest()
@@ -372,9 +415,7 @@ class MailruCalendarProvider:
         with self._service_instances_lock:
             pair = self._service_instances.get(key)
             if pair is not None and pair.credentials_fingerprint == fingerprint:
-                # После connect callers передают только credentials. Отсутствие
-                # caldav_url означает «сохрани endpoint этой credential-сессии».
-                if caldav_url is None or pair.caldav_url == seed_key:
+                if pair.caldav_url == seed_key:
                     return pair
             plain = CalDAVService(
                 caldav_url=seed,

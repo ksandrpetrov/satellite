@@ -335,3 +335,57 @@ def test_multiget_skips_urls_outside_known_calendars(monkeypatch):
     assert stats.multiget_satisfied == 0
     assert get_calls == [foreign_url]
     assert is_pending_invitation_for_user(ev, LOGIN)
+
+
+def test_new_refresh_observes_response_changed_in_another_client(monkeypatch):
+    service = _service()
+    _prime_discovery(service)
+    status = [b"NEEDS-ACTION"]
+    monkeypatch.setattr(
+        service,
+        "_http_get",
+        lambda *a, **kw: _Resp(_ics_needs_action().replace(b"NEEDS-ACTION", status[0])),
+    )
+    first = [_event("https://fake/event.ics")]
+    service._enrich_events_partstat(first, tz=TZ, invitation_verify=True, moment=MOMENT)
+    assert is_pending_invitation_for_user(first[0], LOGIN)
+    status[0] = b"ACCEPTED"
+    second = [_event("https://fake/event.ics")]
+    service._enrich_events_partstat(second, tz=TZ, invitation_verify=True, moment=MOMENT)
+    assert not is_pending_invitation_for_user(second[0], LOGIN)
+    service.close()
+
+
+def test_late_get_cannot_repopulate_invalidated_partstat_cache(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    service = _service()
+    _prime_discovery(service)
+    entered, release = threading.Event(), threading.Event()
+
+    def blocked(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return _Resp(_ics_needs_action())
+
+    monkeypatch.setattr(service, "_http_get", blocked)
+    with ThreadPoolExecutor() as pool:
+        future = pool.submit(service._refresh_attendees_via_get, "https://fake/event.ics")
+        try:
+            assert entered.wait(5)
+            service._invalidate_partstat_cache()
+        finally:
+            release.set()
+        assert future.result(timeout=5)
+    assert not service._partstat_cache
+    service.close()
+
+
+def test_unavailable_attendee_get_marks_incomplete_invitation_read(monkeypatch):
+    service = _service()
+    _prime_discovery(service)
+    monkeypatch.setattr(service, "_refresh_attendees_via_get", lambda url: None)
+    events = [_event("https://fake/event.ics")]
+    service._enrich_events_partstat(events, tz=TZ, invitation_verify=True, moment=MOMENT)
+    assert events[0]["_partstat_unverified"] is True
+    service.close()

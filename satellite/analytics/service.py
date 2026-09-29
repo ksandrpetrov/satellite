@@ -45,6 +45,8 @@ def build_week_analytics(
         end_date=current_end,
         tz=tz,
     )
+    if events:
+        login = str(events[0].get("_calendar_login") or login)
     report = build_analytics_report(
         events,
         reference_date,

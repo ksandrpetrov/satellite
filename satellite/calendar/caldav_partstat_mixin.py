@@ -63,6 +63,12 @@ class CalDAVPartstatMixin:
     _cache: _DiscoveryResult | None
     _partstat_cache: dict[str, list[Event] | None]
     _partstat_cache_lock: threading.Lock
+    _partstat_generation: int
+
+    def _invalidate_partstat_cache(self) -> None:
+        with self._partstat_cache_lock:
+            self._partstat_generation += 1
+            self._partstat_cache.clear()
 
     def _http_get(self, url: str, **kwargs: Any) -> requests.Response:
         raise NotImplementedError
@@ -189,6 +195,7 @@ class CalDAVPartstatMixin:
         selected = exception or master
         if selected is None:
             return
+        ev.pop("_partstat_unverified", None)
         attendees = selected.get("attendees") or (master or {}).get("attendees")
         if attendees:
             ev["attendees"] = list(attendees)
@@ -416,10 +423,20 @@ class CalDAVPartstatMixin:
         """
         if not self._login:
             return EnrichStats()
+        # Cache only within this enrichment pass. Another client may have
+        # changed PARTSTAT since the previous screen was fetched.
+        self._invalidate_partstat_cache()
         refresh_started = time.monotonic()
         multiget_satisfied: set[str] = set()
         phase1_gets = 0
         if invitation_verify and moment is not None:
+            for event in self._invitation_refresh_candidates(
+                events, tz=tz, moment=moment, lookback_days=lookback_days
+            ):
+                if event_ends_after(event, tz, moment=moment) or event_relevant_for_invitations(
+                    event, tz, moment=moment, lookback_days=lookback_days
+                ):
+                    event["_partstat_unverified"] = True
             multiget_satisfied = self._multiget_partstat_batch(
                 self._invitation_refresh_candidates(
                     events, tz=tz, moment=moment, lookback_days=lookback_days
@@ -494,11 +511,15 @@ class CalDAVPartstatMixin:
         partstat: str,
         login_variants: Sequence[str],
         version_hint: str | None = None,
+        expected_uid: str | None = None,
     ) -> bool:
-        with self._partstat_cache_lock:
-            self._partstat_cache.pop(event_url, None)
+        self._invalidate_partstat_cache()
         payload, etag = self._get_event_ics_via_http(event_url)
         calendar = IcsCalendar.from_ical(payload)
+        if expected_uid and any(
+            str(component.get("UID") or "") != expected_uid for component in calendar.walk("vevent")
+        ):
+            raise CalDAVError("Event identity changed")
         expected = calendar_attendee_partstats(calendar, login_variants)
         if not expected:
             raise CalDAVError("Connected account is not an attendee of this event")
@@ -521,6 +542,7 @@ class CalDAVPartstatMixin:
                     partstat=partstat,
                     login_variants=login_variants,
                     version_hint=head_etag,
+                    expected_uid=expected_uid,
                 )
             etag = version_hint
         updated = False
@@ -556,7 +578,9 @@ class CalDAVPartstatMixin:
             return False
         raise CalDAVPartstatUnconfirmedError("Calendar has not confirmed invitation response")
 
-    def set_attendee_partstat(self, event_url: str, partstat: str) -> None:
+    def set_attendee_partstat(
+        self, event_url: str, partstat: str, *, expected_uid: str | None = None
+    ) -> None:
         """Условный PUT сохраняет всю серию; GET подтверждает каждый ответ.
 
         Потерянный ответ записи проверяем до повтора, конфликт версии
@@ -573,7 +597,10 @@ class CalDAVPartstatMixin:
             for attempt in range(2):
                 try:
                     confirmed = self._set_attendee_partstat_once(
-                        event_url, partstat=normalized, login_variants=login_variants
+                        event_url,
+                        partstat=normalized,
+                        login_variants=login_variants,
+                        expected_uid=expected_uid,
                     )
                     if confirmed:
                         return
@@ -605,8 +632,7 @@ class CalDAVPartstatMixin:
         except (ConnectionError, TimeoutError, OSError) as exc:
             raise CalDAVError(f"Network error during PARTSTAT update: {exc}") from exc
         finally:
-            with self._partstat_cache_lock:
-                self._partstat_cache.pop(event_url, None)
+            self._invalidate_partstat_cache()
 
     def _partstat_refresh_budget_left(self, started_at: float) -> bool:
         if self._partstat_refresh_limit <= 0:
@@ -683,6 +709,7 @@ class CalDAVPartstatMixin:
         Возвращает компоненты серии или None при сетевой ошибке.
         """
         with self._partstat_cache_lock:
+            generation = self._partstat_generation
             cached = self._partstat_cache.get(event_url)
             if cached is not None:
                 return cached
@@ -711,5 +738,6 @@ class CalDAVPartstatMixin:
         if result is None:
             return None
         with self._partstat_cache_lock:
-            self._partstat_cache[event_url] = result
+            if generation == self._partstat_generation:
+                self._partstat_cache[event_url] = result
         return result

@@ -450,3 +450,34 @@ def test_reduced_motion_stops_spinner(app, page_factory):
     page.locator('[data-tab="events"]').click()
     expect(page.locator(".spinner")).to_have_css("animation-name", "none")
     held[0].fulfill(json={"groups": [], "empty": True})
+
+
+def test_disconnect_in_second_window_cancels_pending_connect(app, page_factory, monkeypatch):
+    from threading import Event
+
+    entered, release = Event(), Event()
+    original = app.provider.validate_credentials
+
+    def validate(credentials, **kwargs):
+        entered.set()
+        assert release.wait(10)
+        return original(credentials, **kwargs)
+
+    monkeypatch.setattr(app.provider, "validate_credentials", validate)
+    first, second = page_factory(), page_factory()
+    first.goto(app.url, wait_until="networkidle")
+    second.goto(app.url, wait_until="networkidle")
+    first.locator("#login").fill("test@example.test")
+    first.locator("#token").fill("test-app-password")
+    first.locator("#connectBtn").click()
+    try:
+        assert entered.wait(5)
+        second.locator("#disconnectBtn").click()
+        expect(second.locator("#connectStatus")).to_contain_text("Календарь отключён")
+    finally:
+        release.set()
+    expect(first.locator("#connectStatus")).to_contain_text("Подключение календаря изменилось")
+    assert not app.users.get(app.user_id).has_calendar
+    first.locator("#connectBtn").click()
+    expect(first.locator("#connectStatus")).to_contain_text("Календарь подключён")
+    assert app.users.get(app.user_id).has_calendar

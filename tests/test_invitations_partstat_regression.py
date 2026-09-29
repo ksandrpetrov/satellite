@@ -329,3 +329,23 @@ def test_many_accepted_fillers_do_not_block_kto_est_kto_with_short_phase2_budget
 
     assert is_pending_invitation_for_user(may26, LOGIN)
     assert get_order and get_order[0] == may26["url"]
+
+
+def test_provider_rejects_incomplete_invitation_read(monkeypatch):
+    from unittest.mock import Mock
+
+    from satellite.calendar.providers.base import CalendarProviderError, UserCalendarContext
+    from satellite.security.token_vault import ProviderCredentials
+
+    provider = MailruCalendarProvider()
+    service = Mock()
+    service.fetch_events_in_range.return_value = [{"_partstat_unverified": True}]
+    monkeypatch.setattr(provider, "_service_for_invitations", lambda credentials: service)
+    context = UserCalendarContext(
+        1, "mailru", ProviderCredentials(LOGIN, "pw"), "https://cal/", (), LOGIN
+    )
+    with pytest.raises(CalendarProviderError) as error:
+        provider.list_events_for_invitations(
+            context, start_date=date(2026, 5, 26), end_date=date(2026, 5, 26), tz=TZ
+        )
+    assert error.value.error_code == "CALDAV_UNAVAILABLE"

@@ -85,6 +85,7 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
         self._request_timeout_sec = max(1, ceil(float(request_timeout_sec)))
         self._discovery_lock = threading.Lock()
         self._partstat_cache_lock = threading.Lock()
+        self._partstat_generation = 0
         self._close_lock = threading.Lock()
         self._closed = False
         # _cache читается без блокировки — присваивание атомарно под GIL.
@@ -92,19 +93,29 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
         self._partstat_cache: dict[str, list[Event] | None] = {}
         # Keep-alive пул: PARTSTAT GET/PUT идут пачками, новый TLS на каждый — дорого.
         self._http = _new_http_session()
+        self._http_condition = threading.Condition()
+        self._http_idle = [self._http]
+        self._http_active = 0
 
     def close(self) -> None:
         """Идемпотентно закрывает owned HTTP-сессии."""
         with self._close_lock:
             if self._closed:
                 return
-            self._closed = True
-            cached = self._cache
-            self._cache = None
-            try:
-                self._http.close()
-            except Exception:  # noqa: BLE001 - закрываем остальные owned resources
-                log.exception("Failed to close CalDAV HTTP session")
+            with self._discovery_lock:
+                with self._http_condition:
+                    self._closed = True
+                cached = self._cache
+                self._cache = None
+            with self._http_condition:
+                while self._http_active:
+                    self._http_condition.wait()
+                sessions, self._http_idle = self._http_idle, []
+            for session in sessions:
+                try:
+                    session.close()
+                except Exception:  # noqa: BLE001 - close remaining sessions
+                    log.exception("Failed to close CalDAV HTTP session")
             if cached is not None and cached.client is not None:
                 try:
                     cached.client.close()
@@ -113,14 +124,31 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
 
     # --- HTTP choke points (единственные точки для requests + monkeypatch в тестах) ---
 
+    def _http_request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+        # A requests.Session is never shared by simultaneous workers. Retain
+        # keep-alive, and let close wait for GETs left running after a deadline.
+        with self._http_condition:
+            if self._closed:
+                raise CalDAVError("Calendar client is closed")
+            session = self._http_idle.pop() if self._http_idle else _new_http_session()
+            self._http_active += 1
+        try:
+            return session.request(method, url, **kwargs)
+        finally:
+            with self._http_condition:
+                self._http_idle.append(session)
+                self._http_active -= 1
+                self._http_condition.notify_all()
+
     def _http_get(self, url: str, **kwargs: Any) -> requests.Response:
-        return self._http.get(url, **kwargs)
+        return self._http_request("GET", url, **kwargs)
 
     def _http_put(self, url: str, **kwargs: Any) -> requests.Response:
-        return self._http.put(url, **kwargs)
+        return self._http_request("PUT", url, **kwargs)
 
     def _http_head(self, url: str, **kwargs: Any) -> requests.Response:
-        return self._http.head(url, **kwargs)
+        kwargs.setdefault("allow_redirects", False)
+        return self._http_request("HEAD", url, **kwargs)
 
     # --- public API -------------------------------------------------------
 
@@ -326,6 +354,8 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
     # --- internals --------------------------------------------------------
 
     def _ensure_discovery(self) -> _DiscoveryResult:
+        if self._closed:
+            raise CalDAVError("Calendar client is closed")
         # Быстрый путь без блокировки: cache-hit самый частый сценарий.
         cached = self._cache
         if cached is not None and (time.monotonic() - cached.cached_at) < self._cache_ttl_sec:
@@ -333,6 +363,8 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
         # Медленный путь: только один поток делает discovery, остальные ждут
         # завершения и переиспользуют свежий кэш.
         with self._discovery_lock:
+            if self._closed:
+                raise CalDAVError("Calendar client is closed")
             cached = self._cache
             if cached is not None and (time.monotonic() - cached.cached_at) < self._cache_ttl_sec:
                 return cached
@@ -359,7 +391,7 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
                     handles = [self._make_handle(cal) for cal in calendars]
                     log.info(
                         "CalDAV discovery ok: endpoint=%s calendars=%d login_variant=%s",
-                        candidate,
+                        _redact_url(candidate),
                         len(handles),
                         "full" if username == self._login else "local",
                     )
@@ -377,7 +409,9 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
                         except Exception:  # noqa: BLE001 - сохраняем исходную discovery-ошибку
                             log.warning("Failed to close rejected CalDAV client", exc_info=True)
                     user_label = "email" if username == self._login else "local-part"
-                    errors.append(f"{candidate} ({user_label}) -> {exc.__class__.__name__}: {exc}")
+                    errors.append(
+                        f"{_redact_url(candidate)} ({user_label}) -> {exc.__class__.__name__}"
+                    )
         details = "\n".join(errors[-8:])
         raise CalDAVError(f"Unable to discover calendars via CalDAV:\n{details}")
 

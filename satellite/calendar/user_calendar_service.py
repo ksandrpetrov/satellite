@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, tzinfo
 from typing import TypeVar
 
@@ -27,6 +28,13 @@ from .providers.registry import get_provider
 log = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
+@dataclass
+class _ConnectionState:
+    lock: threading.RLock = field(default_factory=threading.RLock)
+    writes: threading.RLock = field(default_factory=threading.RLock)
+    intent: int = 0
 
 
 @dataclass(frozen=True)
@@ -52,7 +60,26 @@ class UserCalendarService:
         self._log = operation_log
         self._cache_ttl_sec = cache_ttl_sec
         self._lock = threading.Lock()
+        self._connections: dict[int, _ConnectionState] = {}
         self._provider_cache: dict[str, CalendarProvider] = {}
+
+    def _state(self, user_id: int) -> _ConnectionState:
+        with self._lock:
+            return self._connections.setdefault(user_id, _ConnectionState())
+
+    @staticmethod
+    def _identity(record: UserRecord) -> str:
+        return hashlib.sha256((record.encrypted_credentials or "").encode()).hexdigest()
+
+    def connection_id(self, user_id: int) -> str:
+        record = self._users.get(user_id)
+        return self._identity(record) if record and record.has_calendar else ""
+
+    def _assert_current(self, user_id: int, connected: ConnectedCalendar) -> None:
+        if self.connection_id(user_id) != self._identity(connected.record):
+            raise CalendarProviderError(
+                "Calendar connection changed", error_code="CALENDAR_CONNECTION_CHANGED"
+            )
 
     def close(self) -> None:
         """Закрывает кэшированные провайдеры после остановки всех callers."""
@@ -89,6 +116,12 @@ class UserCalendarService:
         credentials: ProviderCredentials,
         caldav_url: str | None = None,
     ) -> UserRecord:
+        state = self._state(telegram_user_id)
+        with state.lock:
+            state.intent += 1
+            intent = state.intent
+        if caldav_url is not None:
+            credentials = replace(credentials, caldav_url=caldav_url.strip() or None)
         provider = self._provider_for(provider_id)
         ok, primary_url, error_code = provider.validate_credentials(
             credentials, caldav_url=caldav_url
@@ -106,12 +139,17 @@ class UserCalendarService:
                 error_code=error_code or "AUTH_FAILED",
             )
         encrypted = self._vault.encrypt(credentials)
-        record = self._users.set_calendar_connection(
-            telegram_user_id,
-            provider=provider_id,
-            encrypted_credentials=encrypted,
-            primary_calendar_url=primary_url,
-        )
+        with state.writes, state.lock:
+            if intent != state.intent:
+                raise CalendarProviderError(
+                    "Calendar connection changed", error_code="CALENDAR_CONNECTION_CHANGED"
+                )
+            record = self._users.set_calendar_connection(
+                telegram_user_id,
+                provider=provider_id,
+                encrypted_credentials=encrypted,
+                primary_calendar_url=primary_url,
+            )
         self._log.record(
             user_id=telegram_user_id,
             provider=provider_id,
@@ -121,7 +159,17 @@ class UserCalendarService:
         return record
 
     def disconnect(self, telegram_user_id: int) -> UserRecord:
-        record = self._users.clear_calendar_connection(telegram_user_id)
+        state = self._state(telegram_user_id)
+        # Cancel in-flight validation before waiting for an already started write.
+        with state.lock:
+            state.intent += 1
+            intent = state.intent
+        with state.writes, state.lock:
+            if intent != state.intent:
+                raise CalendarProviderError(
+                    "Calendar connection changed", error_code="CALENDAR_CONNECTION_CHANGED"
+                )
+            record = self._users.clear_calendar_connection(telegram_user_id)
         self._log.record(
             user_id=telegram_user_id,
             provider=record.calendar_provider or "none",
@@ -133,10 +181,10 @@ class UserCalendarService:
     def check_connection(self, telegram_user_id: int) -> CalendarConnectionStatus:
         connected = self.require_connection(telegram_user_id)
         status = connected.provider.get_connection_status(connected.context)
-        self._users.mark_calendar_status(
-            telegram_user_id,
-            status=CALENDAR_CONNECTED if status.connected else "invalid",
-        )
+        with self._state(telegram_user_id).lock:
+            self._assert_current(telegram_user_id, connected)
+            if status.connected:
+                self._users.mark_calendar_status(telegram_user_id, status=CALENDAR_CONNECTED)
         self._log.record(
             user_id=telegram_user_id,
             provider=connected.context.provider_id,
@@ -253,11 +301,14 @@ class UserCalendarService:
         event_ref: CalendarEventRef,
         partstat: str,
     ) -> None:
-        self._run(
-            telegram_user_id,
-            operation="update",
-            fn=lambda cc: cc.provider.set_attendee_partstat(cc.context, event_ref, partstat),
-        )
+        def write(cc: ConnectedCalendar) -> None:
+            if event_ref.connection_id and event_ref.connection_id != self._identity(cc.record):
+                raise CalendarProviderError(
+                    "Calendar connection changed", error_code="CALENDAR_CONNECTION_CHANGED"
+                )
+            cc.provider.set_attendee_partstat(cc.context, event_ref, partstat)
+
+        self._run(telegram_user_id, operation="update", fn=write)
 
     def fetch_events_for_day(
         self,
@@ -291,7 +342,27 @@ class UserCalendarService:
         if connected is None:
             connected = self.require_connection(telegram_user_id)
         try:
-            result = fn(connected)
+            state = self._state(telegram_user_id)
+            if operation == "list":
+                self._assert_current(telegram_user_id, connected)
+                result = fn(connected)
+                self._assert_current(telegram_user_id, connected)
+                if isinstance(result, list):
+                    result = [
+                        dict(
+                            item,
+                            _calendar_connection_id=self._identity(connected.record),
+                            _calendar_login=connected.context.login,
+                        )
+                        if isinstance(item, dict)
+                        else item
+                        for item in result
+                    ]  # type: ignore[assignment]
+            else:
+                # Reconnect/disconnect cannot swap credentials during a remote write.
+                with state.writes:
+                    self._assert_current(telegram_user_id, connected)
+                    result = fn(connected)
         except CalendarProviderError as exc:
             self._log.record(
                 user_id=telegram_user_id,

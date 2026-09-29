@@ -132,7 +132,7 @@ def test_concurrent_responses_do_not_restore_removed_invitation(monkeypatch) -> 
     release_first = threading.Event()
     second_started = threading.Event()
     second_finished = threading.Event()
-    original_token = module.event_callback_token
+    original_token = module.event_token
 
     def paused_token(url):
         if not first_read.is_set():
@@ -140,7 +140,7 @@ def test_concurrent_responses_do_not_restore_removed_invitation(monkeypatch) -> 
             assert release_first.wait(timeout=3)
         return original_token(url)
 
-    monkeypatch.setattr(module, "event_callback_token", paused_token)
+    monkeypatch.setattr(module, "event_token", paused_token)
 
     def second_response():
         second_started.set()
@@ -160,3 +160,53 @@ def test_concurrent_responses_do_not_restore_removed_invitation(monkeypatch) -> 
         first.result(timeout=3)
         second.result(timeout=3)
     assert cache.get_invitations_snapshot(USER_ID).pending == []
+
+
+def test_delayed_screen_cannot_restore_invitation_after_answer():
+    cache = EventTokenCache()
+    events = [_ev(url="https://cal/meeting.ics")]
+    revision = cache.begin_read(USER_ID)
+    cache.remove_invitations_pending(USER_ID, event_callback_token(events[0]["url"]))
+    assert not cache.register_invitations_screen(
+        USER_ID,
+        pending=events,
+        all_events=events,
+        login=LOGIN,
+        moment=datetime(2026, 5, 22, 10, 0, tzinfo=TZ),
+        truncated=False,
+        expected_revision=revision,
+    )
+    assert cache.get_invitations_snapshot(USER_ID) is None
+
+
+def test_older_fetch_cannot_replace_newer_screen():
+    cache = EventTokenCache()
+    old = cache.begin_read(USER_ID)
+    new = cache.begin_read(USER_ID)
+    moment = datetime(2026, 5, 22, 10, 0, tzinfo=TZ)
+    assert cache.register_manage_screen(
+        USER_ID, events=[], login=LOGIN, moment=moment, truncated=False, expected_revision=new
+    )
+    assert not cache.register_manage_screen(
+        USER_ID, events=[_ev()], login=LOGIN, moment=moment, truncated=False, expected_revision=old
+    )
+    assert cache.get_manage_snapshot(USER_ID).events == []
+
+
+def test_event_tokens_are_bound_to_connection_and_fit_telegram_limit():
+    from satellite.calendar.callback_tokens import event_token
+
+    first = dict(_ev(), _calendar_connection_id="first")
+    second = dict(first, _calendar_connection_id="second")
+    assert event_token(first) != event_token(second)
+    cache = EventTokenCache()
+    cache.register_manage_screen(
+        USER_ID,
+        events=[first, second],
+        login=LOGIN,
+        moment=datetime(2026, 5, 22, 10, 0, tzinfo=TZ),
+        truncated=False,
+    )
+    assert cache.lookup(USER_ID, event_token(first)).connection_id == "first"
+    assert cache.lookup(USER_ID, event_token(second)).connection_id == "second"
+    assert len(("mng:r:" + event_token(second) + ":a").encode()) <= 64

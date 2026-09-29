@@ -20,7 +20,7 @@ import html
 import logging
 from datetime import date, datetime, timedelta
 
-from ...calendar.callback_tokens import event_callback_token
+from ...calendar.callback_tokens import event_token
 from ...calendar.events import (
     collect_manageable_events,
     event_index_marker,
@@ -34,6 +34,7 @@ from ...calendar.providers.base import (
     CalendarProviderError,
 )
 from ...messages_ru import (
+    CALENDAR_CONNECTION_CHANGED_TEXT,
     CB_MANAGE_BACK,
     CB_MANAGE_CLOSE,
     CB_MANAGE_PICK_PREFIX,
@@ -85,6 +86,7 @@ _MANAGE_REFRESH_ACTION = "manage:refresh"
 
 
 def _fetch_manageable(ctx: HandlerContext, user_id: int) -> tuple[list, str, bool]:
+    revision = ctx.runtime.event_tokens.begin_read(user_id)
     now = datetime.now(tz=ctx.tz)
     today = now.date()
     end = today + timedelta(days=_HORIZON_DAYS)
@@ -96,6 +98,8 @@ def _fetch_manageable(ctx: HandlerContext, user_id: int) -> tuple[list, str, boo
         end_date=end,
         tz=ctx.tz,
     )
+    if events:
+        login = str(events[0].get("_calendar_login") or login)
     manageable = collect_manageable_events(
         events,
         login,
@@ -106,13 +110,18 @@ def _fetch_manageable(ctx: HandlerContext, user_id: int) -> tuple[list, str, boo
     truncated = len(manageable) > _MAX_EVENTS
     if truncated:
         manageable = manageable[:_MAX_EVENTS]
-    ctx.runtime.event_tokens.register_manage_screen(
+    registered = ctx.runtime.event_tokens.register_manage_screen(
         user_id,
         events=manageable,
+        expected_revision=revision,
         login=login,
         moment=now,
         truncated=truncated,
     )
+    if not registered:
+        raise CalendarProviderError(
+            "Calendar view changed", error_code="CALENDAR_CONNECTION_CHANGED"
+        )
     return manageable, login, truncated
 
 
@@ -130,7 +139,7 @@ def _build_list_screen(
     body = manage_list_body_lines(events, tz, reference_date)
     rows: list[tuple[str, str]] = []
     for idx, ev in enumerate(events):
-        token = event_callback_token(str(ev.get("url") or ""))
+        token = event_token(ev)
         marker = event_index_marker(idx)
         title = str(ev.get("summary") or "—")
         when = format_time_range(ev, tz)
@@ -152,7 +161,7 @@ def _load_list_screen(ctx: HandlerContext, user_id: int) -> tuple[str, str, dict
 
 
 def _detail_screen_for(ctx: HandlerContext, event, login: str) -> tuple[str, str, dict]:
-    token = event_callback_token(str(event.get("url") or ""))
+    token = event_token(event)
     title_raw = str(event.get("summary") or "—")
     title = html.escape(title_raw)
     day = event_local_start_date(event, ctx.tz)
@@ -325,6 +334,8 @@ def _on_fail(ctx: HandlerContext, cb: IncomingCallback, error_code: str) -> None
     error_text = (
         PARTSTAT_UNCONFIRMED_TEXT
         if error_code == "PARTSTAT_UPDATE_UNCONFIRMED"
+        else CALENDAR_CONNECTION_CHANGED_TEXT
+        if error_code == "CALENDAR_CONNECTION_CHANGED"
         else MANAGE_RESPOND_FAIL_TEXT
     )
     deliver_partstat_result(

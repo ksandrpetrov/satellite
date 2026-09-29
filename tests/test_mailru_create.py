@@ -117,10 +117,13 @@ def test_service_cache_is_threadsafe_and_credential_aware():
         changed_secret.plain.close.assert_called_once_with()
         changed_secret.invitations.close.assert_called_once_with()
 
-        # Обычные операции после connect URL не передают: custom endpoint
-        # должен сохраниться, а не замениться default Mail.ru endpoint'ом.
+        # The endpoint is persisted in the encrypted credential payload.
         without_explicit_url = provider._cached_services(
-            ProviderCredentials(login="me@vk.team", secret="new-secret")
+            ProviderCredentials(
+                login="me@vk.team",
+                secret="new-secret",
+                caldav_url="https://calendar.example/custom",
+            )
         )
         assert without_explicit_url is changed_url
 
@@ -128,3 +131,76 @@ def test_service_cache_is_threadsafe_and_credential_aware():
         provider.close()
         changed_url.plain.close.assert_called_once_with()
         changed_url.invitations.close.assert_called_once_with()
+
+
+def test_validation_does_not_replace_active_client_or_reuse_cached_auth():
+    provider = MailruCalendarProvider()
+    credentials = ProviderCredentials("me@example.com", "old")
+    with patch("satellite.calendar.providers.mailru.CalDAVService") as factory:
+        factory.side_effect = lambda **kwargs: MagicMock()
+        pair = provider._cached_services(credentials)
+        candidate = MagicMock()
+        candidate.primary_calendar_url.side_effect = CalDAVError("unavailable")
+        factory.side_effect = None
+        factory.return_value = candidate
+        assert not provider.validate_credentials(ProviderCredentials("me@example.com", "new"))[0]
+        assert provider._cached_services(credentials) is pair
+        pair.plain.close.assert_not_called()
+        candidate.close.assert_called_once_with()
+        provider.close()
+
+
+def test_parallel_accounts_never_close_a_client_during_use():
+    from dataclasses import replace
+
+    entered, release, attempting = threading.Event(), threading.Event(), threading.Event()
+    provider = MailruCalendarProvider()
+    context = _context()
+    state = {"active": False}
+    with patch("satellite.calendar.providers.mailru.CalDAVService") as factory:
+
+        def client(**kwargs):
+            mock = MagicMock()
+            mock.list_calendars.return_value = ([], "https://cal/")
+            return mock
+
+        factory.side_effect = client
+        pair = provider._cached_services(context.credentials)
+
+        def read():
+            state["active"] = True
+            entered.set()
+            assert release.wait(5)
+            state["active"] = False
+            return [], "https://cal/"
+
+        def close():
+            assert not state["active"], "closed an in-flight client"
+
+        pair.plain.list_calendars.side_effect = read
+        pair.plain.close.side_effect = close
+        original = provider._account_locks.setdefault(context.login.casefold(), threading.RLock())
+
+        class ObservedLock:
+            def __enter__(self):
+                attempting.set()
+                original.acquire()
+
+            def __exit__(self, *args):
+                original.release()
+
+        with ThreadPoolExecutor() as pool:
+            old = pool.submit(provider.list_calendars, context)
+            assert entered.wait(5)
+            provider._account_locks[context.login.casefold()] = ObservedLock()
+            replacement = replace(context, credentials=ProviderCredentials(context.login, "new"))
+            new = pool.submit(provider.list_calendars, replacement)
+            try:
+                assert attempting.wait(5)
+                pair.plain.close.assert_not_called()
+            finally:
+                release.set()
+            assert old.result(timeout=5) == []
+            assert new.result(timeout=5) == []
+        pair.plain.close.assert_called_once_with()
+        provider.close()

@@ -267,3 +267,12 @@ def test_no_version_information_prevents_unguarded_write(caldav_http):
     with pytest.raises(CalDAVError):
         service.set_attendee_partstat(url, "ACCEPTED")
     assert state.puts == 0
+
+
+def test_reused_event_url_cannot_answer_a_different_uid(caldav_http):
+    service, state, url = caldav_http
+    with pytest.raises(CalDAVError, match="identity"):
+        service.set_attendee_partstat(url, "ACCEPTED", expected_uid="old-meeting")
+    assert state.puts == 0
+    service.set_attendee_partstat(url, "ACCEPTED", expected_uid="series")
+    assert state.puts == 1

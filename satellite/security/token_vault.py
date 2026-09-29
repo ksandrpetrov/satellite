@@ -39,6 +39,7 @@ class ProviderCredentials:
 
     login: str
     secret: str
+    caldav_url: str | None = None
 
     def is_empty(self) -> bool:
         return not (self.login.strip() and self.secret.strip())
@@ -84,7 +85,11 @@ class TokenVault:
 
     def encrypt(self, credentials: ProviderCredentials) -> str:
         payload = json.dumps(
-            {"login": credentials.login, "secret": credentials.secret},
+            {
+                "login": credentials.login,
+                "secret": credentials.secret,
+                "caldav_url": credentials.caldav_url,
+            },
             ensure_ascii=False,
         ).encode("utf-8")
         return self._fernet.encrypt(payload).decode("ascii")
@@ -104,7 +109,9 @@ class TokenVault:
             raise TokenDecryptError("Decrypted payload is not a JSON object.")
         login = str(data.get("login") or "")
         secret = str(data.get("secret") or "")
-        return ProviderCredentials(login=login, secret=secret)
+        return ProviderCredentials(
+            login=login, secret=secret, caldav_url=data.get("caldav_url") or None
+        )
 
     def encrypt_event_title_overrides(self, payload: EventTitleOverridesPayload) -> str:
         """Шифрует список title override без generic string API."""

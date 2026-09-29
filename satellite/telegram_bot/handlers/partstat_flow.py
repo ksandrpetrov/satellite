@@ -15,7 +15,7 @@ import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from ...calendar.callback_tokens import event_callback_token
+from ...calendar.callback_tokens import event_token
 from ...calendar.event_token_cache import CachedEventRef
 from ...calendar.providers.base import (
     CalendarEventRef,
@@ -51,7 +51,7 @@ def find_event_by_token(events: list, token: str):
     if not needle:
         return None
     for ev in events:
-        if event_callback_token(str(ev.get("url") or "")) == needle:
+        if event_token(ev) == needle:
             return ev
     return None
 
@@ -64,7 +64,7 @@ def response_event(ctx: HandlerContext, user_id: int, token: str, events: list) 
             or event.get("rrule")
             or "RECURRENCE-ID" in (event.get("raw_keys") or [])
         )
-        count = sum(event_callback_token(str(item.get("url") or "")) == token for item in events)
+        count = sum(event_token(item) == token for item in events)
         return {**event, "invitation_series": series or count > 1}
     cached = ctx.runtime.event_tokens.lookup(user_id, token)
     return {"summary": cached.summary, "invitation_series": cached.series} if cached else {}
@@ -133,6 +133,7 @@ def _resolve_event_ref(
     return (
         CachedEventRef(
             url=str(event.get("url") or ""),
+            connection_id=str(event.get("_calendar_connection_id") or ""),
             uid=str(event.get("uid") or ""),
         ),
         events,
@@ -218,7 +219,9 @@ def respond_partstat(
             ctx.runtime.partstat_results.invalidate(cb.user_id, token)
             ctx.calendar_service.set_attendee_partstat(
                 cb.user_id,
-                CalendarEventRef(uid=event_ref.uid, url=event_ref.url),
+                CalendarEventRef(
+                    uid=event_ref.uid, url=event_ref.url, connection_id=event_ref.connection_id
+                ),
                 partstat,
             )
         except (CalendarNotConnectedError, CalendarProviderError) as exc:

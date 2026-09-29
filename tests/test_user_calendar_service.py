@@ -259,7 +259,8 @@ def test_list_events_for_analytics_uses_dedicated_provider_path(
         tz=datetime.now().astimezone().tzinfo,
     )
 
-    assert events == [{"summary": "Verified", "start": "2026-02-16"}]
+    assert [(ev["summary"], ev["start"]) for ev in events] == [("Verified", "2026-02-16")]
+    assert events[0]["_calendar_connection_id"] == service.connection_id(USER_ID)
     assert fake_provider.list_analytics_calls == 1
     assert fake_provider.list_events_calls == 0
 
@@ -301,3 +302,222 @@ def test_partstat_uses_only_callers_connected_account(service, users, fake_provi
     with pytest.raises(CalendarNotConnectedError):
         service.set_attendee_partstat(second_id + 1, ref, "ACCEPTED")
     fake_provider.set_attendee_partstat.assert_not_called()
+
+
+@pytest.mark.parametrize("replacement", ["disconnect", "new_connect"])
+def test_late_connect_cannot_overwrite_newer_intent(service, users, fake_provider, replacement):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    entered, release = Event(), Event()
+    original = fake_provider.validate_credentials
+
+    def blocked(credentials, **kwargs):
+        if credentials.secret == "slow":
+            entered.set()
+            assert release.wait(5)
+        return original(credentials, **kwargs)
+
+    fake_provider.validate_credentials = blocked
+    with ThreadPoolExecutor() as pool:
+        old = pool.submit(_connect, service, password="slow")
+        try:
+            assert entered.wait(5)
+            if replacement == "disconnect":
+                service.disconnect(USER_ID)
+            else:
+                _connect(service, password="new")
+        finally:
+            release.set()
+        with pytest.raises(CalendarProviderError) as exc:
+            old.result(timeout=5)
+        assert exc.value.error_code == "CALENDAR_CONNECTION_CHANGED"
+    record = users.get(USER_ID)
+    if replacement == "disconnect":
+        assert not record.has_calendar
+    else:
+        assert service.require_connection(USER_ID).context.credentials.secret == "new"
+
+
+def test_failed_reconnect_keeps_previous_connection(service, users):
+    _connect(service)
+    previous = users.get(USER_ID)
+    with pytest.raises(CalendarProviderError):
+        _connect(service, password="bad")
+    assert users.get(USER_ID) == previous
+
+
+def test_custom_endpoint_survives_vault_roundtrip(service, users, vault):
+    service.connect(
+        USER_ID,
+        provider_id=PROVIDER_MAILRU,
+        credentials=ProviderCredentials(LOGIN, PASSWORD),
+        caldav_url="https://custom.example/dav/",
+    )
+    stored = vault.decrypt(users.get(USER_ID).encrypted_credentials)
+    assert stored.caldav_url == "https://custom.example/dav/"
+
+
+def test_old_event_reference_cannot_write_to_reconnected_account(service, fake_provider):
+    from unittest.mock import Mock
+
+    from satellite.calendar.providers.base import CalendarEventRef
+
+    _connect(service)
+    old_events = service.list_events(
+        USER_ID,
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 1, 1),
+        tz=datetime.now().astimezone().tzinfo,
+    )
+    old_id = old_events[0]["_calendar_connection_id"]
+    _connect(service, password="new")
+    fake_provider.set_attendee_partstat = Mock()
+    with pytest.raises(CalendarProviderError) as exc:
+        service.set_attendee_partstat(
+            USER_ID,
+            CalendarEventRef(
+                "meeting", "https://caldav.example/primary/event.ics", connection_id=old_id
+            ),
+            "ACCEPTED",
+        )
+    assert exc.value.error_code == "CALENDAR_CONNECTION_CHANGED"
+    fake_provider.set_attendee_partstat.assert_not_called()
+
+
+@pytest.mark.parametrize("action", ["check", "list"])
+def test_old_read_cannot_report_success_after_reconnect(service, fake_provider, action):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    _connect(service)
+    entered, release = Event(), Event()
+
+    def blocked(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return fake_provider.next_status if action == "check" else []
+
+    if action == "check":
+        fake_provider.get_connection_status = blocked
+
+        def call():
+            return service.check_connection(USER_ID)
+    else:
+        fake_provider.list_events = blocked
+
+        def call():
+            return service.list_events(
+                USER_ID,
+                start_date=date(2026, 1, 1),
+                end_date=date(2026, 1, 1),
+                tz=datetime.now().astimezone().tzinfo,
+            )
+
+    with ThreadPoolExecutor() as pool:
+        future = pool.submit(call)
+        try:
+            assert entered.wait(5)
+            _connect(service, password="new")
+        finally:
+            release.set()
+        with pytest.raises(CalendarProviderError) as exc:
+            future.result(timeout=5)
+        assert exc.value.error_code == "CALENDAR_CONNECTION_CHANGED"
+    assert service.require_connection(USER_ID).context.credentials.secret == "new"
+
+
+def test_failed_probe_does_not_disable_future_recovery(service, fake_provider, users):
+    _connect(service)
+    fake_provider.next_status = CalendarConnectionStatus(False, PROVIDER_MAILRU, "calendar_error")
+    assert not service.check_connection(USER_ID).connected
+    assert users.get(USER_ID).has_calendar
+    fake_provider.next_status = CalendarConnectionStatus(True, PROVIDER_MAILRU, "connected")
+    assert service.check_connection(USER_ID).connected
+
+
+def test_disconnect_waits_for_started_write_without_blocking_other_users(
+    service, users, fake_provider
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from satellite.calendar.providers.base import CalendarEventRef
+
+    _connect(service)
+    other = USER_ID + 1
+    users.upsert_from_telegram(
+        telegram_user_id=other,
+        chat_id=other,
+        username="other",
+        display_name="Other",
+        default_status=USER_STATUS_APPROVED,
+    )
+    service.connect(
+        other,
+        provider_id=PROVIDER_MAILRU,
+        credentials=ProviderCredentials("other@example.com", "pw"),
+    )
+    entered, release, disconnect_started = Event(), Event(), Event()
+    order = []
+
+    def write(*args):
+        order.append("write_started")
+        entered.set()
+        assert release.wait(5)
+        order.append("write_finished")
+
+    fake_provider.set_attendee_partstat = write
+
+    def disconnect():
+        disconnect_started.set()
+        service.disconnect(USER_ID)
+        order.append("disconnected")
+
+    with ThreadPoolExecutor() as pool:
+        writing = pool.submit(
+            service.set_attendee_partstat,
+            USER_ID,
+            CalendarEventRef("meeting", "https://cal/e"),
+            "ACCEPTED",
+        )
+        try:
+            assert entered.wait(5)
+            removing = pool.submit(disconnect)
+            assert disconnect_started.wait(5)
+            assert service.list_calendars(other)
+            assert users.get(USER_ID).has_calendar
+        finally:
+            release.set()
+        writing.result(timeout=5)
+        removing.result(timeout=5)
+    assert order == ["write_started", "write_finished", "disconnected"]
+    assert not users.get(USER_ID).has_calendar
+
+
+def test_persisted_endpoint_used_by_fresh_provider_after_restart(service, users, vault):
+    from satellite.calendar.providers.mailru import MailruCalendarProvider
+
+    service.connect(
+        USER_ID,
+        provider_id=PROVIDER_MAILRU,
+        credentials=ProviderCredentials(LOGIN, PASSWORD),
+        caldav_url="https://custom.example/dav/",
+    )
+    credentials = vault.decrypt(users.get(USER_ID).encrypted_credentials)
+    provider = MailruCalendarProvider()
+    try:
+        assert provider._service(credentials)._caldav_url == "https://custom.example/dav/"
+        assert (
+            provider._service_for_invitations(credentials)._caldav_url
+            == "https://custom.example/dav/"
+        )
+    finally:
+        provider.close()
+
+
+def test_legacy_encrypted_credentials_remain_readable(vault):
+    import json
+
+    blob = vault._fernet.encrypt(json.dumps({"login": LOGIN, "secret": PASSWORD}).encode()).decode()
+    assert vault.decrypt(blob) == ProviderCredentials(LOGIN, PASSWORD)

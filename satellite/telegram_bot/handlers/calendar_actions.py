@@ -7,6 +7,7 @@ from ...messages_ru import (
     BUTTON_COPY_EMAIL,
     CALENDAR_CHECK_FAIL_HTML,
     CALENDAR_CHECK_OK_HTML,
+    CALENDAR_CONNECTION_CHANGED_TEXT,
     CALENDAR_DISCONNECTED_HTML,
     CALENDAR_NOT_CONNECTED_HTML,
 )
@@ -41,5 +42,7 @@ def disconnect_calendar_action(ctx: HandlerContext, *, user_id: int, chat_id: in
         ctx.calendar_service.disconnect(user_id)
     except KeyError:
         return CALENDAR_NOT_CONNECTED_HTML
+    except CalendarProviderError:
+        return CALENDAR_CONNECTION_CHANGED_TEXT
     set_default_menu_button_for_chat(ctx.telegram, chat_id)
     return CALENDAR_DISCONNECTED_HTML

@@ -61,6 +61,7 @@ class CalendarConnectionStatus:
 class CalendarEventRef:
     uid: str
     url: str | None = None
+    connection_id: str = ""
 
 
 @dataclass(frozen=True)

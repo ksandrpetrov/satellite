@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from ...calendar.callback_tokens import event_callback_token
+from ...calendar.callback_tokens import event_token
 from ...calendar.events import event_local_start_date, format_time_range, format_upcoming_day_header
 from ...calendar.providers.base import (
     CalendarEventRef,
@@ -21,6 +21,7 @@ from ...invitations_view import (
     screen_from_pending,
 )
 from ...messages_ru import (
+    CALENDAR_CONNECTION_CHANGED_TEXT,
     CB_INV_ACCEPT_ALL_PREFIX,
     CB_INV_BACK,
     CB_INV_CLOSE,
@@ -240,6 +241,8 @@ def _on_fail(ctx: HandlerContext, cb: IncomingCallback, error_code: str) -> None
         token,
         error_text=PARTSTAT_UNCONFIRMED_TEXT
         if error_code == "PARTSTAT_UPDATE_UNCONFIRMED"
+        else CALENDAR_CONNECTION_CHANGED_TEXT
+        if error_code == "CALENDAR_CONNECTION_CHANGED"
         else INVITATIONS_RESPOND_FAIL_TEXT,
     )
 
@@ -334,7 +337,7 @@ def _accept_all_invitations(ctx: HandlerContext, cb: IncomingCallback, data: str
     cache = ctx.runtime.event_tokens
     snapshot = cache.get_invitations_snapshot(cb.user_id)
     if snapshot is None or data != invitation_accept_all_callback(
-        [event_callback_token(str(ev.get("url") or "")) for ev in snapshot.pending]
+        [event_token(ev) for ev in snapshot.pending]
     ):
         _edit_invitations_screen(ctx, cb, show_loading=True)
         return
@@ -354,7 +357,7 @@ def _accept_all_invitations(ctx: HandlerContext, cb: IncomingCallback, data: str
     try:
         for event in snapshot.pending:
             url = str(event.get("url") or "")
-            token = event_callback_token(url)
+            token = event_token(event)
             if not acquire_response(ctx, cb.user_id, token, "ACCEPTED"):
                 outcomes.append((event, "busy"))
                 continue
@@ -363,7 +366,11 @@ def _accept_all_invitations(ctx: HandlerContext, cb: IncomingCallback, data: str
                 ctx.runtime.partstat_results.invalidate(cb.user_id, token)
                 ctx.calendar_service.set_attendee_partstat(
                     cb.user_id,
-                    CalendarEventRef(uid=str(event.get("uid") or ""), url=url),
+                    CalendarEventRef(
+                        uid=str(event.get("uid") or ""),
+                        url=url,
+                        connection_id=str(event.get("_calendar_connection_id") or ""),
+                    ),
                     "ACCEPTED",
                 )
                 sync_response_caches(ctx, cb.user_id, token, "ACCEPTED")
@@ -409,7 +416,7 @@ def _accept_all_invitations(ctx: HandlerContext, cb: IncomingCallback, data: str
         remaining_buttons = []
         tokens = []
         for index, (event, status) in enumerate(outcomes, 1):
-            token = event_callback_token(str(event.get("url") or ""))
+            token = event_token(event)
             tokens.append(token)
             lines.append(
                 f"{index}. "

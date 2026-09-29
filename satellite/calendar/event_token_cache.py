@@ -15,7 +15,7 @@ from datetime import datetime
 from threading import Lock
 from typing import Any
 
-from .callback_tokens import event_callback_token
+from .callback_tokens import event_token
 from .events._partstat import _attendee_line_matches_login
 
 _TOKEN_TTL_SEC = 30 * 60
@@ -29,6 +29,7 @@ class CachedEventRef:
     uid: str
     summary: str = ""
     series: bool = False
+    connection_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -87,9 +88,16 @@ class EventTokenCache:
     def __init__(self, *, ttl_sec: float = _TOKEN_TTL_SEC) -> None:
         self._lock = Lock()
         self._ttl_sec = ttl_sec
+        self._revisions: dict[int, int] = {}
         self._tokens: dict[tuple[int, str], _TokenEntry] = {}
         self._invitations: dict[int, tuple[InvitationsScreenSnapshot, float]] = {}
         self._manage: dict[int, tuple[ManageScreenSnapshot, float]] = {}
+
+    def begin_read(self, user_id: int) -> int:
+        with self._lock:
+            revision = self._revisions.get(user_id, 0) + 1
+            self._revisions[user_id] = revision
+            return revision
 
     def register_invitations_screen(
         self,
@@ -101,8 +109,11 @@ class EventTokenCache:
         moment: datetime,
         truncated: bool,
         from_settings_hub: bool = False,
-    ) -> None:
+        expected_revision: int | None = None,
+    ) -> bool:
         with self._lock:
+            if expected_revision is not None and expected_revision != self._revisions.get(user_id):
+                return False
             now = time.monotonic()
             self._invitations[user_id] = (
                 InvitationsScreenSnapshot(
@@ -120,6 +131,7 @@ class EventTokenCache:
             # occurrences omit RRULE and RECURRENCE-ID.
             for ev in pending:
                 self._register_event(user_id, ev, cached_at=now)
+            return True
 
     def register_manage_screen(
         self,
@@ -129,8 +141,11 @@ class EventTokenCache:
         login: str,
         moment: datetime,
         truncated: bool,
-    ) -> None:
+        expected_revision: int | None = None,
+    ) -> bool:
         with self._lock:
+            if expected_revision is not None and expected_revision != self._revisions.get(user_id):
+                return False
             now = time.monotonic()
             self._manage[user_id] = (
                 ManageScreenSnapshot(
@@ -143,6 +158,7 @@ class EventTokenCache:
             )
             for ev in events:
                 self._register_event(user_id, ev, cached_at=now)
+            return True
 
     def lookup(self, user_id: int, token: str) -> CachedEventRef | None:
         with self._lock:
@@ -183,6 +199,7 @@ class EventTokenCache:
         self, user_id: int, token: str
     ) -> InvitationsScreenSnapshot | None:
         with self._lock:
+            self._revisions[user_id] = self._revisions.get(user_id, 0) + 1
             stored = self._invitations.get(user_id)
             if stored is None:
                 return None
@@ -190,11 +207,7 @@ class EventTokenCache:
             if (time.monotonic() - cached_at) >= self._ttl_sec:
                 self._invitations.pop(user_id, None)
                 return None
-            pending = [
-                ev
-                for ev in snapshot.pending
-                if event_callback_token(str(ev.get("url") or "")) != token
-            ]
+            pending = [ev for ev in snapshot.pending if event_token(ev) != token]
             updated = InvitationsScreenSnapshot(
                 pending=pending,
                 login=snapshot.login,
@@ -213,6 +226,7 @@ class EventTokenCache:
         partstat: str,
     ) -> ManageScreenSnapshot | None:
         with self._lock:
+            self._revisions[user_id] = self._revisions.get(user_id, 0) + 1
             stored = self._manage.get(user_id)
             if stored is None:
                 return None
@@ -222,7 +236,7 @@ class EventTokenCache:
                 return None
             events: list[dict[str, Any]] = []
             for ev in snapshot.events:
-                if event_callback_token(str(ev.get("url") or "")) == token:
+                if event_token(ev) == token:
                     events.append(apply_user_partstat_to_event(ev, login, partstat))
                 else:
                     events.append(copy.deepcopy(ev))
@@ -239,10 +253,11 @@ class EventTokenCache:
         url = str(event.get("url") or "").strip()
         if not url:
             return
-        token = event_callback_token(url)
+        token = event_token(event)
         self._tokens[(user_id, token)] = _TokenEntry(
             ref=CachedEventRef(
                 url=url,
+                connection_id=str(event.get("_calendar_connection_id") or ""),
                 uid=str(event.get("uid") or ""),
                 summary=str(event.get("summary") or ""),
                 series=bool(

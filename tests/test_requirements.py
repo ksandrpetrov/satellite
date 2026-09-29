@@ -18,19 +18,19 @@ CI_CHECKS = ROOT / ".github" / "workflows" / "_checks.yml"
 DOCKERFILE = ROOT / "Dockerfile"
 
 RUNTIME_PINS = {
-    "caldav==3.2.1",
-    "cryptography==49.0.0",
-    "icalendar==7.2.2",
-    "python-dotenv==1.2.2",
+    "caldav==3.3.1",
+    "cryptography==50.0.1",
+    "icalendar==7.3.0",
+    "python-dotenv==1.2.3",
     "requests==2.34.2",
     "Pillow==12.3.0",
 }
 DEV_PINS = {
     "pytest==9.1.1",
-    "coverage==7.15.2",
-    "ruff==0.16.0",
-    "mypy==2.3.0",
-    "pre-commit==4.6.1",
+    "coverage==7.16.2",
+    "ruff==0.16.9",
+    "mypy==2.3.1",
+    "pre-commit==4.6.2",
     "uv==0.11.32",
     "playwright==1.63.0",
 }
