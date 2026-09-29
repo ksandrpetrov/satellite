@@ -475,7 +475,7 @@ The bot logs operational failures but sends users only safe, non-technical messa
 push в `main` или тег `v*` — reusable `_checks.yml` на Python 3.11/3.12
 (lock-check + ruff + mypy + `py_compile` + pytest),
 сборка в GHCR (`:sha-<short>`; `:latest` на main; semver на теге), затем
-`scripts/docker-smoke-image.sh` (импорты, `caldav==3.2.1`, `/healthz` в образе). Rolling update
+`scripts/docker-smoke-image.sh` (импорты, `caldav==3.3.1`, `/healthz` в образе). Rolling update
 контейнера на сервере (`scripts/ci-deploy-remote.sh`, `SATELLITE_IMAGE` в `.env`) — только
 для `main` и `workflow_dispatch`: `compose pull/up`, ожидание `healthy`, host `/healthz`,
 затем `scripts/smoke-prod.sh` с публичного URL (`SMOKE_PUBLIC_BASE_URL`, в Actions

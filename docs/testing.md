@@ -134,7 +134,7 @@ make lock-check  # не меняет рабочие lock-файлы
 ```
 
 [`tests/test_requirements.py`](../tests/test_requirements.py) проверяет inputs,
-generated header, точные версии, Python baseline и `caldav==3.2.1`. Smoke
+generated header, точные версии, Python baseline и `caldav==3.3.1`. Smoke
 сверяет lock с реально установленной версией. Не ослабляйте assert без
 осознанной смены контракта зависимостей.
 

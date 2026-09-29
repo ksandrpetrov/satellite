@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import runpy
 import tomllib
 from pathlib import Path
 
@@ -99,3 +100,9 @@ def test_python_baseline_is_consistent() -> None:
     assert "sys.version_info >= (3, 11)" in INSTALLER.read_text(encoding="utf-8")
     assert 'python-version: ["3.11", "3.12"]' in CI_CHECKS.read_text(encoding="utf-8")
     assert DOCKERFILE.read_text(encoding="utf-8").startswith("FROM python:3.12-")
+
+
+def test_container_smoke_checks_current_dependency_pin() -> None:
+    smoke = runpy.run_path(str(ROOT / "scripts" / "smoke_container.py"))
+    assert f"caldav=={smoke['_CALDAV_VERSION']}" in _active_lines(REQUIREMENTS_INPUT)
+    smoke["_check_caldav_pin"]()
