@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from ..messages_ru import WEBAPP_COPY
+
 ERROR_MESSAGES: dict[str, str] = {
     "no_init_data": (
         "Не удалось подтвердить сессию. Закройте окно и снова нажмите "
         "«Подключить календарь» в чате с ботом."
     ),
-    "bad_signature": ("На сервере другой TELEGRAM_BOT_TOKEN. Проверьте .env и перезапустите бота."),
+    "bad_signature": WEBAPP_COPY["telegram_errors"]["bad_signature"],
     "expired": "Сессия устарела. Закройте окно и откройте снова из бота.",
     "connect_token_invalid": (
         "Ссылка устарела. Закройте окно и снова нажмите «Подключить календарь» в боте."

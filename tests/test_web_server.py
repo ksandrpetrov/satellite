@@ -497,3 +497,72 @@ def test_start_rolls_back_http_server_when_thread_start_fails(tmp_path, monkeypa
     httpd.server_close.assert_called_once_with()
     assert server._httpd is None
     assert server._thread is None
+
+
+@pytest.mark.parametrize("uid", ["meeting@example.test", "встреча/1+2%25", "/leading/trailing/"])
+def test_delete_decodes_uid_exactly_once(started_server, uid):
+    from urllib.parse import quote
+
+    _server, users, calendar, base = started_server
+    _approve_user(users, 600, with_calendar=True)
+    status, _body = _http(
+        "DELETE",
+        base + "/api/calendar/events/" + quote(uid, safe=""),
+        init_data=_make_init_data(600),
+    )
+    assert status == 200
+    assert calendar.delete_event.call_args.args[1].uid == uid
+
+
+def test_create_out_of_range_end_is_validation_error(started_server):
+    _server, users, calendar, base = started_server
+    _approve_user(users, 600, with_calendar=True)
+    status, body = _http(
+        "POST",
+        base + "/api/calendar/events",
+        init_data=_make_init_data(600),
+        body={"title": "Boundary", "start": "9999-12-31T23:30:00+00:00", "duration_minutes": 60},
+    )
+    assert status == 400
+    assert body["error"] == "invalid_dates"
+    calendar.create_event.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "start,minutes,expected_end",
+    [
+        ("2026-03-08T01:30", 120, "2026-03-08T08:30:00+00:00"),
+        ("2026-11-01T00:30", 180, "2026-11-01T07:30:00+00:00"),
+    ],
+)
+def test_api_naive_local_duration_means_elapsed_minutes(start, minutes, expected_end):
+    from datetime import UTC
+
+    from satellite.web.calendar_api_service import CalendarApiService
+
+    calendar = MagicMock()
+    calendar.create_event.return_value = CalendarEventRef("dst", None)
+    service = CalendarApiService(
+        calendar=calendar, users=MagicMock(), tz=ZoneInfo("America/New_York")
+    )
+    result = service.create_event(1, {"title": "DST", "start": start, "duration_minutes": minutes})
+    assert result.status == 201
+    payload = calendar.create_event.call_args.args[1]
+    assert payload.end.astimezone(UTC).isoformat() == expected_end
+    assert (
+        payload.end.astimezone(UTC) - payload.start.astimezone(UTC)
+    ).total_seconds() == minutes * 60
+
+
+def test_api_naive_nonexistent_local_time_is_invalid():
+    from satellite.web.calendar_api_service import CalendarApiService
+
+    calendar = MagicMock()
+    service = CalendarApiService(
+        calendar=calendar, users=MagicMock(), tz=ZoneInfo("America/New_York")
+    )
+    result = service.create_event(
+        1, {"title": "DST", "start": "2026-03-08T02:30", "duration_minutes": 60}
+    )
+    assert result.status == 400
+    calendar.create_event.assert_not_called()

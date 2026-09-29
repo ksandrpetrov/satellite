@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, tzinfo
+from datetime import UTC, datetime, timedelta, tzinfo
 from http import HTTPStatus
 from typing import Any
 
@@ -15,6 +15,7 @@ from ..calendar.providers.base import (
     CalendarProviderError,
 )
 from ..calendar.providers.registry import PROVIDER_IDS, PROVIDER_MAILRU, PROVIDER_YANDEX
+from ..calendar.time_utils import add_elapsed_minutes
 from ..messages_ru import CREATE_EVENT_UNCONFIRMED_HTML
 from ..security.token_vault import ProviderCredentials
 from ..users import UserStore, UserStorePersistenceError
@@ -175,8 +176,16 @@ class CalendarApiService:
                 minutes = 0
             if minutes <= 0 or minutes > 24 * 60:
                 return self._error(HTTPStatus.BAD_REQUEST, "invalid_duration")
-            end = start + timedelta(minutes=minutes)
-        if end is None or end <= start:
+            try:
+                end = add_elapsed_minutes(start, minutes)
+            except OverflowError:
+                return self._error(HTTPStatus.BAD_REQUEST, "invalid_dates")
+        if end is None:
+            return self._error(HTTPStatus.BAD_REQUEST, "invalid_dates")
+        try:
+            if end.astimezone(UTC) <= start.astimezone(UTC):
+                return self._error(HTTPStatus.BAD_REQUEST, "invalid_dates")
+        except OverflowError:
             return self._error(HTTPStatus.BAD_REQUEST, "invalid_dates")
 
         payload = CalendarEventPayload(

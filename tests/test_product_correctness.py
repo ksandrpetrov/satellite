@@ -392,3 +392,25 @@ def test_web_api_does_not_claim_success_after_unconfirmed_create(product):
     assert result.payload["error"] == "CREATE_UNCONFIRMED"
     assert "Проверь календарь перед повтором" in result.payload["message"]
     assert not any(product.state.calendars.values())
+
+
+@pytest.mark.parametrize("minutes,end_utc", [(30, "06:00"), (60, "06:30")])
+def test_repeated_dst_hour_survives_api_and_real_caldav_write(product, minutes, end_utc):
+    from zoneinfo import ZoneInfo
+
+    from icalendar import Calendar as IcsCalendar
+
+    api = CalendarApiService(
+        calendar=product.calendar, users=product.users, tz=ZoneInfo("America/New_York")
+    )
+    result = api.create_event(
+        USER_ID,
+        {"title": "Repeated hour", "start": "2026-11-01T01:30", "duration_minutes": minutes},
+    )
+    assert result.status == 201
+    saved = product.state.calendars["/one/"][result.payload["uid"]]
+    event = IcsCalendar.from_ical(saved).walk("vevent")[0]
+    start, end = event.decoded("dtstart"), event.decoded("dtend")
+    assert start.astimezone(UTC).strftime("%H:%M") == "05:30"
+    assert end.astimezone(UTC).strftime("%H:%M") == end_utc
+    assert (end - start).total_seconds() == minutes * 60

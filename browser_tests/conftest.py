@@ -123,10 +123,10 @@ def app(tmp_path):
         calendar.close()
 
 
-@pytest.fixture(scope="session")
-def browser():
+@pytest.fixture(scope="session", params=["chromium", "webkit"])
+def browser(request):
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = getattr(playwright, request.param).launch(headless=True)
         yield browser
         browser.close()
 
@@ -135,10 +135,11 @@ def browser():
 def page_factory(browser, request):
     contexts = []
 
-    def create(*, timezone="Europe/Moscow", mobile=False, instant=None):
+    def create(*, timezone="Europe/Moscow", mobile=False, instant=None, width=None, theme="light"):
         context = browser.new_context(
             timezone_id=timezone,
-            viewport={"width": 390 if mobile else 1100, "height": 844},
+            viewport={"width": width or (390 if mobile else 1100), "height": 844},
+            color_scheme=theme,
             is_mobile=mobile,
             has_touch=mobile,
         )

@@ -818,3 +818,43 @@ def test_scheduler_stop_shuts_down_executor(tmp_path: Path) -> None:
     scheduler.start()
     scheduler.stop()
     assert pool._shutdown is True
+
+
+def test_slow_plan_does_not_delay_other_users_delivery(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    scheduler, store, telegram = _make_scheduler(
+        tmp_path=tmp_path, now=_at(2026, 5, 11, 9, 0), max_parallel_deliveries=2
+    )
+    store.subscribe(1, "alice")
+    store.subscribe(2, "bob")
+    slow_started = threading.Event()
+    release_slow = threading.Event()
+    fast_delivered = threading.Event()
+
+    def build(*args, **kwargs):
+        if kwargs["telegram_user_id"] == 1:
+            slow_started.set()
+            assert release_slow.wait(5)
+        return PlanTextBundle(rich_html="<h2>Plan</h2>", fallback_html="<b>Plan</b>")
+
+    def delivered(chat_id, *_args, **_kwargs):
+        if chat_id == 2:
+            fast_delivered.set()
+        return {"message_id": chat_id}
+
+    scheduler._plan_builder.build_plan_bundle.side_effect = build
+    telegram.send_rich_message.side_effect = delivered
+    telegram.send_message.side_effect = delivered
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(scheduler.tick)
+        try:
+            assert slow_started.wait(3)
+            assert fast_delivered.wait(3)
+            assert store.get(1).last_digest_sent_date is None
+        finally:
+            release_slow.set()
+        assert future.result(timeout=5) == 2
+    assert store.get(1).last_digest_sent_date == "2026-05-11"
+    assert store.get(2).last_digest_sent_date == "2026-05-11"
+    scheduler.stop()

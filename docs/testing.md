@@ -50,7 +50,7 @@ python -m pytest
 - **mypy** — `mypy satellite` (блокирующий);
 - **py_compile** — все модули `satellite/`, `tests/` и `browser_tests/`;
 - **pytest** — `pytest -q`;
-- **Playwright Chromium** — `make browser-test`, обязательный этап на обеих версиях Python.
+- **Playwright Chromium + WebKit** — `make browser-test`, обязательный этап на обеих версиях Python.
 
 Перед коммитом локально: `make check`
 (= lock-check + lint + format-check + typecheck + compile + test).
@@ -68,11 +68,11 @@ semver-образ. После деплоя CI вызывает [`smoke-prod.sh`]
 
 ```bash
 venv/bin/python -m pip install -r requirements-dev.txt
-venv/bin/python -m playwright install chromium
+venv/bin/python -m playwright install chromium webkit
 make browser-test
 ```
 
-В Linux для установки системных библиотек браузера: `python -m playwright install --with-deps chromium`.
+В Linux для установки системных библиотек браузера: `python -m playwright install --with-deps chromium webkit`.
 Playwright закреплён в `requirements-dev.in`; браузер соответствует этой версии пакета.
 Тесты запускают настоящий WebAppServer, UserCalendarService, TokenVault и отдельный
 UserStore во временной директории. Только удалённый calendar provider заменён
@@ -102,7 +102,13 @@ Discovery предзаполнен, Telegram заменён тестовым к�
 отказ от повреждённых данных. Браузерные тесты дополнительно проверяют локальное
 время созданной встречи, несуществующий час DST и дробную длительность.
 
-Результаты и ограничения: [аудит корректности 2026-09-26](product-correctness-audit-2026-09-26.md).
+Дополнительные регрессии: сохранение черновика между вкладками, конкурирующие ответы,
+таймауты и неопределённый результат записи, доступность с клавиатуры, масштаб текста
+200%, темы, reduced motion и контраст fallback-палитры. Каждый сценарий выполняется
+в Chromium и WebKit. Эти проверки не заменяют Telegram iOS и VoiceOver на устройстве.
+
+Результаты и ограничения: [аудит качества 2026-09-29](product-quality-audit-2026-09-29.md),
+[аудит корректности 2026-09-26](product-correctness-audit-2026-09-26.md).
 
 ## Покрытие строк и ветвей
 

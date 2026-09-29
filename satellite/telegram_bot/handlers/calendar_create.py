@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import html
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, tzinfo
 
 from ...calendar.providers.base import CalendarEventPayload, CalendarProviderError
-from ...calendar.time_utils import normalize_hhmm_input, parse_hhmm
+from ...calendar.time_utils import (
+    add_elapsed_minutes,
+    normalize_hhmm_input,
+    parse_hhmm,
+    validate_local_datetime,
+)
 from ...messages_ru import (
     CALENDAR_NOT_CONNECTED_HTML,
     CB_CREATE_CANCEL,
@@ -31,6 +36,7 @@ from ...messages_ru import (
     CREATE_EVENT_FAILED_HTML,
     CREATE_EVENT_INVALID_DATE,
     CREATE_EVENT_INVALID_DURATION,
+    CREATE_EVENT_INVALID_LOCAL_TIME,
     CREATE_EVENT_INVALID_TIME,
     CREATE_EVENT_SUCCESS_HTML,
     CREATE_EVENT_UNCONFIRMED_HTML,
@@ -100,6 +106,16 @@ def handle_create_text_input(ctx: HandlerContext, msg: IncomingMessage) -> bool:
             send(ctx, msg.chat_id, CREATE_EVENT_INVALID_TIME)
             return True
         flow.draft.start_time = normalized
+        try:
+            _draft_interval(flow.draft, ctx.tz)
+        except ValueError:
+            send(ctx, msg.chat_id, CREATE_EVENT_INVALID_LOCAL_TIME)
+            return True
+        except OverflowError:
+            flow.state = STATE_CREATE_DATE
+            ctx.calendar_state.set(msg.chat_id, flow)
+            send(ctx, msg.chat_id, CREATE_EVENT_INVALID_DATE)
+            return True
         flow.state = STATE_CREATE_DURATION
         ctx.calendar_state.set(msg.chat_id, flow)
         _ask_duration(ctx, msg.chat_id)
@@ -200,16 +216,33 @@ def _apply_duration_preset(ctx: HandlerContext, cb: IncomingCallback, data: str)
     safe_answer_callback(ctx, cb)
 
 
-def _send_confirm(ctx: HandlerContext, chat_id: int, draft: CreateEventDraft) -> None:
+def _draft_interval(draft: CreateEventDraft, tz: tzinfo) -> tuple[datetime, datetime]:
     assert draft.event_date and draft.start_time
     start_m = parse_hhmm(draft.start_time)
-    end_m = start_m + draft.duration_minutes
-    end_h, end_min = divmod(end_m, 60)
-    end_time = f"{end_h:02d}:{end_min:02d}"
+    start = validate_local_datetime(
+        datetime.combine(draft.event_date, datetime.min.time(), tzinfo=tz)
+        + timedelta(minutes=start_m)
+    )
+    return start, add_elapsed_minutes(start, draft.duration_minutes)
+
+
+def _send_confirm(ctx: HandlerContext, chat_id: int, draft: CreateEventDraft) -> None:
+    try:
+        start, end = _draft_interval(draft, ctx.tz)
+    except (ValueError, OverflowError):
+        ctx.calendar_state.set(chat_id, CalendarFlowState(state=STATE_CREATE_DATE, draft=draft))
+        send(ctx, chat_id, CREATE_EVENT_INVALID_DATE)
+        return
+    end_time = end.strftime("%H:%M" if end.date() == start.date() else "%d.%m.%Y %H:%M")
+    start_time = start.strftime("%H:%M")
+    if start.utcoffset() != end.utcoffset():
+        start_offset, end_offset = start.strftime("%z"), end.strftime("%z")
+        start_time += f" (UTC{start_offset[:3]}:{start_offset[3:]})"
+        end_time += f" (UTC{end_offset[:3]}:{end_offset[3:]})"
     text = CREATE_EVENT_CONFIRM_HTML.format(
         title=html.escape(draft.title),
-        date=draft.event_date.strftime("%d.%m.%Y"),
-        start=draft.start_time,
+        date=start.strftime("%d.%m.%Y"),
+        start=start_time,
         end=end_time,
     )
     keyboard = build_create_confirm_keyboard()
@@ -228,12 +261,13 @@ def _confirm_create(ctx: HandlerContext, cb: IncomingCallback) -> None:
         safe_answer_callback(ctx, cb)
         return
     draft = flow.draft
-    assert draft.event_date and draft.start_time
-    start_m = parse_hhmm(draft.start_time)
-    start_dt = datetime.combine(draft.event_date, datetime.min.time(), tzinfo=ctx.tz) + timedelta(
-        minutes=start_m
-    )
-    end_dt = start_dt + timedelta(minutes=draft.duration_minutes)
+    try:
+        start_dt, end_dt = _draft_interval(draft, ctx.tz)
+    except (ValueError, OverflowError):
+        ctx.calendar_state.set(cb.chat_id, CalendarFlowState(state=STATE_CREATE_DATE, draft=draft))
+        send(ctx, cb.chat_id, CREATE_EVENT_INVALID_DATE)
+        safe_answer_callback(ctx, cb)
+        return
     payload = CalendarEventPayload(title=draft.title, start=start_dt, end=end_dt)
 
     flow.state = STATE_CREATE_SUBMITTING

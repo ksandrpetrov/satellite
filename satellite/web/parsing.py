@@ -13,6 +13,8 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from ..calendar.time_utils import validate_local_datetime
+
 MAX_BODY_BYTES = 64 * 1024
 
 _CONNECT_TOKEN_PATH_RE = re.compile(r"^[A-Za-z0-9_-]{20,128}$")
@@ -111,7 +113,10 @@ def parse_datetime(value: str, tz: tzinfo) -> datetime | None:
     except ValueError:
         return None
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=tz)
+        try:
+            return validate_local_datetime(dt.replace(tzinfo=tz))
+        except (ValueError, OverflowError):
+            return None
     return dt
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler
+from urllib.parse import unquote
 
 from ..auth import validated_user
 from ..calendar_api_service import CalendarApiService
@@ -79,7 +80,7 @@ def handle_delete_event(handler: BaseHTTPRequestHandler, deps: Deps) -> None:
     except AbortRequest:
         return
     path = request_path(handler)
-    uid = path[len("/api/calendar/events/") :].strip("/")
+    uid = unquote(path[len("/api/calendar/events/") :].strip("/"))
     url = query_string(handler).get("url", [None])[0]
     result = CalendarApiService(calendar=deps.calendar, users=deps.users, tz=deps.tz).delete_event(
         user_id, uid, url

@@ -251,3 +251,77 @@ def test_create_state_takes_precedence_over_digest_text(
     handle_message(ctx, make_msg(text="09:00", chat_id=CHAT_ID, user_id=USER_ID, update_id=40))
     digest_handler.assert_not_called()
     assert ctx.calendar_state.get(CHAT_ID) is not None
+
+
+@pytest.mark.parametrize(
+    "day,start,minutes,end_text,elapsed",
+    [
+        ("2026-12-31", "23:30", 60, "01.01.2027 00:30", 3600),
+        ("2026-03-08", "01:30", 120, "04:30", 7200),
+        ("2026-11-01", "00:30", 180, "02:30", 10800),
+        ("2026-11-01", "01:30", 30, "01:00", 1800),
+    ],
+)
+def test_create_confirmation_and_write_agree_across_date_and_dst(
+    store, day, start, minutes, end_text, elapsed
+):
+    from datetime import UTC
+
+    from satellite.telegram_bot.handlers.calendar_create import _send_confirm
+
+    ctx = _create_ctx(store)
+    ctx.tz = ZoneInfo("America/New_York")
+    draft = CreateEventDraft(
+        title="Night meeting",
+        event_date=datetime.fromisoformat(day).date(),
+        start_time=start,
+        duration_minutes=minutes,
+    )
+    ctx.calendar_state.set(CHAT_ID, CalendarFlowState(state=STATE_CREATE_CONFIRM, draft=draft))
+    _send_confirm(ctx, CHAT_ID, draft)
+    assert end_text in final_message_html(ctx.telegram)
+    if day == "2026-11-01":
+        assert "UTC-04:00" in final_message_html(ctx.telegram)
+        assert "UTC-05:00" in final_message_html(ctx.telegram)
+    handle_callback_query(
+        ctx, make_callback(data=CB_CREATE_CONFIRM, chat_id=CHAT_ID, user_id=USER_ID)
+    )
+    payload = ctx.calendar_service.create_event.call_args.args[1]
+    assert (payload.end.astimezone(UTC) - payload.start.astimezone(UTC)).total_seconds() == elapsed
+    assert payload.end.strftime("%d.%m.%Y %H:%M").endswith(end_text)
+
+
+def test_create_rejects_nonexistent_dst_time(store):
+    ctx = _create_ctx(store)
+    ctx.tz = ZoneInfo("America/New_York")
+    ctx.calendar_state.set(
+        CHAT_ID,
+        CalendarFlowState(
+            state=STATE_CREATE_TIME,
+            draft=CreateEventDraft(title="DST", event_date=datetime(2026, 3, 8).date()),
+        ),
+    )
+    handle_message(ctx, make_msg(text="02:30", chat_id=CHAT_ID, user_id=USER_ID, update_id=999))
+    assert ctx.calendar_state.get(CHAT_ID).state == STATE_CREATE_TIME
+    assert "перевода часов" in final_message_html(ctx.telegram)
+    ctx.calendar_service.create_event.assert_not_called()
+
+
+def test_create_overflow_returns_to_date_and_can_recover(store):
+    ctx = _create_ctx(store)
+    ctx.calendar_state.set(
+        CHAT_ID,
+        CalendarFlowState(
+            state=STATE_CREATE_TIME,
+            draft=CreateEventDraft(title="Boundary", event_date=datetime(9999, 12, 31).date()),
+        ),
+    )
+    handle_message(ctx, make_msg(text="23:30", chat_id=CHAT_ID, user_id=USER_ID, update_id=1001))
+    assert ctx.calendar_state.get(CHAT_ID).state == STATE_CREATE_DATE
+    assert CREATE_EVENT_INVALID_DATE in final_message_html(ctx.telegram)
+    handle_message(
+        ctx, make_msg(text="2027-01-01", chat_id=CHAT_ID, user_id=USER_ID, update_id=1002)
+    )
+    assert ctx.calendar_state.get(CHAT_ID).state == STATE_CREATE_TIME
+    assert ctx.calendar_state.get(CHAT_ID).draft.title == "Boundary"
+    ctx.calendar_service.create_event.assert_not_called()

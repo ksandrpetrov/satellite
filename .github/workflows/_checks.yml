@@ -47,7 +47,7 @@ jobs:
       - name: Pytest
         run: python -m pytest -q
       - name: Install browser
-        run: python -m playwright install --with-deps chromium
+        run: python -m playwright install --with-deps chromium webkit
       - name: Browser regressions
         run: make browser-test VENV_PY=python
       - name: Browser evidence

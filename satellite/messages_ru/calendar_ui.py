@@ -51,6 +51,9 @@ CREATE_EVENT_INVALID_DATE = (
 CREATE_EVENT_INVALID_TIME = (
     "⚠️ Чайка не разобрала время.\nФормат: <i>09:30</i>, <i>9:30</i> или <i>9 30</i>."
 )
+CREATE_EVENT_INVALID_LOCAL_TIME = (
+    "⚠️ Это время недоступно из-за перевода часов. Выберите другое время."
+)
 CREATE_EVENT_INVALID_DURATION = "⚠️ Длительность — числом минут. Например, <i>30</i> или <i>60</i>."
 CREATE_EVENT_CREATING_HTML = "⏳ Чайка заносит событие в календарь…"
 CREATE_EVENT_SUCCESS_HTML = "✅ Чайка занесла встречу в календарь. Готово."

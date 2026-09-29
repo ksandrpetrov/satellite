@@ -9,11 +9,25 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime, timedelta
 
 Interval = tuple[int, int]
 """Полуоткрытый интервал [start, end) в минутах от полуночи."""
 
 _MIN_PER_DAY = 24 * 60
+
+
+def validate_local_datetime(value: datetime) -> datetime:
+    """Reject imaginary wall times; an ambiguous time uses the caller's fold."""
+    restored = value.astimezone(UTC).astimezone(value.tzinfo)
+    if restored.replace(tzinfo=None) != value.replace(tzinfo=None):
+        raise ValueError("Nonexistent local time")
+    return value
+
+
+def add_elapsed_minutes(start: datetime, minutes: int) -> datetime:
+    """Duration is elapsed time, including across a UTC-offset transition."""
+    return (start.astimezone(UTC) + timedelta(minutes=minutes)).astimezone(start.tzinfo)
 
 
 def parse_hhmm(value: str) -> int:
