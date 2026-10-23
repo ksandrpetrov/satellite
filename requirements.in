@@ -1,7 +1,8 @@
 # Прямые runtime-зависимости. requirements.txt генерируется через `make lock`.
-caldav==3.3.1
-cryptography==50.0.1
+caldav==3.5.0
+cryptography==50.0.2
 icalendar==7.3.0
-python-dotenv==1.2.3
+python-dotenv==1.2.4
 requests==2.34.2
-Pillow==12.3.0
+Pillow==13.0.0
+mcp==2.3.0

@@ -24,7 +24,7 @@ import os
 import sys
 from pathlib import Path
 if sys.argv[1:] == ["--version"]:
-    print("uv 0.11.32")
+    print("uv 0.13.5")
     sys.exit(0)
 kind = "dev" if sys.argv[3] == "requirements-dev.in" else "runtime"
 failure = os.environ["LOCK_TEST_FAILURE"]

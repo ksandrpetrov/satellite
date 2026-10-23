@@ -5,5 +5,5 @@ all:
     satellite:
       hosts:
         prod:
-          ansible_host: 91.201.114.159
+          ansible_host: 178.217.99.88
           ansible_user: root

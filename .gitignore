@@ -1,6 +1,9 @@
 # Secrets and runtime data
 .env
 logs/
+# Production-only proxy credentials, binary and local Compose overlay
+/proxy/
+/docker-compose.override.yml
 
 # Python
 venv/
@@ -39,4 +42,3 @@ test-results/
 # macOS
 .DS_Store
 ._*
-

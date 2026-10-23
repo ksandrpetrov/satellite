@@ -39,6 +39,7 @@ Production Telegram-бот: CalDAV → метрики дня → HTML-дайдж
 | [telegram-ux.md](telegram-ux.md) | Команды, клавиатуры, FSM, streaming, ActionGuard, авторизация сценариев |
 | [operations.md](operations.md) | Локальный и серверный запуск, systemd, Docker, CI/CD, reverse proxy, runtime state |
 | [testing.md](testing.md) | pytest, `make check`, smoke, release-blocking тесты, фикстуры |
+| [mail-calendar-plugin.md](mail-calendar-plugin.md) | Личный плагин календаря Mail для GPT: OAuth, запуск отдельного MCP-сервера и подключение |
 | [design/analytics-orbital-rhythm.md](design/analytics-orbital-rhythm.md) | Визуальная философия и эталон PNG недельной аналитики |
 | [troubleshooting.md](troubleshooting.md) | Типичные сбои: env, CalDAV, Web App, дайджест, deploy, миграция logs |
 | [refactor-log.md](refactor-log.md) | История архитектурных фаз и инварианты после рефакторинга |

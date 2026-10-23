@@ -1,0 +1,29 @@
+# Independent MCP service. Run from this directory after preparing the .env
+# and data-directory permissions described in docs/mail-calendar-plugin.md.
+name: mail-calendar
+services:
+  mail-calendar:
+    build:
+      context: ../..
+    image: satellite-mail-calendar:local
+    command: ["python", "-m", "satellite.mail_calendar_mcp", "serve"]
+    restart: unless-stopped
+    env_file: ../../logs/mail-calendar/.env
+    environment:
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8765"
+      MCP_DATA_DIR: "/app/logs/mail-calendar"
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - ../../logs/mail-calendar:/app/logs/mail-calendar
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os, urllib.parse, urllib.request; prefix = urllib.parse.urlsplit(os.environ['MCP_BASE_URL']).path.rstrip('/'); urllib.request.urlopen('http://127.0.0.1:8765' + prefix + '/healthz', timeout=4).read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

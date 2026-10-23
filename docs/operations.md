@@ -170,7 +170,7 @@ Push в `main`, ручной запуск workflow `deploy` (`Actions → deploy
 
 Pipeline [`deploy.yml`](../.github/workflows/deploy.yml) после сборки образа гоняет
 [`docker-smoke-image.sh`](../scripts/docker-smoke-image.sh) (импорт всех модулей `satellite`,
-пин `caldav==3.3.1`, HTTP `/healthz` внутри контейнера через
+пин `caldav==3.5.0`, HTTP `/healthz` внутри контейнера через
 [`smoke_container.py`](../scripts/smoke_container.py)). Локально: `make docker-smoke`.
 
 Скрипт [`ci-deploy-remote.sh`](../scripts/ci-deploy-remote.sh) (тот же, что в Actions):
@@ -427,7 +427,7 @@ make run
 ```
 
 Прямые пины зависимостей меняют в `requirements.in` / `requirements-dev.in`,
-затем `make lock` (`uv==0.11.32`). `make lock-check` проверяет соответствие
+затем `make lock` (`uv==0.13.5`, приоритет у venv). `make lock-check` проверяет соответствие
 локов этим файлам и входит в `make check`.
 
 ## Наблюдение

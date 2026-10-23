@@ -1,0 +1,35 @@
+# Copy to /opt/satellite/docker-compose.override.yml after preparing proxy/.
+# Compose merges this file automatically with the production docker-compose.yml.
+services:
+  satellite:
+    environment:
+      HTTP_PROXY: http://satellite-proxy:3128
+      HTTPS_PROXY: http://satellite-proxy:3128
+      # Russian CalDAV providers are reachable directly; Mail.ru times out via VPN.
+      NO_PROXY: localhost,127.0.0.1,::1,calendar.mail.ru,caldav.yandex.ru
+    depends_on:
+      satellite-proxy:
+        condition: service_healthy
+
+  satellite-proxy:
+    # Reuse the installed runtime (curl, CA certificates, tini); no new image build.
+    image: ${SATELLITE_IMAGE}
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/xray"]
+    command: ["run", "-config", "/etc/xray/config.json"]
+    user: "65534:65534"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 192m
+    volumes:
+      - ./proxy/xray:/usr/local/bin/xray:ro
+      - ./proxy/config.json:/etc/xray/config.json:ro
+    # Port 3128 is reachable only in the Compose network, never published.
+    healthcheck:
+      test: ["CMD", "curl", "--noproxy", "", "--proxy", "http://127.0.0.1:3128", "--connect-timeout", "5", "--max-time", "15", "--fail", "--silent", "--show-error", "--output", "/dev/null", "https://api.telegram.org"]
+      interval: 60s
+      timeout: 20s
+      retries: 3
+      start_period: 10s

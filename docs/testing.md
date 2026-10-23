@@ -128,15 +128,23 @@ runtime/dev/transitive пакетов для Python 3.11/3.12, macOS/Linux; хе
 distribution намеренно не включены. Обновление:
 
 ```bash
-make lock        # только uv 0.11.32, обновляет допустимые транзитивные версии
+make lock        # только uv 0.13.5 (приоритет у venv), обновляет допустимые транзитивные версии
 make lock LOCK_UPGRADE=  # добавить зависимость, сохраняя существующие версии
 make lock-check  # не меняет рабочие lock-файлы
 ```
 
 [`tests/test_requirements.py`](../tests/test_requirements.py) проверяет inputs,
-generated header, точные версии, Python baseline и `caldav==3.3.1`. Smoke
+generated header, точные версии, Python baseline и `caldav==3.5.0`. Smoke
 сверяет lock с реально установленной версией. Не ослабляйте assert без
 осознанной смены контракта зависимостей.
+
+MCP SDK 2.x проверяется через OAuth/HTTP с протоколами 2025-06-18,
+2025-11-25 и 2026-07-28, включая discovery, точный issuer URL и лимит тела
+запроса. `python-dateutil` остаётся на 2.9.0.post0: текущий
+`recurring-ical-events==3.8.2` требует `<3.0.0`, поэтому переход на 3.x
+возможен после обновления этого ограничения в upstream. Аналогично `pyee`
+обновлён до 14.0.0: Playwright 1.64.1 требует `<15`, а pyee 15.x уже не
+поддерживает Python 3.11.
 
 ## Smoke (образ и production URL)
 

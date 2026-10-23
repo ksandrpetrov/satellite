@@ -1,0 +1,21 @@
+# Replace calendar-gpt.example.com and configure your TLS certificate.
+# For a path on an existing origin use nginx-path.conf.example instead.
+server {
+    listen 443 ssl;
+    server_name calendar-gpt.example.com;
+    ssl_certificate /etc/letsencrypt/live/calendar-gpt.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/calendar-gpt.example.com/privkey.pem;
+
+    client_max_body_size 64k;
+    # OAuth query strings may contain authorization codes. Do not log them.
+    access_log off;
+    error_log /dev/null crit;
+
+    location / {
+        proxy_pass http://127.0.0.1:8765;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 120s;
+    }
+}

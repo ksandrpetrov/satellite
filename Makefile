@@ -5,8 +5,8 @@ VENV_PY := $(VENV)/bin/python
 VENV_PIP := $(VENV)/bin/pip
 ENTRY := telegram_test_command.py
 DOCKER_IMAGE ?= satellite:dev
-UV ?= uv
-UV_VERSION ?= 0.11.32
+UV ?= $(if $(wildcard $(VENV)/bin/uv),$(VENV)/bin/uv,uv)
+UV_VERSION ?= 0.13.5
 LOCK_UPGRADE ?= --upgrade
 
 .PHONY: help install install-dev deploy venv env fernet-key run test browser-test coverage compile lint format format-check typecheck check lock lock-check check-uv clean docker-build docker-up docker-down docker-logs docker-smoke smoke-prod

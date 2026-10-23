@@ -1,0 +1,31 @@
+# Include inside the existing cassinilab.ru HTTPS server block.
+# MCP_BASE_URL=https://cassinilab.ru/mail-calendar
+# Preserve the path: the application publishes prefixed OAuth endpoints and
+# RFC 8414/9728 metadata at the origin's .well-known directory.
+location ^~ /mail-calendar/ {
+    proxy_pass http://127.0.0.1:8765;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_read_timeout 120s;
+    client_max_body_size 64k;
+    client_body_timeout 10s;
+    access_log off;
+    error_log /dev/null crit;
+}
+
+location = /.well-known/oauth-authorization-server/mail-calendar {
+    proxy_pass http://127.0.0.1:8765;
+    proxy_set_header Host $http_host;
+    access_log off;
+    error_log /dev/null crit;
+}
+
+location = /.well-known/oauth-protected-resource/mail-calendar/mcp {
+    proxy_pass http://127.0.0.1:8765;
+    proxy_set_header Host $http_host;
+    access_log off;
+    error_log /dev/null crit;
+}

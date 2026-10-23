@@ -8,6 +8,10 @@ Reverse proxy и TLS для `cassinilab.ru` — ваш существующий 
 
 Никаких Traefik/Certbot/nginx-acme в стеке нет — они конфликтовали бы с вашим nginx за порт 443.
 
+Если исходящие запросы с российского сервера недоступны, используйте
+[прокси через существующий VPN-сервер](egress-proxy/README.md): приложение и данные
+остаются на российском сервере, рядом запускается отдельный VLESS-клиент.
+
 **См. также:** [карта документов](../docs/README.md) · [operations.md](../docs/operations.md) ·
 [configuration.md](../docs/configuration.md) · [troubleshooting.md](../docs/troubleshooting.md)
 

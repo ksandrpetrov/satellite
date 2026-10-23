@@ -234,7 +234,7 @@ satellite/
 13. **Сбой store commit** — поднимает `UserStorePersistenceError` / `SubscriptionStorePersistenceError`; caller ловит на границе и показывает безопасный текст. Load-ошибки ловятся только startup boundary.
 14. **Перед коммитом** — `make check` (lock-check + ruff lint + `ruff format --check` + mypy + py_compile + pytest); тот же набор, что в CI. Стиль/форматирование — только [`ruff`](pyproject.toml) (lint + format); blackd/isort не используем. Поведение при падении тестов — см. раздел **«Тесты и регрессии»** ниже.
 15. **Слои импортов** — домен (`calendar/`, `seagull/`, `weather/`, `analytics/`, `messages_ru/`, `presentation/`, `scheduler.py`, `plan_service.py`, …) не импортирует `telegram_bot`; единственное исключение — `presentation/delivery.py → telegram_bot.api`. Закреплено в [`tests/test_import_layers.py`](tests/test_import_layers.py).
-16. **Зависимости** — прямые пины править только в `requirements.in` / `requirements-dev.in`; generated locks обновлять `make lock` через `uv==0.11.32` и проверять `make lock-check`. Python baseline — 3.11. При добавлении зависимости без обновления остальных версий: `make lock LOCK_UPGRADE=`.
+16. **Зависимости** — прямые пины править только в `requirements.in` / `requirements-dev.in`; generated locks обновлять `make lock` через `uv==0.13.5` (Make предпочитает uv из venv) и проверять `make lock-check`. Python baseline — 3.11. При добавлении зависимости без обновления остальных версий: `make lock LOCK_UPGRADE=`.
 
 ## Тесты и регрессии (для агентов)
 
