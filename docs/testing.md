@@ -112,7 +112,7 @@ Discovery предзаполнен, Telegram заменён тестовым к�
 
 ## Покрытие строк и ветвей
 
-`make coverage` запускает весь pytest под закреплённым `coverage==7.15.2`
+`make coverage` запускает весь pytest под закреплённым `coverage==7.17.0`
 и печатает пропущенные строки и ветви. Данные остаются в игнорируемом `.coverage`;
 HTML-отчёт: `venv/bin/python -m coverage html`. Процент — средство поиска пробелов;
 release-blocking сценарии обязательны независимо от общего числа.
@@ -134,7 +134,7 @@ make lock-check  # не меняет рабочие lock-файлы
 ```
 
 [`tests/test_requirements.py`](../tests/test_requirements.py) проверяет inputs,
-generated header, точные версии, Python baseline и `caldav==3.5.0`. Smoke
+generated header, точные версии, Python baseline и `caldav==3.6.0`. Smoke
 сверяет lock с реально установленной версией. Не ослабляйте assert без
 осознанной смены контракта зависимостей.
 
@@ -143,8 +143,8 @@ MCP SDK 2.x проверяется через OAuth/HTTP с протоколам
 запроса. `python-dateutil` остаётся на 2.9.0.post0: текущий
 `recurring-ical-events==3.8.2` требует `<3.0.0`, поэтому переход на 3.x
 возможен после обновления этого ограничения в upstream. Аналогично `pyee`
-обновлён до 14.0.0: Playwright 1.64.1 требует `<15`, а pyee 15.x уже не
-поддерживает Python 3.11.
+остаётся на 13.0.1 для Python 3.11 и 14.0.0 для Python 3.12+: Playwright
+1.64.1 требует `<15`, а pyee начиная с 14.0.0 требует Python 3.12+.
 
 ## Smoke (образ и production URL)
 

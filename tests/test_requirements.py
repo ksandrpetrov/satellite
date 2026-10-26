@@ -19,7 +19,7 @@ CI_CHECKS = ROOT / ".github" / "workflows" / "_checks.yml"
 DOCKERFILE = ROOT / "Dockerfile"
 
 RUNTIME_PINS = {
-    "caldav==3.5.0",
+    "caldav==3.6.0",
     "cryptography==50.0.2",
     "icalendar==7.3.0",
     "python-dotenv==1.2.4",

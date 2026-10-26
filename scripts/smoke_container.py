@@ -26,7 +26,7 @@ if str(_APP_ROOT) not in sys.path:
 import satellite  # noqa: E402
 
 _REQUIREMENTS = _APP_ROOT / "requirements.txt"
-_CALDAV_VERSION = "3.5.0"
+_CALDAV_VERSION = "3.6.0"
 _CALDAV_IMPORTS = (
     "caldav",
     "caldav.davclient",
