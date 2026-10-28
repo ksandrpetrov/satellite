@@ -473,7 +473,7 @@ def test_details_precip_only():
         warnings=(WARNING_RAIN_HIGH,),
     )
     d = build_weather_details_text(s, is_today=True)
-    assert "осадки" in d
+    assert "вероятность осадков" in d
     assert "°C" not in d
 
 
@@ -513,7 +513,7 @@ def test_render_inserts_weather_before_seagull_text():
     assert w in html
     assert html.index(w) < html.index(texts.main)
     assert html.index(texts.overlaps) > html.index(w)
-    assert html.index(w) < html.index("Вот детальное")
+    assert html.index(w) < html.index("Расписание")
 
 
 def test_build_seagull_digest_accepts_weather_line():
@@ -522,10 +522,10 @@ def test_build_seagull_digest_accepts_weather_line():
         date(2026, 5, 12),
         tz=ZoneInfo("Europe/Moscow"),
         reference_date=date(2026, 5, 12),
-        weather_line="🌧 Мокрый перелёт: сейчас +7°C, днём до +12°C, осадки до 80%. Зонт пригодится.",
+        weather_line="🌧 Мокрый перелёт: сейчас +7°C, днём до +12°C, вероятность осадков до 80%. Зонт пригодится.",
     )
     assert "Мокрый перелёт" in text
-    assert text.index("Мокрый") < text.index("Вот детальное")
+    assert text.index("Мокрый") < text.index("Расписание")
 
 
 def test_today_message_contains_seychas_and_dnyom():
@@ -559,7 +559,7 @@ def test_today_message_contains_seychas_and_dnyom():
     assert msg
     assert "сейчас +7°C" in msg
     assert "днём до +12°C" in msg
-    assert "осадки до 80%" in msg
+    assert "вероятность осадков до 80%" in msg
 
 
 def test_future_day_says_na_starte_not_seychas():
@@ -693,7 +693,7 @@ def test_day_max_over_entire_calendar_date_not_work_window():
     assert "днём до +22°C" in msg
 
 
-def test_precip_shown_as_osadki_do_percent():
+def test_precip_shown_as_probability_percent():
     hours = [
         _hour("2026-05-12", h, apparent_temperature=10.0, precipitation_probability=80, rain=1.0)
         for h in range(24)
@@ -711,7 +711,7 @@ def test_precip_shown_as_osadki_do_percent():
     msg = build_weather_message(
         s, show_normal_weather=False, message_seed="pr", digest_is_today=True
     )
-    assert msg and "осадки до 80%" in msg
+    assert msg and "вероятность осадков до 80%" in msg
 
 
 def test_format_temperature_rounding():
@@ -725,7 +725,7 @@ def test_format_temperature_rounding():
 def test_build_weather_details_partial_data():
     assert build_weather_details(7.0, None, None, is_today=True) == "сейчас +7°C"
     assert build_weather_details(None, 12.0, None, is_today=True) == "днём до +12°C"
-    assert build_weather_details(None, None, 45, is_today=False) == "осадки до 45%"
+    assert build_weather_details(None, None, 45, is_today=False) == "вероятность осадков до 45%"
     assert build_weather_details(None, None, None, is_today=True) == ""
 
 

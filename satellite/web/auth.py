@@ -60,10 +60,7 @@ class AuthResolver:
         json_response(
             handler,
             HTTPStatus.UNAUTHORIZED,
-            error_payload(
-                "no_init_data",
-                message="Missing initData (open Web App from Telegram bot button)",
-            ),
+            error_payload("no_init_data"),
         )
         raise AbortRequest()
 
@@ -79,7 +76,7 @@ class AuthResolver:
             json_response(
                 handler,
                 HTTPStatus.UNAUTHORIZED,
-                error_payload(exc.code, message=str(exc)),
+                error_payload(exc.code),
             )
             raise AbortRequest() from exc
         self._ensure_approved(handler, validated.user.id, source="init_data")
@@ -96,7 +93,7 @@ class AuthResolver:
             json_response(
                 handler,
                 HTTPStatus.UNAUTHORIZED,
-                error_payload("connect_token_invalid", message="Connect link expired"),
+                error_payload("connect_token_invalid"),
             )
             raise AbortRequest()
         self._ensure_approved(handler, user_id, source="connect_token")

@@ -82,7 +82,7 @@ def format_event_count_ru(count: int) -> str:
     elif n1 == 1:
         word = "событие"
     elif 2 <= n1 <= 4:
-        word = "событий"
+        word = "события"
     else:
         word = "событий"
     return f"{value} {word}"

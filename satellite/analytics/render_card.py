@@ -36,9 +36,11 @@ def _week_delta_badge(report: AnalyticsReport) -> tuple[str, tuple[int, int, int
     if abs(delta_min) < 30:
         return "КАК НА ПРОШЛОЙ НЕДЕЛЕ", vc.COLOR_HERO_MUTED
     sign = "+" if delta_min > 0 else "−"
-    text = f"{sign}{vc.hours_label(abs(delta_min))} ВСТРЕЧ"
+    text = f"{sign}{vc.hours_label(abs(delta_min))}"
     if pct_delta:
-        text += f"  /  {pct_delta:+d}% ЗАГРУЗКИ"
+        text += f"  /  {pct_delta:+d} п. п. ЗАГРУЗКИ"
+    else:
+        text += " ВСТРЕЧ"
     color = vc.COLOR_HERO_DANGER if delta_min > 0 else vc.COLOR_HERO_SUCCESS
     return text, color
 
@@ -95,8 +97,8 @@ def _draw_week_chart(
         x=x0 + 32,
         y=y0 + 39,
         number="02",
-        title="ДНЕВНАЯ ОРБИТА",
-        subtitle="ДОЛЯ ВСТРЕЧ В РАБОЧЕМ ОКНЕ",
+        title="ЗАГРУЗКА ПО ДНЯМ",
+        subtitle="ДОЛЯ ВРЕМЕНИ НА ВСТРЕЧИ",
         font_title=font_title,
         font_micro=font_micro,
     )
@@ -200,8 +202,8 @@ def _draw_quarter_chart(
         x=x0 + 32,
         y=y0 + 39,
         number="03",
-        title="КВАРТАЛЬНАЯ ТРАЕКТОРИЯ",
-        subtitle="13 НЕДЕЛЬ · ЧАСЫ ВСТРЕЧ",
+        title="ВСТРЕЧИ ЗА 13 НЕДЕЛЬ",
+        subtitle="ВРЕМЯ НА ВСТРЕЧИ · ЧАСЫ",
         font_title=font_title,
         font_micro=font_micro,
     )
@@ -321,7 +323,7 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
     )
     draw.text(
         (vc.MARGIN, 180),
-        f"W{iso_week:02d}  /  {iso_year}  /  LOCAL TIME",
+        f"НЕДЕЛЯ {iso_week}  /  {iso_year}  /  МЕСТНОЕ ВРЕМЯ",
         fill=vc.COLOR_FAINT,
         font=font_micro,
     )
@@ -367,7 +369,7 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
         y=337,
         label="ЗАНЯТО",
         value=vc.hours_label(report.current.total_busy),
-        sub="В РАБОЧЕМ ОКНЕ",
+        sub="В РАБОЧИЕ ЧАСЫ",
         value_color=vc.COLOR_HERO_ACCENT,
         font_label=font_micro,
         font_value=font_display_metric,
@@ -381,7 +383,7 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
         y=337,
         label="СВОБОДНО",
         value=vc.hours_label(report.current.total_free),
-        sub="ДОСТУПНЫЙ РЕЗЕРВ",
+        sub="В РАБОЧИЕ ЧАСЫ",
         value_color=vc.COLOR_HERO_SUCCESS,
         font_label=font_micro,
         font_value=font_display_metric,
@@ -465,7 +467,7 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
     workday = report.workday
     draw.text(
         (vc.MARGIN, footer_y + 30),
-        f"РАБОЧЕЕ ОКНО / {workday.workday_start}—{workday.workday_end}",
+        f"РАБОЧИЕ ЧАСЫ / {workday.workday_start}—{workday.workday_end}",
         fill=vc.COLOR_MUTED,
         font=font_small,
     )
@@ -480,14 +482,14 @@ def render_analytics_card(report: AnalyticsReport) -> bytes:
     if quality_count:
         draw.text(
             (vc.MARGIN, footer_y + 77),
-            f"△ КАЧЕСТВО ДАННЫХ / СТАТУС УЧАСТИЯ НЕ ПРОВЕРЕН: {quality_count}",
+            f"△ СТАТУС УЧАСТИЯ НЕ ПРОВЕРЕН: {quality_count}",
             fill=vc.COLOR_WARNING,
             font=font_small,
         )
     else:
         draw.text(
             (vc.MARGIN, footer_y + 77),
-            "CALDAV / WEEKLY LOAD SYSTEM",
+            "КАЛЕНДАРЬ / ЗАГРУЗКА НЕДЕЛИ",
             fill=vc.COLOR_FAINT,
             font=font_micro,
         )

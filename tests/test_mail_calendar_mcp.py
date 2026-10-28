@@ -554,7 +554,7 @@ def test_login_link_expires_independently_of_short_lived_authorization_code(
     with TestClient(http_stack(calendar_stack), base_url=settings.base_url) as http:
         expired = http.get(expired_link)
         assert expired.status_code == 400
-        assert "Ссылка подключения недействительна или истекла" in expired.text
+        assert "Ссылка подключения недействительна или устарела" in expired.text
         assert 'href="https://chatgpt.com/plugins"' in expired.text
         assert "Проверьте email и пароль" not in expired.text
         assert not (settings.data_dir / "users.json").exists()
@@ -619,7 +619,7 @@ def test_http_connect_rejects_csrf_and_never_leaks_secrets(calendar_stack):
             headers = {"origin": origin} if origin is not None else {}
             result = http.post("/connect", headers=headers)
             assert result.status_code == 403
-            assert "Ссылка подключения недействительна или истекла" in result.text
+            assert "Ссылка подключения недействительна или устарела" in result.text
             assert "Проверьте email и пароль" not in result.text
 
 

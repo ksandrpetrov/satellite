@@ -55,7 +55,7 @@ def test_rich_digest_stats_table_speaks_type_and_time():
     assert "Показатель" not in html
     assert "Значение" not in html
     assert "<td>Встреч</td>" not in html
-    assert "— 4 встреч" in html  # количество живёт в заголовке расписания
+    assert "— 4 встречи" in html  # количество живёт в заголовке расписания
 
 
 def test_rich_digest_main_quote_has_no_author_cite():
@@ -64,7 +64,7 @@ def test_rich_digest_main_quote_has_no_author_cite():
     stats = calculate_day_stats(events, date_label="Сегодня", plan_date=date(2026, 6, 12))
     texts = build_seagull_texts(stats)
     html = render_daily_digest_rich(stats, texts, tz=ZoneInfo("Europe/Moscow"))
-    assert "Чайка напрягла крылья" in html
+    assert "День плотный: встреч много, свободных окон мало." in html
     assert "<cite>Чайка</cite>" not in html
 
 

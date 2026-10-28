@@ -9,6 +9,7 @@ from ..calendar.events import event_index_marker
 from ..calendar.stats import DayCalendarStats, NormalizedEvent
 from ..messages_ru import (
     format_duration_ru,
+    format_meeting_count_ru,
 )
 from ..presentation.rich import (
     anchor,
@@ -112,7 +113,7 @@ def _schedule_block(
         escape_rich(
             t.SCHEDULE_TITLE_WITH_COUNT.format(
                 title=t.SCHEDULE_TITLE,
-                count=stats.meetings_count,
+                count=format_meeting_count_ru(stats.meetings_count),
             )
         )
     )
@@ -189,7 +190,7 @@ def render_daily_digest_rich(
                 + anchor_link("↑ К прогнозу", _ANCHOR_FORECAST)
             )
         )
-        blocks.append(footnote_def("sched", escape_rich("Полное расписание — в блоке ниже.")))
+        blocks.append(footnote_def("sched", escape_rich("По ссылке — полное расписание дня.")))
 
     html = join_blocks(blocks)
     return truncate_rich_html(html)

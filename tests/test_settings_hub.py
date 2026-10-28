@@ -126,7 +126,7 @@ def test_settings_hub_keyboard_digest_and_calendar_when_connected():
     kb = build_settings_hub_keyboard(webapp_url=_WEBAPP, has_calendar=True)
     labels = [btn["text"] for row in kb["inline_keyboard"] for btn in row]
     assert "🔔 Дайджест на сегодня" in labels
-    assert "📨 Дайджест непринятых встреч" in labels
+    assert "📨 Напоминания о приглашениях" in labels
     assert "🔕 Выключить погоду в плане" in labels
     assert BUTTON_ANALYTICS in labels
     assert BUTTON_CALENDAR_MENU in labels
@@ -169,7 +169,7 @@ def test_disconnect_first_click_shows_confirmation_only(tmp_path: Path):
     handle_callback_query(ctx, _cb(900, CB_SETTINGS_DISCONNECT))
 
     ctx.calendar_service.disconnect.assert_not_called()
-    assert "Точно отключить календарь" in callback_edit_html(ctx.telegram)
+    assert "Отключить календарь?" in callback_edit_html(ctx.telegram)
     keyboard = callback_edit_markup(ctx.telegram)
     labels = [btn["text"] for row in keyboard["inline_keyboard"] for btn in row]
     assert BUTTON_DISCONNECT_CALENDAR_CONFIRM in labels

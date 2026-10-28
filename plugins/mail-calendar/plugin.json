@@ -2,13 +2,13 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "mail-calendar",
   "version": "0.1.0",
-  "description": "Общайтесь с GPT о календаре Mail: встречи, свободное время и приглашения.",
+  "description": "Твой календарь Mail в GPT: встречи, свободное время и приглашения.",
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Календарь Mail",
         "shortDescription": "Встречи, свободное время и приглашения Mail",
-        "longDescription": "Просматривайте расписание, ищите встречи и свободные окна, создавайте события и отвечайте на приглашения через GPT. Подключение календаря проходит в браузере.",
+        "longDescription": "Смотри расписание, находи свободное время, создавай встречи и отвечай на приглашения через GPT. Подключить календарь можно в браузере.",
         "developerName": "Aleksandr Petrov",
         "category": "Productivity",
         "capabilities": ["Read", "Write"],

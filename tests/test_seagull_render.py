@@ -36,10 +36,10 @@ def test_single_meeting_snapshot_matches_desired_formatting():
     )
     assert "Прогноз на сегодня (11.09.2026)" in text
     assert MAIN_LIGHT in text
-    assert "Пересечений нет. Небо чистое." in text
+    assert "Встречи не пересекаются. Небо чистое." in text
     assert "<b>Первая встреча: 11:00</b>" in text
     assert "<b>Последняя встреча до 12:00</b>" in text
-    assert "<b>Вот детальное расписание:</b>" in text
+    assert "<b>Расписание</b>" in text
     assert "1️⃣ <b>11:00–12:00</b> — SocServ | QA Captains Weekly" in text
     assert 'expandable="true"' not in text
 
@@ -48,7 +48,7 @@ def test_empty_day_snapshot_matches_desired_formatting():
     text = _render([], plan_date=date(2026, 9, 11))
     assert MAIN_EMPTY in text
     assert "<b>Первая встреча: нет</b>" in text
-    assert "Встреч нет. Чайка оставила календарь пустым." in text
+    assert "Встреч нет." in text
 
 
 def test_plain_date_header_when_not_relative_day():
@@ -63,7 +63,7 @@ def test_schedule_blockquote_when_four_or_more_meetings():
     text = _render(events, plan_date=date(2026, 5, 11))
     assert "<blockquote>" in text
     assert 'expandable="true"' not in text
-    assert "Вот детальное расписание" in text
+    assert "Расписание" in text
 
 
 def test_overlap_text_is_shown_when_meetings_overlap():
@@ -74,7 +74,7 @@ def test_overlap_text_is_shown_when_meetings_overlap():
         ],
         plan_date=date(2026, 5, 11),
     )
-    assert "Чайка заметила один календарный занос" in text
+    assert "Есть одно пересечение встреч." in text
 
 
 def test_lunch_commentary_lines_never_appear():
@@ -242,6 +242,6 @@ def test_long_digest_is_truncated_without_cutting_html_tags():
     text = _render(events, plan_date=date(2026, 5, 11))
 
     assert len(text) <= MAX_DIGEST_MESSAGE_LEN
-    assert "Сообщение укорочено" in text
+    assert "Всё расписание не помещается в одно сообщение." in text
     assert text.count("<b>") == text.count("</b>")
     assert "<unsafe>" not in text

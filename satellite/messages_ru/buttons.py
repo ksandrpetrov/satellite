@@ -25,8 +25,8 @@ BUTTON_RECONNECT_CALENDAR = "🔄 Переподключить календар�
 BUTTON_DISCONNECT_CALENDAR = "🗑 Отключить календарь"
 BUTTON_CHECK_CALENDAR = "✅ Проверить подключение"
 BUTTON_CALENDAR_SOURCES = "📚 Календари"
-BUTTON_FOREIGN_CALENDARS = "👥 Чужие календари"
-BUTTON_COPY_EMAIL = "📋 Скопировать e-mail"
+BUTTON_FOREIGN_CALENDARS = "👥 Общие календари"
+BUTTON_COPY_EMAIL = "📋 Скопировать почту"
 BUTTON_COPY_LIST = "📋 Скопировать список"
 BUTTON_CREATE_CONFIRM = "✅ Создать"
 BUTTON_CREATE_CANCEL = "❌ Отмена"
@@ -96,7 +96,10 @@ _NORMALIZED_BUTTON_RECONNECT = normalize_button_text(BUTTON_RECONNECT_CALENDAR)
 _NORMALIZED_BUTTON_DISCONNECT = normalize_button_text(BUTTON_DISCONNECT_CALENDAR)
 _NORMALIZED_BUTTON_CHECK = normalize_button_text(BUTTON_CHECK_CALENDAR)
 _NORMALIZED_BUTTON_CALENDAR_SOURCES = normalize_button_text(BUTTON_CALENDAR_SOURCES)
-_NORMALIZED_BUTTON_FOREIGN_CALENDARS = normalize_button_text(BUTTON_FOREIGN_CALENDARS)
+_NORMALIZED_BUTTON_FOREIGN_CALENDARS = {
+    normalize_button_text(BUTTON_FOREIGN_CALENDARS),
+    normalize_button_text("👥 Чужие календари"),  # Reply-кнопки в старых сообщениях.
+}
 
 
 def button_text_to_mode(text: str | None) -> str | None:
@@ -179,4 +182,4 @@ def button_text_is_calendar_sources(text: str | None) -> bool:
 def button_text_is_foreign_calendars(text: str | None) -> bool:
     if not text:
         return False
-    return normalize_button_text(text) == _NORMALIZED_BUTTON_FOREIGN_CALENDARS
+    return normalize_button_text(text) in _NORMALIZED_BUTTON_FOREIGN_CALENDARS

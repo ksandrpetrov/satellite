@@ -14,3 +14,16 @@ def format_duration_ru(minutes: int) -> str:
     if hours:
         return DURATION_HOURS_ONLY.format(hours=hours)
     return DURATION_MINS_ONLY.format(mins=mins)
+
+
+def format_meeting_count_ru(count: int) -> str:
+    value = max(0, int(count))
+    if 11 <= value % 100 <= 19:
+        word = "встреч"
+    elif value % 10 == 1:
+        word = "встреча"
+    elif 2 <= value % 10 <= 4:
+        word = "встречи"
+    else:
+        word = "встреч"
+    return f"{value} {word}"

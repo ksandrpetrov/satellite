@@ -141,6 +141,10 @@ def test_status_without_init_data_returns_401(started_server):
     status, body = _http("GET", base + "/api/calendar/status")
     assert status == 401
     assert body["error"] == "no_init_data"
+    assert body["message"] == (
+        "Не удалось подтвердить вход. Закрой окно и снова нажми "
+        "«Подключить календарь» в чате с Чайкой."
+    )
 
 
 def test_status_with_connect_token_without_init_data(started_server):

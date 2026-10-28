@@ -3,19 +3,24 @@
 import html
 
 MCP_LOGIN_ERROR = (
-    "Не удалось подключить календарь. Проверьте email и пароль для внешнего приложения Mail."
+    "Не удалось подключить календарь. Проверь почту и пароль Mail для внешнего приложения с "
+    "доступом к календарю."
 )
 MCP_LINK_EXPIRED = (
-    "Ссылка подключения недействительна или истекла. Вернитесь в "
-    '<a href="https://chatgpt.com/plugins">плагины GPT</a> и начните подключение заново.'
+    "Ссылка подключения недействительна или устарела. Вернись в <a "
+    'href="https://chatgpt.com/plugins">плагины GPT</a> и начни подключение заново.'
 )
-MCP_TEMPORARY_ERROR = "Календарь временно недоступен. Попробуйте ещё раз позже."
+MCP_TEMPORARY_ERROR = "Календарь временно недоступен. Попробуй ещё раз позже."
 MCP_INVALID_INPUT = (
-    "Проверьте даты, время и выбранную встречу. Обновите список календаря и повторите запрос."
+    "Проверь даты, время и выбранную встречу. Обнови список встреч и повтори запрос."
 )
-MCP_UNCONFIRMED_CREATE = "Mail не подтвердил создание встречи. Проверьте календарь перед повторной попыткой, чтобы не создать дубликат."
+MCP_UNCONFIRMED_CREATE = (
+    "Mail не подтвердил создание встречи. Она могла сохраниться. Проверь календарь перед "
+    "повторной попыткой, чтобы не создать дубликат."
+)
 MCP_UNCONFIRMED_PARTSTAT = (
-    "Mail не подтвердил ответ на приглашение. Обновите список приглашений перед повторной попыткой."
+    "Mail не подтвердил ответ на приглашение. Он мог сохраниться. Обнови список приглашений "
+    "перед повторной попыткой."
 )
 MCP_CONFIRMATION_REQUIRED = (
     "Покажите пользователю эти параметры и получите согласие перед записью в календарь."
@@ -50,14 +55,14 @@ def mcp_login_html(
 <style>body{{font:17px system-ui;max-width:520px;margin:8vh auto;padding:24px;line-height:1.5}}
 label{{display:block;margin:18px 0}}input,button{{box-sizing:border-box;width:100%;padding:12px;font:inherit}}
 button{{cursor:pointer;background:#1769e0;color:white;border:0;border-radius:8px}}</style>
-<h1>Подключить календарь Mail</h1><p>Приложение {html.escape(client_name)} сможет читать ваши
-календари, создавать встречи и отвечать на приглашения. Доступ получит только разрешённый
-владелец календаря.</p><p>Введите пароль Mail для внешнего приложения с доступом к календарю.
-Он хранится зашифрованным на этом сервере и не передаётся в чат GPT.</p>{message}
+<h1>Подключить календарь Mail</h1><p>Приложение {html.escape(client_name)} сможет читать твои
+календари, создавать встречи и отвечать на приглашения. Подключить можно только почту,
+для которой открыт доступ.</p><p>Введи пароль Mail для внешнего приложения с доступом к календарю.
+Пароль хранится на этом сервере в зашифрованном виде и не передаётся в чат GPT.</p>{message}
 <form method="post" action="{html.escape(connect_path, quote=True)}">
 <input type="hidden" name="ticket" value="{html.escape(ticket, quote=True)}">
 <input type="hidden" name="csrf" value="{html.escape(csrf, quote=True)}">
-<label>Email Mail<input required type="email" name="login" autocomplete="username" maxlength="254"></label>
+<label>Почта Mail<input required type="email" name="login" autocomplete="username" maxlength="254"></label>
 <label>Пароль для внешнего приложения<input required type="password" name="secret"
 autocomplete="off" maxlength="1024"></label>
 <button type="submit">Подключить календарь</button></form></html>"""

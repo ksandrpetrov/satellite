@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from ..presentation.rich import escape_rich, thinking_block
 
-DEFAULT_THINKING_TEXT = "Чайка думает…"
+DEFAULT_THINKING_TEXT = "Секунду, Чайка готовит ответ…"
 
-PLAN_PROGRESS_COMPUTING = "📊 Считаю метрики дня…"
+PLAN_PROGRESS_COMPUTING = "📊 Считаю время встреч и свободные часы…"
 SETTINGS_OPEN_THINKING = "⚙️ Открываю настройки…"
 
 

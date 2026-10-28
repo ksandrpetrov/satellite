@@ -106,7 +106,7 @@ def test_start_opens_access_request_and_notifies_admin(users: UserStore) -> None
     user_msg = ctx.telegram.send_message.call_args_list[-1][0][1]
     assert user_msg == ACCESS_REQUEST_SENT_HTML
     admin_msg = ctx.telegram.send_message.call_args_list[0][0][1]
-    assert "Новый пользователь" in admin_msg
+    assert "Новая заявка на доступ" in admin_msg
     assert str(USER_ID) in admin_msg
 
 
@@ -132,7 +132,7 @@ def test_help_opens_request_for_pending_user_without_prior_start(users: UserStor
 
     assert final_message_html(ctx.telegram) == BOT_HELP_HTML
     admin_msg = ctx.telegram.send_message.call_args_list[0][0][1]
-    assert "Новый пользователь" in admin_msg
+    assert "Новая заявка на доступ" in admin_msg
 
 
 def test_admin_approve_notifies_user(users: UserStore) -> None:

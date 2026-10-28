@@ -16,7 +16,6 @@ from ..calendar.providers.base import (
 )
 from ..calendar.providers.registry import PROVIDER_IDS, PROVIDER_MAILRU, PROVIDER_YANDEX
 from ..calendar.time_utils import add_elapsed_minutes
-from ..messages_ru import CALENDAR_CONNECTION_CHANGED_TEXT, CREATE_EVENT_UNCONFIRMED_HTML
 from ..security.token_vault import ProviderCredentials
 from ..users import UserStore, UserStorePersistenceError
 from .errors import error_payload
@@ -232,11 +231,5 @@ class CalendarApiService:
         exc: CalendarProviderError, *, status: HTTPStatus = HTTPStatus.BAD_GATEWAY
     ) -> ApiResult:
         if exc.error_code == "CALENDAR_CONNECTION_CHANGED":
-            return ApiResult(
-                HTTPStatus.CONFLICT,
-                {"error": exc.error_code, "message": CALENDAR_CONNECTION_CHANGED_TEXT},
-            )
-        message = (
-            CREATE_EVENT_UNCONFIRMED_HTML if exc.error_code == "CREATE_UNCONFIRMED" else str(exc)
-        )
-        return ApiResult(status, {"error": exc.error_code, "message": message})
+            status = HTTPStatus.CONFLICT
+        return ApiResult(status, error_payload(exc.error_code))

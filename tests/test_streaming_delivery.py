@@ -105,7 +105,7 @@ def test_dismiss_does_not_resend_empty_draft() -> None:
     Если вызвать его в ``dismiss()`` после реальной доставки (например,
     ``sendPhoto`` в недельной аналитике), Telegram выводит фантомный «…»
     баббл под фотографией и держит его весь 30-секундный TTL черновика —
-    пользователь видит вторую «Чайка думает» индикацию уже после готового
+    пользователь видит вторую «Чайка готовит ответ» индикацию уже после готового
     отчёта. Поэтому в draft-ветке dismiss НЕ дёргает ``sendMessageDraft``;
     предыдущий статус-черновик Telegram гасит сам по TTL.
     """
@@ -142,7 +142,7 @@ def test_rich_open_uses_tg_thinking_draft() -> None:
     tg.send_rich_message_draft.assert_called_once()
     rich_html = tg.send_rich_message_draft.call_args[0][2]["html"]
     assert rich_html.startswith("<tg-thinking>")
-    assert "Чайка думает" in rich_html
+    assert "Чайка готовит ответ" in rich_html
 
 
 def test_empty_text_rejected_falls_back_to_placeholder() -> None:

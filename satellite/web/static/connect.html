@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Чайка — календарь</title>
+  <title data-copy="page_title">Чайка — календарь</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
@@ -207,44 +207,44 @@
   </style>
 </head>
 <body>
-  <h1>Календарь</h1>
-  <h2 id="userHint">Подключите Mail.ru, чтобы Чайка собирала ваш день.</h2>
+  <h1 data-copy="heading">Календарь</h1>
+  <h2 id="userHint" data-copy="user_hint_default">Подключи календарь Mail.ru, чтобы Чайка собирала твой день.</h2>
   <div class="tabs" role="tablist">
-    <button id="nav-connection" role="tab" aria-controls="tab-connection" aria-selected="true" tabindex="0" data-tab="connection" class="active">Подключение</button>
-    <button id="nav-events" role="tab" aria-controls="tab-events" aria-selected="false" tabindex="-1" data-tab="events">События</button>
-    <button id="nav-create" role="tab" aria-controls="tab-create" aria-selected="false" tabindex="-1" data-tab="create">Создать</button>
+    <button id="nav-connection" role="tab" aria-controls="tab-connection" aria-selected="true" tabindex="0" data-tab="connection" class="active" data-copy="tab_connection">Подключение</button>
+    <button id="nav-events" role="tab" aria-controls="tab-events" aria-selected="false" tabindex="-1" data-tab="events" data-copy="tab_events">События</button>
+    <button id="nav-create" role="tab" aria-controls="tab-create" aria-selected="false" tabindex="-1" data-tab="create" data-copy="tab_create">Создать</button>
   </div>
 
   <section role="tabpanel" aria-labelledby="nav-connection" id="tab-connection" class="active">
     <div class="card">
       <div>
-        Статус: <span id="statusBadge" class="badge" role="status">проверяем…</span>
+        <span data-copy="status_label">Статус:</span> <span id="statusBadge" class="badge" role="status" data-copy="status_checking">проверяю…</span>
       </div>
-      <label for="provider">Провайдер</label>
+      <label for="provider" data-copy="provider_label">Сервис календаря</label>
       <select id="provider">
-        <option value="mailru">Mail.ru / Mailroom</option>
-        <option value="yandex" disabled>Яндекс (скоро)</option>
+        <option value="mailru" data-copy="provider_mailru">Mail.ru</option>
+        <option value="yandex" disabled data-copy="provider_yandex">Яндекс — пока недоступен</option>
       </select>
-      <label for="login">Email календаря</label>
+      <label for="login" data-copy="login_label">Почта календаря</label>
       <input id="login" type="email" autocomplete="username" placeholder="you@mail.ru">
-      <label for="token">Пароль приложения</label>
-      <input id="token" type="password" autocomplete="off" placeholder="Токен для внешнего приложения">
-      <p class="hint">🪶 Mail.ru → «Пароли для внешних приложений» → доступ <strong>Календарь</strong> (не пароль от почты). Подойдёт @mail.ru и корпоративная почта на calendar.mail.ru.</p>
-      <label for="caldavUrl">CalDAV URL (необязательно)</label>
-      <input id="caldavUrl" type="url" autocomplete="off" placeholder="https://calendar.mail.ru/…">
-      <p class="hint">🪶 Оставь пустым, если в системе указан только calendar.mail.ru — Чайка сама найдёт календари. Полный principal URL вставляй только если его дал почтовый клиент.</p>
-      <button id="connectBtn" class="primary">Подключить</button>
-      <button id="checkBtn" class="secondary" type="button">Проверить подключение</button>
-      <button id="disconnectBtn" class="danger" type="button">Отключить календарь</button>
+      <label for="token" data-copy="password_label">Пароль приложения</label>
+      <input id="token" type="password" autocomplete="off" data-copy-placeholder="password_placeholder" placeholder="Введи пароль">
+      <p class="hint" data-copy-html="credentials_hint_html">В настройках Mail.ru открой «Пароли для внешних приложений» и создай пароль с доступом <strong>«Календарь»</strong>. Это не пароль от почты. Подойдёт адрес @mail.ru или корпоративная почта на calendar.mail.ru.</p>
+      <label for="caldavUrl" data-copy="caldav_url_label">Адрес календаря (CalDAV, необязательно)</label>
+      <input id="caldavUrl" type="url" autocomplete="off" data-copy-placeholder="caldav_url_placeholder" placeholder="https://…">
+      <p class="hint" data-copy="caldav_url_hint">Оставь поле пустым, если у тебя есть только адрес calendar.mail.ru. Чайка сама найдёт календари. Полный адрес учётной записи (principal URL) укажи, только если его дал почтовый клиент.</p>
+      <button id="connectBtn" class="primary" data-copy="connect_btn">Подключить</button>
+      <button id="checkBtn" class="secondary" type="button" data-copy="check_btn">Проверить подключение</button>
+      <button id="disconnectBtn" class="danger" type="button" data-copy="disconnect_btn">Отключить календарь</button>
     </div>
     <div id="connectStatus" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
   </section>
 
   <section role="tabpanel" aria-labelledby="nav-events" id="tab-events">
-    <p class="hint">Как в боте: ближайшие 7 дней, сгруппировано по дням.</p>
-    <button id="refreshBtn" class="secondary" type="button">Обновить</button>
+    <p class="hint" data-copy="events_hint">События на ближайшие 7 дней, по дням.</p>
+    <button id="refreshBtn" class="secondary" type="button" data-copy="events_refresh">Обновить</button>
     <div id="eventsList" class="card" style="margin-top:12px">
-      <div class="empty">Откройте вкладку или нажмите «Обновить».</div>
+      <div class="empty" data-copy="events_empty_open">Нажми «Обновить», чтобы загрузить события.</div>
     </div>
     <div id="eventsStatus" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
   </section>
@@ -252,47 +252,47 @@
   <section role="tabpanel" aria-labelledby="nav-create" id="tab-create">
     <div class="card" id="createWizard">
       <div class="wizard-step active" data-step="title">
-        <label for="evTitle">➕ Как назвать событие?</label>
-        <input id="evTitle" type="text" placeholder="Дейли команды" autocomplete="off">
-        <button type="button" class="primary create-next">Далее</button>
+        <label for="evTitle" data-copy="create_title_label">➕ Как назвать событие?</label>
+        <input id="evTitle" type="text" data-copy-placeholder="create_title_placeholder" placeholder="Встреча команды" autocomplete="off">
+        <button type="button" class="primary create-next" data-copy="create_next">Далее</button>
       </div>
       <div class="wizard-step" data-step="date">
-        <label for="evDate">📅 На какую дату?</label>
+        <label for="evDate" data-copy="create_date_label">📅 На какой день?</label>
         <div class="chip-row">
-          <button type="button" data-date-preset="today">📅 Сегодня</button>
-          <button type="button" data-date-preset="tomorrow">➡️ Завтра</button>
+          <button type="button" data-date-preset="today" data-copy="create_today">📅 Сегодня</button>
+          <button type="button" data-date-preset="tomorrow" data-copy="create_tomorrow">➡️ Завтра</button>
         </div>
         <input id="evDate" type="date">
-        <p class="hint">Или выберите дату в календаре.</p>
+        <p class="hint" data-copy="create_date_hint">Или выбери дату в календаре.</p>
         <div class="row-actions">
-          <button type="button" class="secondary create-back">Назад</button>
-          <button type="button" class="primary create-next">Далее</button>
+          <button type="button" class="secondary create-back" data-copy="create_back">Назад</button>
+          <button type="button" class="primary create-next" data-copy="create_next">Далее</button>
         </div>
       </div>
       <div class="wizard-step" data-step="time">
-        <label for="evStart">🕘 Во сколько начать?</label>
+        <label for="evStart" data-copy="create_time_label">🕘 Во сколько начнётся?</label>
         <input id="evStart" type="time" value="10:00">
-        <p class="hint">Например: 09:30</p>
+        <p class="hint" data-copy="create_time_hint">Например, 09:30</p>
         <div class="row-actions">
-          <button type="button" class="secondary create-back">Назад</button>
-          <button type="button" class="primary create-next">Далее</button>
+          <button type="button" class="secondary create-back" data-copy="create_back">Назад</button>
+          <button type="button" class="primary create-next" data-copy="create_next">Далее</button>
         </div>
       </div>
       <div class="wizard-step" data-step="duration">
-        <label for="evDuration">⏱ Сколько минут длится?</label>
+        <label for="evDuration" data-copy="create_duration_label">⏱ Сколько минут продлится?</label>
         <div class="chip-row" id="durationPresets"></div>
         <input id="evDuration" type="number" min="1" max="1440" placeholder="60" inputmode="numeric">
         <div class="row-actions">
-          <button type="button" class="secondary create-back">Назад</button>
-          <button type="button" class="primary create-next">Далее</button>
+          <button type="button" class="secondary create-back" data-copy="create_back">Назад</button>
+          <button type="button" class="primary create-next" data-copy="create_next">Далее</button>
         </div>
       </div>
       <div class="wizard-step" data-step="confirm">
-        <p>Создать событие?</p>
+        <p data-copy="create_confirm_title">Создать событие?</p>
         <div class="confirm-box" id="createConfirmBox" tabindex="-1"></div>
         <div class="row-actions">
-          <button type="button" class="secondary" id="createCancelBtn">❌ Отмена</button>
-          <button type="button" class="primary" id="createConfirmBtn">✅ Создать</button>
+          <button type="button" class="secondary" id="createCancelBtn" data-copy="create_cancel">❌ Отмена</button>
+          <button type="button" class="primary" id="createConfirmBtn" data-copy="create_confirm">✅ Создать</button>
         </div>
       </div>
     </div>
@@ -306,28 +306,15 @@
       return (typeof value === 'string' && value) ? value : (fallback || '');
     }
     function applyStaticCopy() {
-      if (!COPY.heading) return;
-      document.title = copyText('page_title', document.title);
-      const h1 = document.querySelector('h1');
-      if (h1) h1.textContent = copyText('heading', h1.textContent);
-      const hint = document.getElementById('userHint');
-      if (hint) hint.textContent = copyText('user_hint_default', hint.textContent);
-      const tabs = document.querySelectorAll('.tabs button');
-      if (tabs[0]) tabs[0].textContent = copyText('tab_connection', tabs[0].textContent);
-      if (tabs[1]) tabs[1].textContent = copyText('tab_events', tabs[1].textContent);
-      if (tabs[2]) tabs[2].textContent = copyText('tab_create', tabs[2].textContent);
-      const connectBtn = document.getElementById('connectBtn');
-      if (connectBtn) connectBtn.textContent = copyText('connect_btn', connectBtn.textContent);
-      const checkBtn = document.getElementById('checkBtn');
-      if (checkBtn) checkBtn.textContent = copyText('check_btn', checkBtn.textContent);
-      const disconnectBtn = document.getElementById('disconnectBtn');
-      if (disconnectBtn) disconnectBtn.textContent = copyText('disconnect_btn', disconnectBtn.textContent);
-      const refreshBtn = document.getElementById('refreshBtn');
-      if (refreshBtn) refreshBtn.textContent = copyText('events_refresh', refreshBtn.textContent);
-      const createCancelBtn = document.getElementById('createCancelBtn');
-      if (createCancelBtn) createCancelBtn.textContent = copyText('create_cancel', createCancelBtn.textContent);
-      const createConfirmBtn = document.getElementById('createConfirmBtn');
-      if (createConfirmBtn) createConfirmBtn.textContent = copyText('create_confirm', createConfirmBtn.textContent);
+      document.querySelectorAll('[data-copy]').forEach((el) => {
+        el.textContent = copyText(el.dataset.copy, el.textContent);
+      });
+      document.querySelectorAll('[data-copy-placeholder]').forEach((el) => {
+        el.placeholder = copyText(el.dataset.copyPlaceholder, el.placeholder);
+      });
+      document.querySelectorAll('[data-copy-html]').forEach((el) => {
+        el.innerHTML = copyText(el.dataset.copyHtml, el.innerHTML);
+      });
     }
     applyStaticCopy();
 
@@ -426,7 +413,7 @@
       const errors = (COPY && COPY.telegram_errors) || {};
       if (errors[code]) return errors[code];
       if (errors.default) return errors.default;
-      return 'Не удалось войти. Закройте окно и откройте снова из бота.';
+      return "Не удалось войти. Закрой окно и открой его снова из чата с Чайкой.";
     }
 
     const tabs = document.querySelectorAll('.tabs button');
@@ -533,7 +520,7 @@
         clearTimeout(timeout);
       }
       if (!resp.ok) {
-        const err = new Error(data.message || data.error || 'request_failed');
+        const err = new Error(data.message || copyText('request_failed'));
         err.code = data.error;
         err.status = resp.status;
         throw err;
@@ -565,35 +552,35 @@
     async function refreshStatus() {
       const auth = await waitForAuth(1500);
       if (!hasRestAuth(auth)) {
-        badge('готов к подключению');
+        badge(copyText('status_ready', "можно подключить"));
         document.getElementById('userHint').textContent =
-          'Введите логин и пароль приложения, затем нажмите «Подключить».';
+          copyText('hint_connect', "Введи почту и пароль приложения, затем нажми «Подключить».");
         return;
       }
-      badge('проверяем…');
+      badge(copyText('status_checking', "проверяю…"));
       try {
         const data = await api('GET', '/api/calendar/status');
         if (data.connected) {
-          badge('подключено: ' + (data.provider || 'mailru'), 'ok');
+          badge(copyText('status_connected_prefix', "подключён: ") + (data.provider || 'mailru'), 'ok');
           document.getElementById('userHint').textContent =
-            'Календарь подключён. Можно создавать события прямо отсюда.';
+            copyText('hint_connected', "Календарь подключён. Здесь можно посмотреть встречи и создать новые.");
         } else if (data.provider) {
-          badge('требует переподключения', 'err');
+          badge(copyText('status_reconnect', "подключи заново"), 'err');
         } else {
-          badge('не подключено');
+          badge(copyText('status_disconnected', "не подключён"));
           document.getElementById('userHint').textContent = copyText('hint_connect');
         }
       } catch (e) {
         if (e.status === 403) {
-          badge('доступ не одобрен', 'err');
+          badge(copyText('status_not_approved', "ожидает одобрения"), 'err');
           document.getElementById('userHint').textContent =
-            'Доступ ещё не одобрен админом. Ожидайте сообщения от бота.';
+            copyText('hint_not_approved', "Администратор ещё не открыл доступ. Чайка сообщит, когда можно будет подключить календарь.");
         } else if (e.status === 401) {
-          badge('не подключено');
+          badge(copyText('status_disconnected', "не подключён"));
           document.getElementById('userHint').textContent =
-            'Введите данные и нажмите «Подключить».';
+            copyText('hint_connect', "Введи почту и пароль приложения, затем нажми «Подключить».");
         } else {
-          badge('ошибка проверки', 'err');
+          badge(copyText('status_check_error', "не удалось проверить"), 'err');
         }
       }
     }
@@ -630,38 +617,38 @@
       try {
         const payload = buildConnectPayload();
         if (!payload.login || !payload.app_password) {
-          showStatus('connectStatus', 'Укажите email и пароль приложения.', 'err');
+          showStatus('connectStatus', copyText('connect_missing_fields', "Введи почту и пароль приложения."), 'err');
           return;
         }
         const auth = await waitForAuth(3000);
         if (!hasRestAuth(auth) && canUseSendData()) {
           tg.sendData(JSON.stringify(payload));
           document.getElementById('token').value = '';
-          showStatus('connectStatus', 'Отправлено боту. Проверьте чат…', 'ok');
+          showStatus('connectStatus', copyText('connect_sent_to_bot', "Данные отправлены. Посмотри результат в чате с Чайкой."), 'ok');
           setTimeout(() => { if (tg) tg.close(); }, 900);
           return;
         }
         if (!hasRestAuth(auth)) {
           showStatus(
             'connectStatus',
-            'Откройте окно снова из бота: /connect → кнопка под сообщением.',
+            copyText('connect_open_from_bot', "Открой окно снова: отправь /connect в чате с Чайкой и нажми кнопку под сообщением."),
             'err'
           );
           return;
         }
         await api('POST', '/api/calendar/connect', payload);
         document.getElementById('token').value = '';
-        showStatus('connectStatus', 'Календарь подключён.', 'ok');
+        showStatus('connectStatus', copyText('connect_success', "Календарь подключён."), 'ok');
         await refreshStatus();
         setTimeout(() => { if (tg) tg.close(); }, 1200);
       } catch (e) {
-        let msg = 'Не удалось подключить календарь.';
+        let msg = copyText('connect_failed', "Не удалось подключить календарь. Попробуй ещё раз позже.");
         if (e.code === 'AUTH_FAILED') {
-          msg = 'Токен не подошёл. Проверьте email, пароль приложения (доступ «Календарь») и при необходимости CalDAV URL.';
+          msg = copyText('connect_auth_failed', "Не удалось войти в календарь. Проверь почту, пароль приложения с доступом «Календарь» и адрес CalDAV, если ты его указал.");
         } else if (e.code === 'unauthorized' || e.code === 'no_init_data' || e.code === 'bad_signature' || e.code === 'expired') {
           msg = telegramErrorMessage(e.code);
         } else if (e.code === 'not_approved') {
-          msg = 'Доступ к боту ещё не одобрен админом.';
+          msg = copyText('events_not_approved', "Администратор ещё не открыл доступ.");
         } else if (e.message && e.message !== 'request_failed') {
           msg = e.message;
         }
@@ -676,8 +663,8 @@
         showStatus(
           'connectStatus',
           canUseSendData()
-            ? 'Сначала нажмите «Подключить» — проверка будет в чате с ботом.'
-            : 'Сначала подключите календарь кнопкой «Подключить».',
+            ? copyText('connect_before_check_chat', "Сначала нажми «Подключить». Результат проверки появится в чате с Чайкой.")
+            : copyText('connect_before_check', "Сначала подключи календарь кнопкой «Подключить»."),
           'err'
         );
         return;
@@ -686,23 +673,23 @@
         const data = await api('GET', '/api/calendar/status');
         showStatus(
           'connectStatus',
-          data.connected ? 'Подключение активно.' : 'Календарь не подключён.',
+          data.connected ? copyText('connection_active', "Подключение работает.") : copyText('connection_inactive', "Календарь не подключён."),
           data.connected ? 'ok' : 'err'
         );
         await refreshStatus();
       } catch (e) {
-        showStatus('connectStatus', 'Не удалось проверить подключение.', 'err');
+        showStatus('connectStatus', copyText('connection_check_failed', "Не удалось проверить подключение. Попробуй ещё раз позже."), 'err');
       }
     }));
 
     document.getElementById('disconnectBtn').addEventListener('click', connectionAction(async () => {
-      showStatus('connectStatus', copyText('connection_pending'));
+      showStatus('connectStatus', copyText('disconnection_pending'));
       try {
         await api('DELETE', '/api/calendar/disconnect');
-        showStatus('connectStatus', 'Календарь отключён.', 'ok');
+        showStatus('connectStatus', copyText('disconnect_success', "Календарь отключён."), 'ok');
         await refreshStatus();
       } catch (e) {
-        showStatus('connectStatus', 'Не удалось отключить календарь.', 'err');
+        showStatus('connectStatus', copyText('disconnect_failed', "Не удалось отключить календарь. Попробуй ещё раз позже."), 'err');
       }
     }));
 
@@ -749,7 +736,7 @@
       DURATION_PRESETS_MIN.forEach((minutes) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.textContent = minutes + ' мин';
+        btn.textContent = minutes + copyText('duration_min_suffix', " мин");
         btn.dataset.minutes = String(minutes);
         btn.addEventListener('click', () => {
           document.getElementById('evDuration').value = String(minutes);
@@ -764,7 +751,7 @@
     async function loadEvents() {
       const request = ++eventsRequest;
       const list = document.getElementById('eventsList');
-      list.innerHTML = '<div class="empty"><span class="spinner"></span> Чайка собирает ближайшие события…</div>';
+      list.innerHTML = '<div class="empty"><span class="spinner"></span> ' + copyText('events_loading', "Собираю события на ближайшие 7 дней…") + '</div>';
       clearStatus('eventsStatus');
       try {
         const data = await api(
@@ -776,12 +763,12 @@
       } catch (e) {
         if (request !== eventsRequest) return;
         if (e.code === 'not_connected') {
-          list.innerHTML = '<div class="empty">Сначала подключите календарь.</div>';
+          list.innerHTML = '<div class="empty">' + copyText('events_not_connected', "Сначала подключи календарь.") + '</div>';
         } else if (e.status === 403) {
-          list.innerHTML = '<div class="empty">Доступ не одобрен.</div>';
+          list.innerHTML = '<div class="empty">' + copyText('events_not_approved', "Администратор ещё не открыл доступ.") + '</div>';
         } else {
-          list.innerHTML = '<div class="empty">Не удалось загрузить события.</div>';
-          showStatus('eventsStatus', e.message || 'Ошибка', 'err');
+          list.innerHTML = '<div class="empty">' + copyText('events_load_fail', "Не удалось загрузить события.") + '</div>';
+          showStatus('eventsStatus', e.message || copyText('request_failed', "Не удалось получить ответ. Проверь соединение и попробуй ещё раз."), 'err');
         }
       }
     }
@@ -789,13 +776,13 @@
     function renderUpcomingGroups(groups, empty) {
       const list = document.getElementById('eventsList');
       if (empty || !groups.length) {
-        list.innerHTML = '<div class="empty">🗓 На ближайшие дни встреч нет.</div>';
+        list.innerHTML = '<div class="empty">' + copyText('events_empty', "На ближайшие 7 дней встреч нет.") + '</div>';
         return;
       }
       list.innerHTML = '';
       const heading = document.createElement('div');
       heading.className = 'day-header';
-      heading.textContent = '🗓 Ближайшие события';
+      heading.textContent = '🗓 ' + copyText('events_heading', "Ближайшие события");
       list.appendChild(heading);
       groups.forEach((group) => {
         const block = document.createElement('div');
@@ -820,7 +807,7 @@
             const btn = document.createElement('button');
             btn.className = 'danger';
             btn.type = 'button';
-            btn.textContent = 'Удалить';
+            btn.textContent = copyText('events_delete', "Удалить");
             btn.dataset.uid = encodeURIComponent(ev.uid);
             btn.dataset.url = encodeURIComponent(ev.url || '');
             btn.addEventListener('click', () => deleteEvent(btn));
@@ -839,16 +826,16 @@
       if (!uid || btn.disabled) return;
       btn.disabled = true;
       const confirmed = tg && tg.showConfirm
-        ? await new Promise((res) => tg.showConfirm('Удалить событие?', res))
-        : window.confirm('Удалить событие?');
+        ? await new Promise((res) => tg.showConfirm(copyText('delete_confirm', "Удалить событие из календаря?"), res))
+        : window.confirm(copyText('delete_confirm', "Удалить событие из календаря?"));
       if (!confirmed) { btn.disabled = false; return; }
       try {
         const qs = url ? `?url=${encodeURIComponent(url)}` : '';
         await api('DELETE', `/api/calendar/events/${encodeURIComponent(uid)}${qs}`);
         await loadEvents();
-        showStatus('eventsStatus', 'Событие удалено.', 'ok');
+        showStatus('eventsStatus', copyText('delete_success', "Событие удалено."), 'ok');
       } catch (e) {
-        showStatus('eventsStatus', e.message || 'Не удалось удалить событие.', 'err');
+        showStatus('eventsStatus', e.message || copyText('delete_failed', "Не удалось удалить событие. Обнови список и попробуй ещё раз."), 'err');
         btn.disabled = false;
       }
     }
@@ -935,7 +922,7 @@
         if (step === 'title') {
           const title = document.getElementById('evTitle').value.trim();
           if (!title) {
-            showCreateError('evTitle', 'Укажите название события.');
+            showCreateError('evTitle', copyText('create_title_required', "Напиши название события."));
             return;
           }
           createDraft.title = title;
@@ -945,7 +932,7 @@
         if (step === 'date') {
           const dateVal = document.getElementById('evDate').value;
           if (!dateVal) {
-            showCreateError('evDate', '⚠️ Не понял дату. Пример: 20.05.2026 или «завтра»');
+            showCreateError('evDate', copyText('create_date_invalid', "Выбери дату в календаре или нажми «Сегодня» либо «Завтра»."));
             return;
           }
           createDraft.eventDate = dateVal;
@@ -955,7 +942,7 @@
         if (step === 'time') {
           const startVal = document.getElementById('evStart').value;
           if (!startVal) {
-            showCreateError('evStart', '⚠️ Не понял время. Например: 09:30');
+            showCreateError('evStart', copyText('create_time_invalid', "Укажи время начала, например 09:30."));
             return;
           }
           createDraft.startTime = startVal;
@@ -969,7 +956,7 @@
         if (step === 'duration') {
           const minutes = Number(document.getElementById('evDuration').value);
           if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 24 * 60) {
-            showCreateError('evDuration', '⚠️ Укажите длительность в минутах, например 60');
+            showCreateError('evDuration', copyText('create_duration_invalid', "Укажи длительность целым числом минут от 1 до 1440, например 60."));
             return;
           }
           createDraft.durationMinutes = minutes;
@@ -1009,18 +996,18 @@
         createSaving = false;
         controls.forEach((control) => { control.disabled = false; });
         resetCreateWizard();
-        showStatus('createStatus', '✅ Событие создано в вашем календаре.', 'ok');
+        showStatus('createStatus', copyText('create_success', "✅ Событие добавлено в твой календарь."), 'ok');
       } catch (e) {
         if (e.code === 'not_connected') {
-          showStatus('createStatus', 'Сначала подключите календарь.', 'err');
+          showStatus('createStatus', copyText('events_not_connected', "Сначала подключи календарь."), 'err');
         } else if (e.code === 'CREATE_FAILED') {
           showStatus(
             'createStatus',
-            '⚠️ Не удалось создать событие. Проверьте права записи в календарь.',
+            copyText('create_write_failed', "Не удалось создать событие. Проверь право на запись в календарь."),
             'err'
           );
         } else {
-          showStatus('createStatus', e.message || 'Не удалось создать событие.', 'err');
+          showStatus('createStatus', e.message || copyText('create_failed', "Не удалось создать событие. Попробуй ещё раз позже."), 'err');
         }
       } finally {
         createSaving = false;

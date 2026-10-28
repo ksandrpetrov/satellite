@@ -29,7 +29,7 @@ from .rules import SeagullTexts
 _SCHEDULE_EXPANDABLE_MIN_MEETINGS = 4
 
 MAX_DIGEST_MESSAGE_LEN = 3800
-TRUNCATED_NOTICE = "…\n\nСообщение укорочено: встреч слишком много для одного сообщения."
+TRUNCATED_NOTICE = "…\n\nВсё расписание не помещается в одно сообщение. Показана только часть."
 MAX_EVENT_FIELD_CHARS = 320
 
 _RELATIVE_WORD_LOWER = {

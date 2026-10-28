@@ -7,6 +7,7 @@ from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
+import pytest
 from PIL import Image, ImageStat
 
 from satellite.analytics.render_card import render_analytics_card
@@ -183,3 +184,32 @@ def test_render_handles_full_load_overlaps_and_quality_warning():
     png = render_analytics_card(dense)
 
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+@pytest.mark.parametrize("current_busy,previous_busy", [(2400, 1000), (0, 2690), (2690, 0)])
+def test_comparison_pill_keeps_the_whole_label(monkeypatch, current_busy, previous_busy):
+    report = _report()
+    report = replace(
+        report,
+        current=replace(
+            report.current, total_busy=current_busy, load_percent=min(100, current_busy // 24)
+        ),
+        previous=replace(
+            report.previous, total_busy=previous_busy, load_percent=min(100, previous_busy // 24)
+        ),
+    )
+    original = vc.draw_pill
+    labels = []
+
+    def check_label(draw, xy, text, **kwargs):
+        if "п. п." in text:
+            labels.append(text)
+            width = vc.text_width(draw, text + "…", kwargs["font"]) + 2 * kwargs["pad_x"]
+            assert width <= kwargs["max_width"]
+        return original(draw, xy, text, **kwargs)
+
+    monkeypatch.setattr(vc, "draw_pill", check_label)
+    render_analytics_card(report)
+
+    assert len(labels) == 1
+    assert "ЗАГРУЗКИ" in labels[0]

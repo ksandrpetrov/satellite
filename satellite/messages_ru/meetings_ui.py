@@ -9,6 +9,14 @@ from ..presentation.html import expandable_blockquote
 from .buttons import styled_button
 from .settings_ui import CB_SETTINGS_CALENDAR_BACK
 
+INVITATIONS_TRUNCATED_TEXT = (
+    "Показана часть встреч. После ответов обнови список, чтобы увидеть остальные."
+)
+MANAGE_TRUNCATED_TEXT = (
+    "Показана часть встреч. После изменений обнови список, чтобы увидеть остальные."
+)
+MANAGE_RESPONSE_HINT = "Ответ можно изменить снова. Чайка сохранит его в календаре."
+
 # --- приглашения (PARTSTAT) --------------------------------------------------
 
 CB_INV_CLOSE = "inv:close"
@@ -18,21 +26,23 @@ CB_INV_BACK = "inv:back"
 CB_INV_PICK_PREFIX = "inv:p:"
 CB_INV_RESPOND_PREFIX = "inv:r:"
 
-INVITATIONS_FETCH_STATUS = "📨 Чайка собирает приглашения…"
-INVITATIONS_BUSY_TEXT = "📨 Уже собираю приглашения — секунду."
+INVITATIONS_FETCH_STATUS = "📨 Собираю приглашения…"
+INVITATIONS_BUSY_TEXT = "📨 Уже собираю приглашения. Подожди немного."
 INVITATIONS_EMPTY_HTML = (
-    "📨 <b>Приглашения</b>\n\nВсё разобрано — встреч, где нужно принять решение, сейчас нет."
+    "📨 <b>Приглашения</b>\n\nВстреч, которые ждут твоего ответа, сейчас нет. Всё разобрано!"
 )
 INVITATIONS_INTRO_HTML = (
-    "<b>Приглашения</b>\n\n"
-    "Встречи, где тебя ждут как участника. Выбери ответ под нужной встречей. «Принять все» примет все показанные встречи и серии."
+    "<b>Приглашения</b>\n"
+    "\n"
+    "Эти встречи ждут твоего ответа. Выбери ответ под каждой встречей. «Принять все» примет все "
+    "показанные встречи, включая целые серии."
 )
-INVITATIONS_SERIES_LABEL = "Повторяется · ответ на всю серию"
+INVITATIONS_SERIES_LABEL = "Повторяющаяся встреча · ответ изменит всю серию"
 INVITATIONS_RESPOND_ACCEPTED = "Принято"
 INVITATIONS_RESPOND_DECLINED = "Отклонено"
 INVITATIONS_RESPOND_TENTATIVE = "Может быть"
 INVITATIONS_RESPOND_FAIL_TEXT = "Не удалось обновить ответ. Попробуй позже."
-INVITATIONS_CLOSED_TEXT = "📨 Чайка свернула список приглашений."
+INVITATIONS_CLOSED_TEXT = "📨 Список приглашений закрыт."
 PARTSTAT_BUSY_TEXT = "Ответ уже обрабатывается. Дождись результата."
 PARTSTAT_UNCONFIRMED_TEXT = (
     "Не удалось подтвердить ответ в календаре. Он мог сохраниться. "
@@ -173,7 +183,7 @@ def invitations_list_html(
         parts.append(expandable_blockquote(body, threshold=4))
     if truncated:
         parts.append("")
-        parts.append("<i>Показаны первые встречи — обновите список после ответов.</i>")
+        parts.append(f"<i>{INVITATIONS_TRUNCATED_TEXT}</i>")
     return "\n".join(parts)
 
 
@@ -185,20 +195,23 @@ CB_MANAGE_REFRESH = "mng:refresh"
 CB_MANAGE_PICK_PREFIX = "mng:p:"
 CB_MANAGE_RESPOND_PREFIX = "mng:r:"
 
-MANAGE_FETCH_STATUS = "🛠 Чайка собирает встречи на неделе…"
-MANAGE_BUSY_TEXT = "🛠 Уже собираю встречи — секунду."
+MANAGE_FETCH_STATUS = "🛠 Собираю встречи на ближайшие 7 дней…"
+MANAGE_BUSY_TEXT = "🛠 Уже собираю встречи. Подожди немного."
 MANAGE_INTRO_HTML = (
-    "🛠 <b>Изменить статус встречи</b>\n\n"
-    "Встречи на ближайшие 7 дней, где ты участник. Тапни строку — Чайка покажет, "
-    "что можно поменять: ✅ принять, 🤔 может быть, ❌ отклонить.\n\n"
-    "<i>Отклонённые встречи Чайка не показывает в плане и дайджесте.</i>"
+    "🛠 <b>Изменить статус встречи</b>\n"
+    "\n"
+    "Здесь встречи на ближайшие 7 дней, в которых ты участвуешь. Выбери встречу, чтобы принять "
+    "её, отклонить или ответить «Может быть».\n"
+    "\n"
+    "<i>Отклонённые встречи не попадают в план и дайджест.</i>"
 )
 MANAGE_EMPTY_HTML = (
-    "🛠 <b>Изменить статус встречи</b>\n\n"
-    "На ближайшую неделю встреч, где ты участник, не нашлось — менять статус нечему."
+    "🛠 <b>Изменить статус встречи</b>\n"
+    "\n"
+    "На ближайшие 7 дней не нашлось встреч, в которых можно изменить твой ответ."
 )
-MANAGE_CLOSED_TEXT = "🛠 Чайка свернула список встреч."
-MANAGE_NOT_FOUND_TEXT = "Встреча не нашлась — обновите список."
+MANAGE_CLOSED_TEXT = "🛠 Список встреч закрыт."
+MANAGE_NOT_FOUND_TEXT = "Не удалось найти встречу. Обнови список."
 MANAGE_RESPOND_FAIL_TEXT = "Не удалось обновить статус. Попробуй позже."
 
 _MANAGE_PARTSTAT_LABEL_RU = {
@@ -218,12 +231,7 @@ def manage_partstat_label(partstat: str | None) -> str | None:
 
 def manage_detail_html(*, title: str, when: str, partstat: str | None) -> str:
     label = manage_partstat_label(partstat) or "—"
-    return (
-        f"🛠 <b>{title}</b>\n"
-        f"{when}\n\n"
-        f"📌 Сейчас: <b>{label}</b>\n\n"
-        "<i>Поменять решение можно сколько угодно — Чайка пошлёт ответ в календарь.</i>"
-    )
+    return f"🛠 <b>{title}</b>\n{when}\n\n📌 Сейчас: <b>{label}</b>\n\n<i>{MANAGE_RESPONSE_HINT}</i>"
 
 
 def build_manage_list_keyboard(rows: list[tuple[str, str]]) -> dict:
@@ -274,5 +282,5 @@ def manage_list_html(*, body_lines: list[str], truncated: bool) -> str:
         parts.append(expandable_blockquote(body, threshold=4))
     if truncated:
         parts.append("")
-        parts.append("<i>Показаны первые встречи — обновите список после изменений.</i>")
+        parts.append(f"<i>{MANAGE_TRUNCATED_TEXT}</i>")
     return "\n".join(parts)

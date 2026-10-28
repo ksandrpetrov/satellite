@@ -374,7 +374,7 @@ def test_digest_settings_button_sends_inline_settings_screen(tmp_path: Path):
     assert "inline_keyboard" in keyboard
     labels = [btn["text"] for row in keyboard["inline_keyboard"] for btn in row]
     assert "🔔 Дайджест на сегодня" in labels
-    assert "📨 Дайджест непринятых встреч" in labels
+    assert "📨 Напоминания о приглашениях" in labels
 
 
 def test_settings_hub_digest_button_opens_digest_screen(tmp_path: Path):
@@ -708,7 +708,7 @@ def test_settings_hub_pending_button_opens_pending_screen(tmp_path: Path):
     handle_callback_query(ctx, _callback(900, CB_PENDING_DIGEST_SETTINGS))
 
     text = callback_edit_html(ctx.telegram)
-    assert "Дайджест непринятых встреч" in text
+    assert "Напоминания о приглашениях" in text
     assert "🔕" in text
 
 
@@ -722,7 +722,7 @@ def test_pending_digest_toggle_enables(tmp_path: Path):
 
     assert store.get(900).pending_digest_enabled is True
     text = callback_edit_html(ctx.telegram)
-    assert "включён" in text
+    assert "включены" in text
 
 
 def test_pending_digest_days_bitmask_round_trip(tmp_path: Path):

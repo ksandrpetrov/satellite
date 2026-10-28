@@ -27,9 +27,9 @@ def subscribe_confirmation_text(time_str: str, weekdays_only: bool) -> str:
     """
     schedule = "по будням" if weekdays_only else "каждый день"
     return (
-        "🔔 Чайка записала маршрут.\n"
-        f"Дайджест на сегодня будет прилетать в <b>{time_str} МСК</b> {schedule}.\n\n"
-        "Поменять время или дни — /settings → «Дайджест на сегодня»."
+        "🔔 Дайджест на сегодня включён.\n"
+        f"Дайджест на сегодня будет приходить в <b>{time_str} МСК</b> {schedule}.\n\n"
+        "Изменить время или дни — /settings → «Дайджест на сегодня»."
     )
 
 
@@ -38,10 +38,9 @@ SUBSCRIBE_ALREADY_TEXT = (
     "Чтобы выключить — /stopdigest, изменить время — /settings."
 )
 UNSUBSCRIBE_CONFIRMATION_TEXT = (
-    "🔕 Чайка сложила крылья.\n"
-    "Дайджест на сегодня больше не будет прилетать. Включить обратно — /digest или /settings."
+    "🔕 Дайджест на сегодня выключен.\nВключить снова — /digest или /settings."
 )
-UNSUBSCRIBE_NOT_SUBSCRIBED_TEXT = "🔕 Дайджест и так был выключен — Чайка просто кивнула."
+UNSUBSCRIBE_NOT_SUBSCRIBED_TEXT = "🔕 Дайджест на сегодня уже выключен."
 
 
 # --- настройки дайджеста ---------------------------------------------------
@@ -104,26 +103,23 @@ def digest_time_screen_text(digest_time: str) -> str:
 
 
 DIGEST_DAYS_WEEKDAYS_APPLIED_TEXT = (
-    "📆 Готово. Дайджест на сегодня — по будням, с понедельника по пятницу."
+    "📆 Дайджест на сегодня будет приходить по будням, с понедельника по пятницу."
 )
 DIGEST_DAYS_ALL_APPLIED_TEXT = (
-    "📆 Готово. Дайджест на сегодня будет прилетать каждый день — "
-    "даже в выходные Чайка на дежурстве."
+    "📆 Дайджест на сегодня будет приходить каждый день, включая выходные."
 )
 
 
 def digest_time_applied_text(digest_time: str) -> str:
-    return f"🕘 Готово.\nДайджест на сегодня будет прилетать в <b>{digest_time} МСК</b>."
+    return f"🕘 Готово.\nДайджест на сегодня будет приходить в <b>{digest_time} МСК</b>."
 
 
 DIGEST_TIME_INVALID_TEXT = (
-    "⚠️ Чайка не разобрала время.\n"
-    "Напиши так: <i>09:30</i>, <i>9 30</i>, <i>9:30</i> или <i>18:25</i>."
+    "⚠️ Не удалось распознать время.\n"
+    "Напиши, например, <i>09:30</i>, <i>9 30</i>, <i>9:30</i> или <i>18:25</i>."
 )
 
-DIGEST_SETTINGS_CLOSED_TEXT = (
-    "🪶 Чайка свернула настройки дайджеста на сегодня. Возвращайся, когда понадобятся."
-)
+DIGEST_SETTINGS_CLOSED_TEXT = "Настройки дайджеста закрыты."
 
 
 def build_digest_settings_keyboard(*, digest_enabled: bool, weather_in_plan_enabled: bool) -> dict:
@@ -200,14 +196,14 @@ def pending_digest_settings_screen_text(
     *, digest_enabled: bool, digest_days: str, digest_time: str
 ) -> str:
     status_emoji = "📨" if digest_enabled else "🔕"
-    status_text = "включён" if digest_enabled else "отключён"
+    status_text = "включены" if digest_enabled else "выключены"
     days_label = _pending_digest_days_label(digest_days)
     return (
-        "📨 <b>Настройки дайджеста непринятых встреч</b>\n\n"
+        "📨 <b>Напоминания о приглашениях</b>\n\n"
         f"{status_emoji} Статус: <b>{status_text}</b>\n"
         f"📆 Дни: <b>{days_label}</b>\n"
         f"🕘 Время: <b>{digest_time} МСК</b>\n\n"
-        "По расписанию Чайка напомнит принять встречи — как в «Входящие»."
+        "Если есть приглашения без ответа, Чайка пришлёт их в выбранное время. Как в разделе «Приглашения»."
     )
 
 
@@ -217,7 +213,7 @@ def pending_digest_days_screen_text(digest_days: str) -> str:
         "📆 <b>Дни отправки</b>\n\n"
         f"Сейчас: <b>{days_label}</b>.\n"
         "Отметь дни недели — можно один или несколько.\n"
-        "Снять последнюю галочку нельзя: нужен хотя бы один день."
+        "Оставь хотя бы один день отправки."
     )
 
 
@@ -234,31 +230,27 @@ def pending_digest_time_screen_text(digest_time: str) -> str:
 
 
 PENDING_DIGEST_DAYS_WEEKDAYS_APPLIED_TEXT = (
-    "📆 Готово. Напоминания о непринятых встречах — по будням."
+    "📆 Напоминания о приглашениях будут приходить по будням."
 )
 PENDING_DIGEST_DAYS_ALL_APPLIED_TEXT = (
-    "📆 Готово. Напоминания будут прилетать каждый день, включая выходные."
+    "📆 Напоминания о приглашениях будут приходить каждый день, включая выходные."
 )
 
 
 def pending_digest_time_applied_text(digest_time: str) -> str:
-    return f"🕘 Готово.\nДайджест непринятых встреч будет прилетать в <b>{digest_time} МСК</b>."
+    return f"🕘 Готово.\nНапоминания о приглашениях будут приходить в <b>{digest_time} МСК</b>."
 
 
 PENDING_DIGEST_TIME_INVALID_TEXT = (
-    "⚠️ Чайка не разобрала время.\n"
-    "Напиши так: <i>10:00</i>, <i>10 30</i>, <i>9:30</i> или <i>18:25</i>."
+    "⚠️ Не удалось распознать время.\n"
+    "Напиши, например, <i>10:00</i>, <i>10 30</i>, <i>9:30</i> или <i>18:25</i>."
 )
 
-PENDING_DIGEST_SETTINGS_CLOSED_TEXT = (
-    "🪶 Чайка свернула настройки дайджеста непринятых встреч. Возвращайся, когда понадобятся."
-)
+PENDING_DIGEST_SETTINGS_CLOSED_TEXT = "Настройки напоминаний закрыты."
 
 
 def build_pending_digest_settings_keyboard(*, digest_enabled: bool) -> dict:
-    toggle_label = (
-        "🔕 Отключить дайджест непринятых" if digest_enabled else "📨 Включить дайджест непринятых"
-    )
+    toggle_label = "🔕 Выключить напоминания" if digest_enabled else "📨 Включить напоминания"
     return {
         "inline_keyboard": [
             [{"text": "📆 Дни отправки", "callback_data": CB_PENDING_DIGEST_DAYS}],
@@ -307,4 +299,8 @@ def build_pending_digest_time_keyboard() -> dict:
 
 
 def pending_digest_toggle_notice_text(*, enabled: bool) -> str:
-    return "📨 Дайджест непринятых включён" if enabled else "🔕 Дайджест непринятых отключён"
+    return (
+        "📨 Напоминания о приглашениях включены"
+        if enabled
+        else "🔕 Напоминания о приглашениях выключены"
+    )

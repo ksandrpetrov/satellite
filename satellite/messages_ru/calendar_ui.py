@@ -21,54 +21,52 @@ from .buttons import (
 )
 from .identity import BOT_INPUT_PLACEHOLDER
 
-UPCOMING_FETCH_STATUS = "🗓 Чайка обходит ближайшую неделю…"
-UPCOMING_BUSY_TEXT = "🗓 Уже собираю список — секунду."
+UPCOMING_FETCH_STATUS = "🗓 Собираю события на ближайшие 7 дней…"
+UPCOMING_BUSY_TEXT = "🗓 Уже собираю список. Подожди немного."
 UPCOMING_EVENTS_HEADING_PLAIN = "Ближайшие события"
 UPCOMING_EVENTS_HEADING_HTML = f"🗓 <b>{UPCOMING_EVENTS_HEADING_PLAIN}</b>"
-UPCOMING_EMPTY_HTML = (
-    "🗓 На ближайшие дни встреч нет.\nНебо чистое — самое время для глубокой работы."
-)
+UPCOMING_EMPTY_HTML = "🗓 На ближайшие 7 дней встреч нет.\nМожно спокойно заняться своими задачами."
 
 
 CREATE_EVENT_ASK_TITLE = "➕ Как назвать встречу? Напиши одной строкой."
 CREATE_EVENT_ASK_DATE = (
-    "📅 На какой день? Жми кнопку ниже или напиши:\n"
+    "📅 На какой день? Выбери день кнопкой или напиши:\n"
     "<i>20.05.2026</i> · <i>«сегодня»</i> · <i>«завтра»</i>"
 )
 CREATE_EVENT_ASK_TIME = (
     "🕘 Во сколько начинаем? Можно так: <i>09:30</i>, <i>9:30</i> или <i>9 30</i>."
 )
 CREATE_EVENT_ASK_DURATION = (
-    "⏱ Сколько минут? Жми пресет ниже или напиши число — например, <i>45</i>."
+    "⏱ Сколько минут продлится встреча? Выбери вариант ниже или напиши число, например <i>45</i>."
 )
-CREATE_EVENT_CONFIRM_HTML = (
-    "🪶 Чайка готова занести в календарь:\n<b>{title}</b>\n{date} · {start}–{end}\n\nВсё верно?"
-)
+CREATE_EVENT_CONFIRM_HTML = "Создать встречу?\n<b>{title}</b>\n{date} · {start}–{end}"
 CREATE_EVENT_INVALID_DATE = (
-    "⚠️ Чайка не разобрала дату.\n"
-    "Попробуй ещё раз: <i>20.05.2026</i>, <i>«сегодня»</i> или <i>«завтра»</i>."
+    "⚠️ Не удалось распознать дату.\n"
+    "Напиши, например, <i>20.05.2026</i>, <i>«сегодня»</i> или <i>«завтра»</i>."
 )
 CREATE_EVENT_INVALID_TIME = (
-    "⚠️ Чайка не разобрала время.\nФормат: <i>09:30</i>, <i>9:30</i> или <i>9 30</i>."
+    "⚠️ Не удалось распознать время.\nНапиши, например, <i>09:30</i>, <i>9:30</i> или <i>9 30</i>."
 )
 CREATE_EVENT_INVALID_LOCAL_TIME = (
-    "⚠️ Это время недоступно из-за перевода часов. Выберите другое время."
+    "⚠️ Такого местного времени нет из-за перевода часов. Выбери другое время."
 )
-CREATE_EVENT_INVALID_DURATION = "⚠️ Длительность — числом минут. Например, <i>30</i> или <i>60</i>."
-CREATE_EVENT_CREATING_HTML = "⏳ Чайка заносит событие в календарь…"
-CREATE_EVENT_SUCCESS_HTML = "✅ Чайка занесла встречу в календарь. Готово."
+CREATE_EVENT_INVALID_DURATION = (
+    "⚠️ Напиши длительность целым числом минут, например <i>30</i> или <i>60</i>."
+)
+CREATE_EVENT_CREATING_HTML = "⏳ Добавляю встречу в календарь…"
+CREATE_EVENT_SUCCESS_HTML = "✅ Встреча добавлена в календарь."
 CREATE_EVENT_FAILED_HTML = (
-    "⚠️ Не получилось создать встречу.\n"
-    "Чайка просит проверить: у пароля приложения должно быть право на запись в календарь. "
-    "Если не помогло — попробуй переподключить календарь в настройках."
+    "⚠️ Не удалось создать встречу.\n"
+    "Проверь, есть ли у пароля приложения право на запись в календарь. Если не помогло, подключи "
+    "календарь заново в настройках."
 )
 CREATE_EVENT_UNCONFIRMED_HTML = (
     "⚠️ Не удалось подтвердить создание встречи. "
     "Проверь календарь перед повтором: встреча могла сохраниться."
 )
-CREATE_EVENT_CANCELLED_HTML = "🪶 Чайка сложила черновик. Встреча не создана."
+CREATE_EVENT_CANCELLED_HTML = "Встреча не создана. Черновик отменён."
 CREATE_EVENT_CREATING_TOAST = "Создаю…"
-CREATE_EVENT_ALREADY_CREATING_TOAST = "Уже создаём…"
+CREATE_EVENT_ALREADY_CREATING_TOAST = "Уже создаю встречу…"
 CREATE_EVENT_DONE_TOAST = "Готово"
 CREATE_EVENT_DONE_SHORT = "✅ Готово."
 
@@ -132,20 +130,20 @@ def build_create_duration_keyboard() -> dict:
 CB_CAL_TOGGLE_PREFIX = "cal:t:"
 CB_CAL_CLOSE = "cal:close"
 
-CALENDAR_SOURCES_SINGLE_HTML = "📚 В аккаунте всего один календарь — выбирать тут пока нечего."
+CALENDAR_SOURCES_SINGLE_HTML = "📚 В аккаунте один календарь. Его встречи уже входят в план."
 CALENDAR_SOURCES_LAST_ENABLED_TEXT = (
-    "Нужен хотя бы один календарь — иначе плану неоткуда брать встречи."
+    "Оставь хотя бы один календарь, чтобы Чайка могла собрать план."
 )
 CALENDAR_SOURCES_LOAD_FAIL_HTML = (
-    "⚠️ Чайка не смогла принести список календарей.\nПопробуй ещё раз через минуту."
+    "⚠️ Не удалось загрузить список календарей.\nПопробуй ещё раз позже."
 )
-CALENDAR_SOURCES_FETCH_STATUS = "📚 Чайка собирает календари…"
-CALENDAR_SOURCES_CLOSED_TEXT = "📚 Закрыли список календарей. Возвращайся, когда понадобится."
+CALENDAR_SOURCES_FETCH_STATUS = "📚 Загружаю календари…"
+CALENDAR_SOURCES_CLOSED_TEXT = "📚 Список календарей закрыт."
 CALENDAR_SOURCES_INTRO = (
-    "Чайка учитывает встречи только из отмеченных календарей. "
-    "Это касается плана дня, утреннего дайджеста и «Ближайших»."
+    "Чайка берёт встречи для плана дня, дайджеста на сегодня и списка «Ближайшие события» только "
+    "из отмеченных календарей."
 )
-CALENDAR_SOURCES_FOOTER = "Тапни строку, чтобы включить или выключить."
+CALENDAR_SOURCES_FOOTER = "Нажми на календарь, чтобы включить или выключить его."
 
 
 def calendar_sources_screen_text(*, lines: list[str]) -> str:
@@ -171,7 +169,7 @@ def build_calendar_sources_keyboard(
         if len(label) > 60:
             label = label[:57] + "…"
         rows.append([{"text": label, "callback_data": f"{CB_CAL_TOGGLE_PREFIX}{token}"}])
-    rows.append([{"text": "⬅️ В Календарь", "callback_data": CB_CAL_CLOSE}])
+    rows.append([{"text": "⬅️ В календарь", "callback_data": CB_CAL_CLOSE}])
     return {"inline_keyboard": rows}
 
 
@@ -184,21 +182,22 @@ CB_FOREIGN_CLOSE = "foreign:close"
 
 FOREIGN_CALENDARS_LOADING_TOAST = "Загружаю…"
 FOREIGN_CALENDARS_INTRO_HTML = (
-    "👥 <b>Чужие календари</b>\n\n"
-    "Календари коллег, которые открыты на твою почту в Mail.ru или Яндексе. "
-    "Чайка может посмотреть в них одним глазом — выбери календарь, потом день."
+    "👥 <b>Общие календари</b>\n"
+    "\n"
+    "Календари Mail.ru, к которым тебе открыли доступ. Выбери календарь, затем день."
 )
 FOREIGN_CALENDARS_EMPTY_HTML = (
-    "👥 Пока ни одного чужого календаря.\n\n"
-    "Попроси коллегу открыть доступ к своему календарю на твою почту "
-    "(в настройках Mail.ru или Яндекс Календаря) — после этого он появится в этом списке."
+    "👥 Общих календарей пока нет.\n"
+    "\n"
+    "Попроси владельца календаря Mail.ru открыть доступ на твою почту. После этого календарь "
+    "появится здесь."
 )
 FOREIGN_CALENDARS_LOAD_FAIL_HTML = (
-    "⚠️ Чайка не смогла принести список чужих календарей.\nПопробуй ещё раз через минуту."
+    "⚠️ Не удалось загрузить общие календари.\nПопробуй ещё раз позже."
 )
-FOREIGN_CALENDARS_CLOSED_TEXT = "👥 Закрыли чужие календари. Возвращайся, когда понадобится."
-FOREIGN_CALENDARS_FETCH_STATUS = "⏳ Чайка облетает чужой календарь…"
-FOREIGN_CALENDARS_DAY_EMPTY_HTML = "🪶 В этот день встреч у коллеги нет."
+FOREIGN_CALENDARS_CLOSED_TEXT = "👥 Список общих календарей закрыт."
+FOREIGN_CALENDARS_FETCH_STATUS = "⏳ Загружаю встречи из общего календаря…"
+FOREIGN_CALENDARS_DAY_EMPTY_HTML = "В этом календаре нет встреч на выбранный день."
 
 
 def foreign_calendars_pick_day_text(*, calendar_name: str) -> str:
@@ -282,5 +281,5 @@ def build_approved_main_keyboard() -> dict:
 
 
 CALENDAR_CONNECTION_CHANGED_TEXT = (
-    "Подключение календаря изменилось. Обновите список встреч и повторите действие."
+    "Подключение календаря изменилось. Обнови список встреч и повтори действие."
 )

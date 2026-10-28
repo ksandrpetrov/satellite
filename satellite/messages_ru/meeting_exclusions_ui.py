@@ -16,11 +16,9 @@ MEETING_EXCLUSIONS_TITLE = "🚫 Исключения встреч"
 MEETING_EXCLUSIONS_LOADING_HTML = "⏳ Собираю встречи ближайшей недели…"
 MEETING_EXCLUSIONS_REFRESH_TOAST = "Обновляю список…"
 MEETING_EXCLUSIONS_SAVED_TOAST = "Сохранено"
-MEETING_EXCLUSIONS_RESET_TOAST = "Правило сброшено"
-MEETING_EXCLUSIONS_CLEARED_TOAST = "Личные исключения сброшены"
-MEETING_EXCLUSIONS_STALE_TEXT = (
-    "Список встреч уже изменился. Чайка обновила его — выбери встречу ещё раз."
-)
+MEETING_EXCLUSIONS_RESET_TOAST = "Для встречи восстановлены общие правила"
+MEETING_EXCLUSIONS_CLEARED_TOAST = "Для всех встреч восстановлены общие правила"
+MEETING_EXCLUSIONS_STALE_TEXT = "Список встреч изменился. Я обновила его — выбери встречу ещё раз."
 MEETING_EXCLUSIONS_CALENDAR_ERROR_TEXT = (
     "⚠️ Не удалось загрузить встречи недели.\n"
     "Проверь календарь или попробуй обновить список чуть позже."
@@ -48,16 +46,16 @@ def meeting_exclusions_screen_text(
     """Fallback HTML экрана исключений."""
     if week_count:
         intro = (
-            "Нажми встречу, чтобы учитывать её в дайджестах или исключить. "
+            "Нажми на встречу, чтобы включить её в сводки или исключить. Правило действует для всех встреч с таким названием. "
             "🚫 — исключена, ✅ — учитывается."
         )
     else:
-        intro = "В календарях нет подходящих встреч на ближайшие 7 дней."
+        intro = "На ближайшие 7 дней нет встреч, для которых можно настроить исключения."
     blocks = [f"<b>{MEETING_EXCLUSIONS_TITLE}</b>", intro]
     if saved_outside_week_count:
         blocks.append(
             "↩️ — сохранённое правило для встречи вне этой недели. "
-            "Нажатие вернёт системное поведение."
+            "Нажми, чтобы убрать личное правило и снова применять общие правила."
         )
     if truncated:
         blocks.append("Показаны первые 200 уникальных названий.")
@@ -125,7 +123,7 @@ def build_meeting_exclusions_keyboard(
 
     actions = [{"text": "🔄 Обновить", "callback_data": MEX_CALLBACK_REFRESH}]
     if has_overrides:
-        actions.append({"text": "🧹 Сбросить личные", "callback_data": MEX_CALLBACK_CLEAR})
+        actions.append({"text": "🧹 Сбросить мои правила", "callback_data": MEX_CALLBACK_CLEAR})
     keyboard.append(actions)
     keyboard.append([{"text": "⬅️ В календарь", "callback_data": CB_SETTINGS_CALENDAR_MENU}])
     return {"inline_keyboard": keyboard}

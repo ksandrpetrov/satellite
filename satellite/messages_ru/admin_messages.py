@@ -15,9 +15,9 @@ def admin_access_request_html(
     name = display_name or "—"
     uname = f"@{username}" if username else "—"
     return (
-        "👤 Новый пользователь стучится к Чайке:\n"
+        "👤 Новая заявка на доступ:\n"
         f"Имя: {name}\n"
-        f"Username: {uname}\n"
+        f"Имя в Telegram: {uname}\n"
         f"Telegram ID: {telegram_user_id}"
     )
 
@@ -43,7 +43,7 @@ def build_admin_access_keyboard(*, telegram_user_id: int) -> dict:
 
 def admin_pending_list_html(lines: list[str]) -> str:
     if not lines:
-        return "📋 Нет заявок на рассмотрении."
+        return "📋 Новых заявок нет."
     body = "\n".join(f"• {line}" for line in lines)
     return f"📋 Заявки на доступ:\n{body}"
 

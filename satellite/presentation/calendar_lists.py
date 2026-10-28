@@ -18,7 +18,10 @@ from ..calendar.events import (
 from ..messages_ru import (
     INVITATIONS_INTRO_HTML,
     INVITATIONS_SERIES_LABEL,
+    INVITATIONS_TRUNCATED_TEXT,
     MANAGE_INTRO_HTML,
+    MANAGE_RESPONSE_HINT,
+    MANAGE_TRUNCATED_TEXT,
     UPCOMING_EVENTS_HEADING_HTML,
     UPCOMING_EVENTS_HEADING_PLAIN,
     invitation_response_buttons,
@@ -170,7 +173,7 @@ def invitations_list_rich_html(
     ]
     blocks.extend(_invitation_items_rich(body_events, tz, reference_date))
     if truncated:
-        blocks.append(paragraph("<i>Показаны первые встречи — обновите список после ответов.</i>"))
+        blocks.append(paragraph(f"<i>{INVITATIONS_TRUNCATED_TEXT}</i>"))
     return truncate_rich_html(join_blocks(blocks))
 
 
@@ -232,9 +235,7 @@ def manage_list_rich_html(
     flush_day()
 
     if truncated:
-        blocks.append(
-            paragraph("<i>Показаны первые встречи — обновите список после изменений.</i>")
-        )
+        blocks.append(paragraph(f"<i>{MANAGE_TRUNCATED_TEXT}</i>"))
     return truncate_rich_html(join_blocks(blocks))
 
 
@@ -244,6 +245,6 @@ def manage_detail_rich_html(*, title: str, when: str, partstat: str | None) -> s
         section_heading(escape_rich(title), level=3),
         paragraph(escape_rich(when)),
         paragraph(f"📌 Сейчас: {bold(escape_rich(label))}"),
-        paragraph("<i>Поменять решение можно сколько угодно — Чайка пошлёт ответ в календарь.</i>"),
+        paragraph(f"<i>{MANAGE_RESPONSE_HINT}</i>"),
     ]
     return join_blocks(blocks)

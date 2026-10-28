@@ -56,7 +56,7 @@ def test_caption_contains_hours_and_trend():
     cap = build_analytics_caption(report)
     assert "20 ч" in cap or "20ч" in cap.replace(" ", "")
     assert "<b>" in cap
-    assert "квартал" in cap.casefold() or "Квартал" in cap
+    assert "За 13 недель время на встречи <b>растёт</b>." in cap
 
 
 def _comparison_report(*, current_busy: int, previous_busy: int, trend: str = "flat"):
@@ -76,8 +76,8 @@ def test_caption_says_previous_week_was_denser_when_current_is_lighter():
 
     caption = build_analytics_caption(report)
 
-    assert "Прошлая неделя была плотнее на <b>3 ч 45 мин</b> встреч." in caption
-    assert "Прошлая неделя была легче" not in caption
+    assert "На этой неделе встречи занимают на <b>3 ч 45 мин</b> меньше, чем на прошлой." in caption
+    assert "больше, чем на прошлой" not in caption
 
 
 def test_caption_says_previous_week_was_lighter_when_current_is_denser():
@@ -85,8 +85,8 @@ def test_caption_says_previous_week_was_lighter_when_current_is_denser():
 
     caption = build_analytics_caption(report)
 
-    assert "Прошлая неделя была легче на <b>3 ч 45 мин</b> встреч." in caption
-    assert "Прошлая неделя была плотнее" not in caption
+    assert "На этой неделе встречи занимают на <b>3 ч 45 мин</b> больше, чем на прошлой." in caption
+    assert "меньше, чем на прошлой" not in caption
 
 
 def test_caption_treats_differences_under_thirty_minutes_as_same_load():
@@ -94,8 +94,8 @@ def test_caption_treats_differences_under_thirty_minutes_as_same_load():
 
     caption = build_analytics_caption(report)
 
-    assert "Плановая нагрузка почти как на прошлой неделе." in caption
-    assert "План Пн–Пт целиком, включая будущие встречи." in caption
+    assert "Время на встречи почти такое же, как на прошлой неделе." in caption
+    assert "План с понедельника по пятницу целиком, включая будущие встречи." in caption
 
 
 def test_rich_caption_uses_markup_instead_of_printing_legacy_tags():
@@ -104,8 +104,8 @@ def test_rich_caption_uses_markup_instead_of_printing_legacy_tags():
     rich = build_analytics_rich_caption(report)
 
     assert "&lt;b&gt;" not in rich
-    assert "Прошлая неделя была плотнее на <b>3 ч 45 мин</b> встреч." in rich
-    assert "За квартал нагрузка <b>держится на одной высоте</b>." in rich
+    assert "На этой неделе встречи занимают на <b>3 ч 45 мин</b> меньше, чем на прошлой." in rich
+    assert "За 13 недель время на встречи <b>почти не меняется</b>." in rich
 
 
 def test_overlap_warning_names_total_and_most_conflicted_day():
@@ -122,7 +122,7 @@ def test_overlap_warning_names_total_and_most_conflicted_day():
     caption = build_analytics_caption(report)
     rich = build_analytics_rich_caption(report)
 
-    expected = "⚠️ <b>3 пересечения встреч</b>; больше всего — во вторник (2 пересечения встреч)."
+    expected = "⚠️ <b>3 пересечения встреч</b>. Больше всего — во вторник (2 пересечения встреч)."
     assert expected in caption
     assert expected in rich
 
@@ -150,6 +150,6 @@ def test_unverified_partstat_is_disclosed_in_both_captions():
     legacy = build_analytics_caption(report)
     rich = build_analytics_rich_caption(report)
 
-    expected = "Статус участия не удалось проверить для <b>3 событий</b> за 13 недель"
+    expected = "За 13 недель не удалось проверить статус участия: <b>3 события</b>"
     assert expected in legacy
     assert expected in rich

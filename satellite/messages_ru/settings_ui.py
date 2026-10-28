@@ -43,7 +43,7 @@ CB_ANALYTICS_BACK = "analytics:back"
 
 CALENDAR_DISCONNECT_LOADING_HTML = "⏳ Отключаю календарь…"
 ANALYTICS_SAVED_TOAST = "Сохранено"
-ANALYTICS_BUSY_TOAST = "Уже строю отчёт — подожди немного"
+ANALYTICS_BUSY_TOAST = "Уже собираю отчёт. Подожди немного."
 
 BUTTON_ANALYTICS = "📊 Аналитика недели"
 BUTTON_CALENDAR_MENU = "📅 Календарь"
@@ -66,9 +66,9 @@ def settings_hub_status_bits(
         )
     if pending_digest_enabled is not None:
         bits.append(
-            "📨 Дайджест непринятых включён"
+            "📨 Напоминания о приглашениях включены"
             if pending_digest_enabled
-            else "📨 Дайджест непринятых выключен"
+            else "📨 Напоминания о приглашениях выключены"
         )
     if weather_in_plan_enabled is not None:
         bits.append(
@@ -85,11 +85,10 @@ def settings_hub_status_bits(
 
 SETTINGS_HUB_TITLE = "⚙️ <b>Настройки Чайки</b>"
 SETTINGS_HUB_TITLE_PLAIN = "⚙️ Настройки Чайки"
-SETTINGS_HUB_INTRO = (
-    "Здесь живут дайджесты, погода в плане, аналитика и календарь. Выбери, что настроить."
-)
+SETTINGS_HUB_INTRO = "Выбери, что настроить."
 SETTINGS_CALENDAR_MENU_BODY = (
-    "Управление подключением, приглашениями, исключениями встреч и выбором календарей для плана."
+    "Здесь можно проверить подключение, ответить на приглашения и выбрать, какие календари и "
+    "встречи учитывать в сводках."
 )
 
 
@@ -116,13 +115,15 @@ def settings_hub_text(
 SETTINGS_HUB_TEXT = settings_hub_text()
 
 ANALYTICS_OPTIONS_TEXT = (
-    "📊 <b>Аналитика недели</b>\n\n"
+    "📊 <b>Аналитика недели</b>\n"
+    "\n"
     "Рабочий день для расчёта занятости: <b>{workday}</b>.\n"
-    "Жми «Построить отчёт» — Чайка пришлёт картинку с графиком и сводкой по последним семи дням."
+    "Нажми «Построить отчёт» — Чайка покажет план с понедельника по пятницу, включая будущие "
+    "встречи, сравнение с прошлой неделей и график за 13 недель."
 )
 ANALYTICS_WORKDAY_APPLIED_TEXT = (
-    "📊 Рабочий день для аналитики обновлён.\n"
-    "Жми «Построить отчёт» — Чайка пересчитает по новым границам."
+    "📊 Рабочие часы для аналитики сохранены.\n"
+    "Нажми «Построить отчёт», чтобы увидеть расчёт с новым расписанием."
 )
 
 
@@ -146,9 +147,7 @@ def build_analytics_options_keyboard(*, workday_preset: str) -> dict:
     }
 
 
-SETTINGS_HUB_CLOSED_TEXT = (
-    "🪶 Чайка свернула настройки. Кнопка «Настройки» всегда рядом — на главной клавиатуре."
-)
+SETTINGS_HUB_CLOSED_TEXT = "🪶 Настройки закрыты. Открыть снова — /settings."
 
 
 def weather_in_plan_toggle_button_text(*, enabled: bool) -> str:
@@ -157,8 +156,8 @@ def weather_in_plan_toggle_button_text(*, enabled: bool) -> str:
 
 def weather_in_plan_toggle_notice_text(*, enabled: bool) -> str:
     if enabled:
-        return "🌤 Погода снова будет в плане и дайджесте на сегодня."
-    return "🔕 Погоду в плане и дайджесте на сегодня отключил — только календарь."
+        return "🌤 Погода включена в плане и дайджесте на сегодня."
+    return "🔕 Погода выключена в плане и дайджесте на сегодня."
 
 
 def build_settings_hub_keyboard(
@@ -177,7 +176,7 @@ def build_settings_hub_keyboard(
     """
     rows: list[list[dict[str, object]]] = [
         [{"text": "🔔 Дайджест на сегодня", "callback_data": CB_SETTINGS_DIGEST}],
-        [{"text": "📨 Дайджест непринятых встреч", "callback_data": CB_PENDING_DIGEST_SETTINGS}],
+        [{"text": "📨 Напоминания о приглашениях", "callback_data": CB_PENDING_DIGEST_SETTINGS}],
         [
             {
                 "text": weather_in_plan_toggle_button_text(enabled=weather_in_plan_enabled),
@@ -208,9 +207,10 @@ def build_settings_hub_keyboard(
 SETTINGS_CALENDAR_MENU_TEXT = f"📅 <b>Календарь</b>\n\n{SETTINGS_CALENDAR_MENU_BODY}"
 
 SETTINGS_DISCONNECT_CONFIRM_TEXT = (
-    "🪶 Точно отключить календарь?\n\n"
-    "Чайка забудет логин и пароль, но настройки дайджеста и аналитики сохранятся. "
-    "Заново подключить можно одной кнопкой."
+    "Отключить календарь?\n"
+    "\n"
+    "Сохранённые логин и пароль будут удалены. Настройки дайджеста и аналитики останутся. Для "
+    "повторного подключения понадобится снова ввести почту и пароль приложения."
 )
 BUTTON_DISCONNECT_CALENDAR_CONFIRM = "⚠️ Да, отключить"
 BUTTON_DISCONNECT_CALENDAR_CANCEL = "⬅️ Отмена"
@@ -256,23 +256,16 @@ def build_settings_disconnect_confirm_keyboard() -> dict:
 
 # --- ошибки handler'ов -------------------------------------------------------
 
-ERR_CALDAV_UNAVAILABLE_TEXT = (
-    "⚠️ Календарь не отвечает.\nЧайка попробует снова через минуту — попытайся ещё раз."
-)
+ERR_CALDAV_UNAVAILABLE_TEXT = "⚠️ Не удалось получить данные календаря.\nПопробуй ещё раз позже."
 
-ERR_DIGEST_BUILD_FAILED_TEXT = (
-    "⚠️ Чайка вернулась без сводки.\n\n"
-    "Крылья целы, но календарь сейчас не отвечает. Попробуй ещё раз чуть позже."
-)
+ERR_DIGEST_BUILD_FAILED_TEXT = "⚠️ Не удалось собрать план.\nПопробуй ещё раз позже."
 
 ERR_SETTINGS_SAVE_FAILED_TEXT = (
-    "⚠️ Не удалось сохранить настройки.\nЧайка попробует снова при следующем действии."
+    "⚠️ Не удалось сохранить настройки.\nПопробуй изменить их ещё раз позже."
 )
 ERR_USERS_SAVE_FAILED_TEXT = ERR_SETTINGS_SAVE_FAILED_TEXT
 
 # Универсальный текст для непредвиденных ошибок в диспетчере: пользователь
 # должен получить какой-то ответ, чтобы не казалось, что бот «съел» команду.
 # Никаких техдеталей — стек только в логе.
-ERR_GENERIC_HANDLER_TEXT = (
-    "⚠️ Что-то пошло не так. Чайка уже разбирается — попробуй ещё раз через минуту."
-)
+ERR_GENERIC_HANDLER_TEXT = "⚠️ Не удалось выполнить действие. Попробуй ещё раз позже."

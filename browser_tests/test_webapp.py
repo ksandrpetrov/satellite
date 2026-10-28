@@ -47,7 +47,7 @@ def test_local_today_tomorrow_and_submitted_date(
     confirm_form(page)
     page.locator("#createConfirmBtn").click()
     expect(page.locator("#createStatus")).to_be_visible()
-    expect(page.locator("#createStatus")).to_contain_text("Событие создано")
+    expect(page.locator("#createStatus")).to_contain_text("Событие добавлено")
     expect(page.locator("#evTitle")).to_be_visible()
     expect(page.locator("#evTitle")).to_have_value("")
     assert len(app.provider.created) == 1
@@ -76,7 +76,7 @@ def test_fractional_duration_is_not_silently_truncated(app, page_factory):
     open_create(page, app)
     confirm_form(page, duration="1.9")
     expect(page.locator("#evDuration")).to_be_visible()
-    expect(page.locator("#createStatus")).to_contain_text("длительность в минутах")
+    expect(page.locator("#createStatus")).to_contain_text("длительность целым числом минут")
     assert not app.provider.created
 
 
@@ -120,7 +120,7 @@ def test_connect_create_delete_disconnect_on_mobile(app, page_factory):
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     page.screenshot(path="test-results/mobile-confirm.png", full_page=True)
     page.locator("#createConfirmBtn").click()
-    expect(page.locator("#createStatus")).to_contain_text("Событие создано")
+    expect(page.locator("#createStatus")).to_contain_text("Событие добавлено")
     page.locator('[data-tab="events"]').click()
     expect(page.locator(".event-line")).to_contain_text(title)
     assert page.locator(".event-line script, .event-line img").count() == 0
@@ -147,7 +147,7 @@ def test_expired_auth_does_not_create_event_and_retains_draft(app, page_factory)
     app.clock[0] += 901
     page.locator("#createConfirmBtn").click()
     expect(page.locator("#createStatus")).to_be_visible()
-    expect(page.locator("#createStatus")).not_to_contain_text("Событие создано")
+    expect(page.locator("#createStatus")).not_to_contain_text("Событие добавлено")
     expect(page.locator("#createConfirmBox")).to_contain_text("Retain draft")
     expect(page.locator("#createConfirmBtn")).to_be_enabled()
     assert not app.provider.created
@@ -165,7 +165,7 @@ def test_network_failure_then_retry_preserves_form(app, page_factory):
     assert not app.provider.created
     page.unroute("**/api/calendar/events*")
     page.locator("#createConfirmBtn").click()
-    expect(page.locator("#createStatus")).to_contain_text("Событие создано")
+    expect(page.locator("#createStatus")).to_contain_text("Событие добавлено")
     assert len(app.provider.created) == 1
 
 
@@ -176,7 +176,7 @@ def test_write_denied_does_not_reset_form(app, page_factory):
     open_create(page, app)
     confirm_form(page)
     page.locator("#createConfirmBtn").click()
-    expect(page.locator("#createStatus")).to_contain_text("Проверьте права записи")
+    expect(page.locator("#createStatus")).to_contain_text("Проверь право на запись")
     expect(page.locator("#createConfirmBox")).to_contain_text("Browser meeting")
     expect(page.locator("#createConfirmBtn")).to_be_enabled()
     assert not app.provider.created
@@ -186,11 +186,24 @@ def test_missing_auth_and_connect_validation(app, page_factory):
     page = page_factory()
     page.goto(app.base + "/connect", wait_until="networkidle")
     page.locator("#connectBtn").click()
-    expect(page.locator("#connectStatus")).to_contain_text("Укажите email")
+    expect(page.locator("#connectStatus")).to_contain_text("Введи почту")
     page.locator("#login").fill("test@example.test")
     page.locator("#token").fill("test-app-password")
     page.locator("#connectBtn").click()
-    expect(page.locator("#connectStatus")).to_contain_text("Откройте окно снова из бота")
+    expect(page.locator("#connectStatus")).to_contain_text("Открой окно снова")
+    assert not app.users.get(app.user_id).has_calendar
+
+
+def test_connection_labels_and_dynamic_errors_use_the_copy_catalog(app, page_factory, monkeypatch):
+    from satellite.messages_ru import WEBAPP_COPY
+
+    monkeypatch.setitem(WEBAPP_COPY, "login_label", "Почта для календаря")
+    monkeypatch.setitem(WEBAPP_COPY, "connect_missing_fields", "Заполни почту и пароль приложения.")
+    page = page_factory(mobile=True)
+    page.goto(app.url, wait_until="networkidle")
+    expect(page.get_by_label("Почта для календаря", exact=True)).to_be_visible()
+    page.locator("#connectBtn").click()
+    expect(page.locator("#connectStatus")).to_have_text("Заполни почту и пароль приложения.")
     assert not app.users.get(app.user_id).has_calendar
 
 
@@ -219,7 +232,7 @@ def test_create_keyboard_labels_focus_and_tabs(app, page_factory):
     field = page.get_by_label("Как назвать событие?", exact=False)
     field.fill("Accessible meeting")
     page.locator(".wizard-step.active .create-next").click()
-    expect(page.get_by_label("На какую дату?", exact=False)).to_be_focused()
+    expect(page.get_by_label("На какой день?", exact=False)).to_be_focused()
     confirm_form(page)
     expect(page.locator("#createConfirmBox")).to_be_focused()
     page.locator("#createCancelBtn").click()
@@ -253,7 +266,7 @@ def test_confirmation_matches_actual_end(
         expect(page.locator("#createConfirmBox")).to_contain_text("UTC-04:00")
         expect(page.locator("#createConfirmBox")).to_contain_text("UTC-05:00")
     page.locator("#createConfirmBtn").click()
-    expect(page.locator("#createStatus")).to_contain_text("Событие создано")
+    expect(page.locator("#createStatus")).to_contain_text("Событие добавлено")
     payload = app.provider.created[0]
     assert (payload.end - payload.start).total_seconds() == int(duration) * 60
     assert (
@@ -271,7 +284,7 @@ def test_invalid_success_response_does_not_claim_creation(app, page_factory):
         lambda route: route.fulfill(status=200, body="<html>proxy</html>"),
     )
     page.locator("#createConfirmBtn").click()
-    expect(page.locator("#createStatus")).to_contain_text("Проверьте календарь")
+    expect(page.locator("#createStatus")).to_contain_text("Проверь календарь")
     expect(page.locator("#createConfirmBox")).to_contain_text("Browser meeting")
     assert not app.provider.created
 
@@ -286,13 +299,13 @@ def test_slow_create_cannot_be_cancelled_or_submitted_twice(app, page_factory):
     page.locator("#createConfirmBtn").click()
     expect(page.locator("#createCancelBtn")).to_be_disabled()
     expect(page.locator("#createConfirmBtn")).to_be_disabled()
-    expect(page.locator("#createStatus")).to_contain_text("Создаём")
+    expect(page.locator("#createStatus")).to_contain_text("Добавляю событие")
     page.locator('[data-tab="connection"]').click()
     page.locator('[data-tab="create"]').click()
     expect(page.locator("#createConfirmBox")).to_contain_text("Browser meeting")
     assert len(requests) == 1
     requests[0].continue_()
-    expect(page.locator("#createStatus")).to_contain_text("Событие создано")
+    expect(page.locator("#createStatus")).to_contain_text("Событие добавлено")
     assert len(app.provider.created) == 1
 
 
@@ -326,7 +339,7 @@ def test_stale_events_response_cannot_overwrite_newer_list(app, page_factory):
     page.wait_for_function("document.querySelector('#eventsList .spinner') !== null")
     page.locator("#refreshBtn").click()
     # Route callbacks are dispatched during Playwright waits; neither response is released yet.
-    expect(page.locator("#eventsList")).to_contain_text("собирает")
+    expect(page.locator("#eventsList")).to_contain_text("Собираю события на ближайшие 7 дней")
     assert len(held) == 2
     held[1].fulfill(
         json={
@@ -349,9 +362,9 @@ def test_slow_write_times_out_without_claiming_failure_or_losing_draft(app, page
     held = []
     page.route("**/api/calendar/events*", lambda route: held.append(route))
     page.locator("#createConfirmBtn").click()
-    expect(page.locator("#createStatus")).to_contain_text("Создаём")
+    expect(page.locator("#createStatus")).to_contain_text("Добавляю событие")
     page.clock.fast_forward(31000)
-    expect(page.locator("#createStatus")).to_contain_text("Проверьте календарь")
+    expect(page.locator("#createStatus")).to_contain_text("Проверь календарь")
     expect(page.locator("#createConfirmBtn")).to_be_enabled()
     expect(page.locator("#createConfirmBox")).to_contain_text("Uncertain result")
     assert len(held) == 1
