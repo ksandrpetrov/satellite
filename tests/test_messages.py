@@ -7,6 +7,7 @@ from satellite.messages_ru import (
     BUTTON_FOREIGN_CALENDARS,
     BUTTON_INVITATIONS,
     BUTTON_MANAGE_EVENTS,
+    BUTTON_OPTIMIZE,
     BUTTON_SETTINGS,
     BUTTON_TODAY,
     BUTTON_TOMORROW,
@@ -55,6 +56,7 @@ def test_approved_main_keyboard_layout():
         BUTTON_FOREIGN_CALENDARS,
         BUTTON_CREATE_EVENT,
         BUTTON_SETTINGS,
+        BUTTON_OPTIMIZE,
     ]
     # Сегодня и Завтра — рядом в одном ряду
     first_row = [btn["text"] for btn in kb["keyboard"][0]]

@@ -31,7 +31,14 @@ def setup_logging(
     *,
     level: str = "INFO",
     log_file: Path | str | None = None,
-    quiet_loggers: tuple[str, ...] = ("caldav", "urllib3", "requests"),
+    quiet_loggers: tuple[str, ...] = (
+        "caldav",
+        "urllib3",
+        "requests",
+        "openai",
+        "httpx2",
+        "httpcore2",
+    ),
 ) -> logging.Logger:
     """Настраивает root-логгер. Идемпотентно: повторный вызов не плодит хендлеры."""
     root = logging.getLogger()

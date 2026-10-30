@@ -663,12 +663,14 @@ class CalDAVPartstatMixin:
                     return True
         return False
 
-    def _get_event_ics_via_http(self, event_url: str) -> tuple[bytes, str | None]:
+    def _get_event_ics_via_http(
+        self, event_url: str, *, timeout_sec: float | None = None
+    ) -> tuple[bytes, str | None]:
         """GET ресурса события; ETag с ответа уходит в PUT (без лишнего HEAD)."""
         response = self._http_get(
             event_url,
             auth=(self._auth_username(), self._app_password),
-            timeout=self._partstat_update_timeout_sec,
+            timeout=self._partstat_update_timeout_sec if timeout_sec is None else timeout_sec,
             headers={"Accept": "text/calendar"},
         )
         if response.status_code != 200 or not response.content:
@@ -677,7 +679,12 @@ class CalDAVPartstatMixin:
         return response.content, etag
 
     def _put_event_ics_via_http(
-        self, event_url: str, ics: bytes, *, etag: str | None = None
+        self,
+        event_url: str,
+        ics: bytes,
+        *,
+        etag: str | None = None,
+        timeout_sec: float | None = None,
     ) -> None:
         """PUT обновлённого ICS только с версией прочитанного ресурса."""
         auth = (self._auth_username(), self._app_password)
@@ -691,7 +698,7 @@ class CalDAVPartstatMixin:
             data=ics,
             auth=auth,
             headers=headers,
-            timeout=self._partstat_update_timeout_sec,
+            timeout=self._partstat_update_timeout_sec if timeout_sec is None else timeout_sec,
         )
         if response.status_code == 412:
             raise CalDAVConflictError("Event changed during invitation response")

@@ -7,6 +7,7 @@ import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 
+from ..messages_ru import AI_BUSY
 from .concurrency import ChatLockManager
 from .handlers import (
     HandlerContext,
@@ -19,6 +20,7 @@ from .handlers import (
     is_update_callback,
     is_update_message,
 )
+from .handlers.delivery import safe_answer_callback, send
 from .offset_tracker import OffsetTracker
 
 log = logging.getLogger(__name__)
@@ -118,10 +120,22 @@ class UpdateDispatcher:
 
     def _run_message_handler(self, ctx: HandlerContext, msg: IncomingMessage) -> None:
         lock = self._chat_locks.acquire(msg.chat_id)
-        with lock:
+        while not lock.acquire(timeout=0.05):
+            if ctx.assistant is not None and ctx.assistant.is_running(msg.user_id):
+                send(ctx, msg.chat_id, AI_BUSY)
+                return
+        try:
             handle_message(ctx, msg)
+        finally:
+            lock.release()
 
     def _run_callback_handler(self, ctx: HandlerContext, cb: IncomingCallback) -> None:
         lock = self._chat_locks.acquire(cb.chat_id)
-        with lock:
+        while not lock.acquire(timeout=0.05):
+            if ctx.assistant is not None and ctx.assistant.is_running(cb.user_id):
+                safe_answer_callback(ctx, cb, text=AI_BUSY)
+                return
+        try:
             handle_callback_query(ctx, cb)
+        finally:
+            lock.release()

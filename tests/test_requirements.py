@@ -26,6 +26,7 @@ RUNTIME_PINS = {
     "requests==2.34.2",
     "Pillow==13.0.0",
     "mcp==2.3.0",
+    "openai==3.41.0",
 }
 DEV_PINS = {
     "pytest==9.1.1",

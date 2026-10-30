@@ -18,6 +18,7 @@ from .providers.base import (
     CalendarEventPayload,
     CalendarEventRef,
     CalendarListEntry,
+    CalendarMutation,
     CalendarNotConnectedError,
     CalendarProvider,
     CalendarProviderError,
@@ -229,6 +230,34 @@ class UserCalendarService:
             telegram_user_id,
             operation="create",
             fn=lambda cc: cc.provider.create_event(cc.context, payload, tz=tz),
+        )
+
+    def apply_mutation(
+        self,
+        telegram_user_id: int,
+        mutation: CalendarMutation,
+        *,
+        reconcile_only: bool = False,
+        deadline: float | None = None,
+    ) -> CalendarEventRef:
+        def write(cc: ConnectedCalendar) -> CalendarEventRef:
+            if mutation.connection_id != self._identity(cc.record):
+                raise CalendarProviderError(
+                    "Connection changed", error_code="CALENDAR_CONNECTION_CHANGED"
+                )
+            allowed = {cc.context.primary_calendar_url, *cc.context.enabled_calendar_urls}
+            if mutation.calendar_url not in allowed:
+                raise CalendarProviderError(
+                    "Calendar scope changed", error_code="CALENDAR_CONNECTION_CHANGED"
+                )
+            return cc.provider.apply_mutation(
+                cc.context, mutation, reconcile_only=reconcile_only, deadline=deadline
+            )
+
+        return self._run(
+            telegram_user_id,
+            operation="create" if mutation.kind == "create" else "update",
+            fn=write,
         )
 
     def update_event(

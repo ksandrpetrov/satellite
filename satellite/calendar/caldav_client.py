@@ -259,10 +259,15 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
                 ) from exc
         return uid, event_url
 
-    def _created_event_is_saved(self, event_url: str, expected: IcsEvent) -> bool:
+    def _created_event_is_saved(
+        self, event_url: str, expected: IcsEvent, *, timeout_sec: float | None = None
+    ) -> bool:
         """Reconcile a lost PUT response by reading back this attempt's unique resource."""
         try:
-            payload, _ = self._get_event_ics_via_http(event_url)
+            if timeout_sec is None:
+                payload, _ = self._get_event_ics_via_http(event_url)
+            else:
+                payload, _ = self._get_event_ics_via_http(event_url, timeout_sec=timeout_sec)
             calendar = IcsCalendar.from_ical(payload)
             events = calendar.walk("vevent")
             if calendar.name != "VCALENDAR" or len(events) != 1:
@@ -300,6 +305,11 @@ class CalDAVService(CalDAVPartstatMixin, CalDAVFetchMixin):
             calendar = IcsCalendar.from_ical(payload)
             utc_start = _to_utc(start)
             utc_end = _to_utc(end)
+            components = calendar.walk("vevent")
+            if len(components) != 1 or any(
+                components[0].get(key) for key in ("rrule", "rdate", "recurrence-id")
+            ):
+                raise CalDAVError("Recurring events require an explicit occurrence identity")
             for component in calendar.walk("vevent"):
                 component["summary"] = title
                 # DTSTART/DTEND/DTSTAMP в UTC — без VTIMEZONE блок Mail.ru не примет.

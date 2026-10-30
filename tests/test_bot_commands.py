@@ -17,6 +17,9 @@ EXPECTED_COMMANDS = (
     "invitations",
     "manage",
     "create",
+    "ai",
+    "optimize",
+    "ai_reset",
     "settings",
     "help",
 )

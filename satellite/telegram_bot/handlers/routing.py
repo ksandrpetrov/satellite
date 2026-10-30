@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ...messages_ru import (
+    BUTTON_OPTIMIZE,
     button_text_is_calendar_sources,
     button_text_is_check_calendar,
     button_text_is_connect_calendar,
@@ -23,6 +24,7 @@ from ...messages_ru import (
     button_text_is_unsubscribe,
     button_text_is_upcoming,
     button_text_to_mode,
+    normalize_button_text,
 )
 from .context import IncomingCallback, IncomingMessage, PlanMode, SubscriptionAction
 
@@ -99,6 +101,26 @@ class PendingCommand:
     pass
 
 
+@dataclass(frozen=True)
+class AiHelpCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class OptimizeCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class AiResetCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class AiUsageCommand:
+    pass
+
+
 RecognizedCommand = (
     PlanCommand
     | SubscriptionCommand
@@ -114,6 +136,10 @@ RecognizedCommand = (
     | InvitationsCommand
     | ManageEventsCommand
     | PendingCommand
+    | AiHelpCommand
+    | OptimizeCommand
+    | AiResetCommand
+    | AiUsageCommand
 )
 
 
@@ -130,6 +156,15 @@ def _subscription_command(text: str) -> SubscriptionCommand | None:
 # Порядок важен: первый совпавший выигрывает. Добавление новой команды —
 # одна строка в этом списке + dataclass + matcher.
 _RECOGNIZERS: list[Callable[[str], RecognizedCommand | None]] = [
+    lambda t: AiHelpCommand() if _command_part(t).split("@")[0] == "/ai" else None,
+    lambda t: AiResetCommand() if _command_part(t).split("@")[0] == "/ai_reset" else None,
+    lambda t: AiUsageCommand() if _command_part(t).split("@")[0] == "/ai_usage" else None,
+    lambda t: (
+        OptimizeCommand()
+        if _command_part(t).split("@")[0] == "/optimize"
+        or normalize_button_text(t) == normalize_button_text(BUTTON_OPTIMIZE)
+        else None
+    ),
     lambda t: StartOrHelpCommand(is_start=True) if is_start_command(t) else None,
     lambda t: StartOrHelpCommand(is_start=False) if is_help_command(t) else None,
     _plan_command,
@@ -150,7 +185,7 @@ _RECOGNIZERS: list[Callable[[str], RecognizedCommand | None]] = [
 
 def recognize_message(text: str | None) -> RecognizedCommand | None:
     """Распознаёт команду или текст reply-кнопки. None — свободный ввод / unknown."""
-    if not text:
+    if not text or not text.strip():
         return None
     for recognizer in _RECOGNIZERS:
         result = recognizer(text)
@@ -191,7 +226,8 @@ _CMD_FOREIGN_CALENDARS = re.compile(
 
 
 def _command_part(text: str) -> str:
-    return text.strip().split(maxsplit=1)[0].lower()
+    parts = text.strip().split(maxsplit=1)
+    return parts[0].lower() if parts else ""
 
 
 def parse_command_mode(text: str | None) -> PlanMode | None:
@@ -336,6 +372,7 @@ def extract_message(update: dict) -> IncomingMessage:
         display_name=_display_name(from_user),
         text=text,
         web_app_data=web_app_data,
+        chat_type=chat.get("type"),
     )
 
 

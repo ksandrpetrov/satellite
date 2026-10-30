@@ -73,6 +73,21 @@ class CalendarEventPayload:
     description: str | None = None
 
 
+@dataclass(frozen=True)
+class CalendarMutation:
+    """Persisted, server-owned identity for an idempotent calendar write."""
+
+    operation_id: str
+    kind: str
+    calendar_url: str
+    connection_id: str
+    payload: CalendarEventPayload
+    event_ref: CalendarEventRef | None = None
+    original_start: datetime | None = None
+    original_end: datetime | None = None
+    recurrence_id: datetime | None = None
+
+
 Event = dict[str, Any]
 
 
@@ -83,6 +98,15 @@ class CalendarProvider(Protocol):
     def close(self) -> None:
         """Закрывает owned сетевые ресурсы. Повторный вызов безопасен."""
         ...
+
+    def apply_mutation(
+        self,
+        context: UserCalendarContext,
+        mutation: CalendarMutation,
+        *,
+        reconcile_only: bool,
+        deadline: float | None = None,
+    ) -> CalendarEventRef: ...
 
     def validate_credentials(
         self,

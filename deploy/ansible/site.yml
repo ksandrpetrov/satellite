@@ -18,6 +18,7 @@
       ansible.builtin.shell: >-
         grep -m1 '^TOKEN_ENCRYPTION_KEY=' "{{ deploy_dir }}/.env" | cut -d= -f2- | tr -d '\r'
       register: existing_token_key
+      no_log: true
       changed_when: false
       failed_when: false
       when:
@@ -25,6 +26,7 @@
         - (token_encryption_key | default('') | trim | length) == 0
 
     - name: Ensure TOKEN_ENCRYPTION_KEY
+      no_log: true
       ansible.builtin.set_fact:
         token_encryption_key_effective: >-
           {{
@@ -43,6 +45,21 @@
               )
             )
           }}
+
+    - name: Preserve existing AI settings before rendering env
+      ansible.builtin.shell: >-
+        python3 -c 'import json,pathlib; p=pathlib.Path("{{ deploy_dir }}/.env");
+        names={"OPENAI_API_KEY","AI_ENABLED","AI_MODEL","AI_MONTHLY_LIMIT_USD"};
+        print(json.dumps({k:v for line in (p.read_text().splitlines() if p.exists() else [])
+        if "=" in line for k,v in [line.split("=",1)] if k in names}))'
+      register: existing_ai_settings
+      changed_when: false
+      no_log: true
+
+    - name: Resolve AI settings
+      ansible.builtin.set_fact:
+        ai_existing: "{{ existing_ai_settings.stdout | from_json }}"
+      no_log: true
 
     # До любого apt: на сервере мог остаться ручной install Docker (docker.gpg +
     # .list/.sources). Две записи с разным Signed-By ломают apt update_cache.
@@ -154,6 +171,7 @@
         - { src: docker-compose.yml.j2, dest: docker-compose.yml }
         - { src: env.j2, dest: .env, mode: "0600" }
       notify: Restart satellite
+      no_log: true
 
     - name: Remove previous satellite build context
       ansible.builtin.file:

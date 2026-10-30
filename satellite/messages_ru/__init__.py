@@ -11,6 +11,7 @@
 
 from .access import *  # noqa: F403
 from .admin_messages import *  # noqa: F403
+from .assistant_ui import *
 from .buttons import *  # noqa: F403
 from .calendar_ui import *  # noqa: F403
 from .digest_ui import *  # noqa: F403

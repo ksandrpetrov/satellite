@@ -10,6 +10,7 @@ from .base import (
     CalendarEventPayload,
     CalendarEventRef,
     CalendarListEntry,
+    CalendarMutation,
     ProviderNotImplementedError,
     UserCalendarContext,
 )
@@ -19,6 +20,16 @@ PROVIDER_ID = "yandex"
 
 class YandexCalendarProvider:
     provider_id = PROVIDER_ID
+
+    def apply_mutation(
+        self,
+        context: UserCalendarContext,
+        mutation: CalendarMutation,
+        *,
+        reconcile_only: bool,
+        deadline: float | None = None,
+    ) -> CalendarEventRef:
+        raise ProviderNotImplementedError(self.provider_id)
 
     def close(self) -> None:
         return

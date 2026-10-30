@@ -14,12 +14,14 @@ from typing import Any, TypeVar, cast
 from ...security.token_vault import ProviderCredentials
 from ..caldav_client import CalDAVError, CalDAVService
 from ..caldav_shared import CalDAVCreateUnconfirmedError, CalDAVPartstatUnconfirmedError
+from ..safe_mutations import apply_mutation
 from ..selection import effective_enabled_calendar_urls_from_parts
 from .base import (
     CalendarConnectionStatus,
     CalendarEventPayload,
     CalendarEventRef,
     CalendarListEntry,
+    CalendarMutation,
     CalendarProviderError,
     Event,
     UserCalendarContext,
@@ -75,6 +77,22 @@ def _account_operation(fn: _F) -> _F:
 
 class MailruCalendarProvider:
     provider_id = PROVIDER_ID
+
+    @_account_operation
+    def apply_mutation(
+        self,
+        context: UserCalendarContext,
+        mutation: CalendarMutation,
+        *,
+        reconcile_only: bool,
+        deadline: float | None = None,
+    ) -> CalendarEventRef:
+        return apply_mutation(
+            self._service(context.credentials),
+            mutation,
+            reconcile_only=reconcile_only,
+            deadline=deadline,
+        )
 
     def __init__(self, *, cache_ttl_sec: int = 300) -> None:
         self._cache_ttl_sec = cache_ttl_sec
