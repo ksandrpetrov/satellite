@@ -5,7 +5,12 @@ from __future__ import annotations
 import re
 from html import escape
 
-from .rich import bold, divider, join_blocks, paragraph, section_heading, unordered_list
+from .rich import bold, join_blocks, paragraph, section_heading, unordered_list
+
+_CALENDAR_ROW = re.compile(
+    r"^(\d+\. )(\d{2}:\d{2}–(?:\d{2}\.\d{2} )?\d{2}:\d{2}"
+    r"|Весь день(?: · \d{2}\.\d{2}–\d{2}\.\d{2})?)(.*)$"
+)
 
 
 def assistant_message_chunks(text: str, *, limit: int = 2800) -> list[str]:
@@ -57,29 +62,38 @@ def assistant_message_chunks(text: str, *, limit: int = 2800) -> list[str]:
 def assistant_message_html(text: str) -> tuple[str, str]:
     rich: list[str] = []
     legacy: list[str] = []
-    previous_card = False
+    previous_row = False
     for block in text.split("\n\n"):
         lines = block.splitlines()
         if not lines:
             continue
         if lines[0].startswith("## "):
-            previous_card = False
+            previous_row = False
             title = escape(lines.pop(0)[3:])
             rich.append(section_heading(title))
             legacy.append(bold(title))
         if not lines:
             continue
+        row = _CALENDAR_ROW.fullmatch(lines[0]) if len(lines) == 1 else None
+        if row:
+            number, when, title = row.groups()
+            rendered = escape(number) + bold(escape(when)) + escape(title)
+            if previous_row:
+                rich[-1] = rich[-1].removesuffix("</p>") + "<br>" + rendered + "</p>"
+                legacy[-1] += "\n" + rendered
+            else:
+                rich.append(paragraph(rendered))
+                legacy.append(rendered)
+            previous_row = True
+            continue
+        previous_row = False
         escaped = [escape(line) for line in lines]
         if all(line.startswith("• ") for line in lines):
             rich.append(unordered_list([line[2:] for line in escaped]))
-            previous_card = False
         else:
             card = bool(re.match(r"^\d+\. ", lines[0]))
             if card:
-                if previous_card:
-                    rich.append(divider())
                 escaped[0] = bold(escaped[0])
             rich.append(paragraph("<br>".join(escaped)))
-            previous_card = card
         legacy.append("\n".join(escaped))
     return join_blocks(rich), "\n\n".join(legacy)

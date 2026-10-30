@@ -4,7 +4,7 @@ from satellite.messages_ru import ai_report_text
 from satellite.presentation.assistant import assistant_message_chunks, assistant_message_html
 
 
-def test_calendar_cards_group_days_and_keep_time_separate_from_escaped_titles():
+def test_calendar_rows_group_days_and_emphasize_time_with_inline_escaped_titles():
     report = {
         "from_date": "2026-10-30",
         "to_date_exclusive": "2026-11-01",
@@ -29,11 +29,25 @@ def test_calendar_cards_group_days_and_keep_time_separate_from_escaped_titles():
     }
     rich, legacy = assistant_message_html(ai_report_text(report))
     assert "<h3>Пт, 30.10</h3>" in rich and "<h3>Сб, 31.10</h3>" in rich
-    assert "<b>1. 12:00–12:30</b><br>Длинное название &lt;script&gt; &amp; встреча" in rich
-    assert "<b>2. Весь день · 31.10–01.11</b>" in rich
+    assert "1. <b>12:00–12:30</b> Длинное название &lt;script&gt; &amp; встреча" in rich
+    assert "2. <b>Весь день · 31.10–01.11</b> Выходной" in rich
     assert "Europe/Moscow" not in rich and "МСК" in rich
     assert "<script>" not in rich and "## " not in legacy
     assert legacy.count("Календарь: Мой") == 1
+    report["to_date_exclusive"] = "2026-10-31"
+    report["events"][1] = {
+        **report["events"][0],
+        "option": 2,
+        "title": "Вторая встреча",
+        "start": "2026-10-30T14:00:00+03:00",
+        "end": "2026-10-30T15:00:00+03:00",
+    }
+    rich, legacy = assistant_message_html(ai_report_text(report))
+    assert rich.count("30.10") == 1
+    assert "<h3>📅 Пт, 30.10 · МСК</h3>" in rich
+    assert "встреча<br>2. <b>14:00–15:00</b> Вторая встреча" in rich
+    assert "встреча\n2. <b>14:00–15:00</b> Вторая встреча" in legacy
+    assert "<hr>" not in rich
 
 
 def test_optimization_card_retains_number_and_numeric_benefit():
@@ -58,8 +72,6 @@ def test_optimization_card_retains_number_and_numeric_benefit():
     assert "0 → 90 мин" in rich and "0 → 90 мин" in legacy
     assert "<ul><li>Пересечений: 0</li>" in rich
     assert "<h3>Как применить</h3>" in rich
-    spaced, _ = assistant_message_html("1. 10:00–11:00\nПервая\n\n2. 12:00–13:00\nВторая")
-    assert "</p><hr><p><b>2. 12:00–13:00</b>" in spaced
 
 
 def test_long_week_splits_between_meetings_and_never_leaves_day_heading_behind():
