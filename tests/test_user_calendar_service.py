@@ -10,7 +10,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, tzinfo
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -20,7 +21,10 @@ import pytest
 from satellite.calendar.operation_log import CalendarOperationLog
 from satellite.calendar.providers.base import (
     CalendarConnectionStatus,
+    CalendarEventPayload,
+    CalendarEventRef,
     CalendarListEntry,
+    CalendarMutation,
     CalendarNotConnectedError,
     CalendarProviderError,
     UserCalendarContext,
@@ -149,6 +153,30 @@ def _connect(service: UserCalendarService, *, password: str = PASSWORD) -> None:
         provider_id=PROVIDER_MAILRU,
         credentials=ProviderCredentials(login=LOGIN, secret=password),
     )
+
+
+def test_ai_mutation_normalizes_selected_calendar_slashes_without_widening_scope(
+    service: UserCalendarService, users: UserStore, fake_provider: FakeProvider
+) -> None:
+    _connect(service)
+    users.set_enabled_calendar_urls(USER_ID, calendar_urls=("https://caldav.example/selected/",))
+    start = datetime(2026, 11, 2, 10, tzinfo=UTC)
+    mutation = CalendarMutation(
+        "a" * 64,
+        "create",
+        "https://caldav.example/selected/",
+        service.connection_id(USER_ID),
+        CalendarEventPayload("Test", start, start + timedelta(minutes=30)),
+    )
+    with patch.object(
+        fake_provider, "apply_mutation", create=True, return_value=CalendarEventRef("test")
+    ) as write:
+        assert service.apply_mutation(USER_ID, mutation).uid == "test"
+        with pytest.raises(CalendarProviderError, match="Calendar scope changed"):
+            service.apply_mutation(
+                USER_ID, replace(mutation, calendar_url="https://caldav.example/other/")
+            )
+        assert write.call_count == 1
 
 
 def test_require_connection_raises_when_not_connected(

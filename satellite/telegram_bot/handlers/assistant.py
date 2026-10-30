@@ -2,7 +2,6 @@
 
 from dataclasses import replace
 from datetime import datetime
-from html import escape
 
 from ...messages_ru import (
     AI_DISABLED,
@@ -14,7 +13,7 @@ from ...messages_ru import (
     ai_usage_text,
     build_approved_main_keyboard,
 )
-from ...presentation.rich import join_blocks, paragraph
+from ...presentation.assistant import assistant_message_chunks, assistant_message_html
 from ...users import USER_STATUS_APPROVED
 from ..visual import TypingIndicator
 from .access import ensure_calendar_connected
@@ -37,13 +36,13 @@ def _send_text(ctx: HandlerContext, msg: IncomingMessage, text: str) -> None:
         if user and user.status == USER_STATUS_APPROVED and user.has_calendar
         else None
     )
-    for i in range(0, len(text), 3000):
-        escaped = escape(text[i : i + 3000])
+    for i, chunk in enumerate(assistant_message_chunks(text)):
+        rich, legacy = assistant_message_html(chunk)
         send_rich_or_html(
             ctx,
             msg.chat_id,
-            rich_html=join_blocks([paragraph(line) for line in escaped.splitlines() if line]),
-            fallback_html=escaped,
+            rich_html=rich,
+            fallback_html=legacy,
             reply_markup=keyboard if i == 0 else None,
         )
 

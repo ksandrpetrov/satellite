@@ -17,6 +17,7 @@ from satellite.calendar.providers.base import (
     CalendarEventPayload,
     CalendarListEntry,
     CalendarMutation,
+    CalendarProviderError,
 )
 from satellite.messages_ru import AI_BUDGET, AI_EVENT_CHANGED, AI_NEED_DETAILS, AI_UNCONFIRMED
 
@@ -128,8 +129,70 @@ def test_all_read_scenarios_are_read_only(app, name):
         reply(),
     ]
     answer = app.respond(1, 20, "Советы или обзор", str(TZ), now=NOW)
-    assert answer.startswith("Обзор календаря") and "Europe/Moscow" in answer
+    assert answer.startswith("Обзор календаря") and "МСК" in answer
     app.calendar.apply_mutation.assert_not_called()
+
+
+def test_calendar_denial_is_clear_and_can_be_followed_by_explicit_calendar_selection(app):
+    writable = "https://calendar.example/personal/"
+    app.calendar.require_connection.return_value.context.enabled_calendar_urls = (
+        CAL.rstrip("/"),
+        writable.rstrip("/"),
+    )
+    app.calendar.list_calendars.return_value = [
+        CalendarListEntry("Общий", CAL),
+        CalendarListEntry("Мой", writable),
+    ]
+    app.calendar.apply_mutation.side_effect = CalendarProviderError(
+        "Forbidden", error_code="WRITE_FORBIDDEN"
+    )
+    app.provider.request.return_value = creation()
+    answer = app.respond(1, 201, "Создай отчёт с 15 до 16", str(TZ), now=NOW)
+    assert "не разрешает запись" in answer and "В календаре Мой" in answer
+    assert answer != AI_UNCONFIRMED
+    assert not app.store.conversation(1, "conn", NOW)["completed"]
+    assert app.respond(1, 201, "Создай отчёт с 15 до 16", str(TZ), now=NOW) == answer
+    assert app.calendar.apply_mutation.call_count == 1
+    app.calendar.apply_mutation.side_effect = None
+    app.provider.request.return_value = creation(calendar_name="Мой")
+    answer = app.respond(1, 202, "В календаре Мой", str(TZ), now=NOW)
+    assert "Создала" in answer
+    assert app.calendar.apply_mutation.call_args.args[1].calendar_url == writable
+
+
+def test_named_calendar_outside_selected_scope_cannot_receive_writes(app):
+    app.calendar.list_calendars.return_value = [
+        CalendarListEntry("Основной", CAL),
+        CalendarListEntry("Чужой", "https://calendar.example/foreign/"),
+    ]
+    app.provider.request.return_value = creation(calendar_name="Чужой")
+    answer = app.respond(1, 203, "Создай отчёт в календаре Чужой с 15 до 16", str(TZ), now=NOW)
+    assert "В какой календарь" in answer and "Основной" in answer
+    app.calendar.apply_mutation.assert_not_called()
+
+
+def test_overview_numbers_events_in_real_time_order_across_utc_offsets(app):
+    app.calendar.list_events_for_analytics.return_value = [
+        {
+            "uid": "late",
+            "summary": "Позже",
+            "dtstart": "2026-11-02T12:00:00Z",
+            "dtend": "2026-11-02T13:00:00Z",
+        },
+        {
+            "uid": "early",
+            "summary": "Раньше",
+            "dtstart": "2026-11-02T12:30:00+03:00",
+            "dtend": "2026-11-02T13:00:00+03:00",
+        },
+    ]
+    app.provider.request.side_effect = [call("day_overview"), reply()]
+    answer = app.respond(1, 204, "Что сегодня?", str(TZ), now=NOW)
+    assert answer.index("1. 12:30–13:00") < answer.index("2. 15:00–16:00")
+    assert [e["uid"] for e in app.store.conversation(1, "conn", NOW)["options"]] == [
+        "early",
+        "late",
+    ]
 
 
 def test_ambiguous_move_offers_options_instead_of_moving(app):

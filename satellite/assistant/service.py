@@ -159,7 +159,7 @@ class AssistantService:
             connection=connection,
             updated=now.isoformat(),
             previous_request=plan,
-            completed=bool((self.store.turn(user_id, update_id) or {}).get("mutation")),
+            completed=(self.store.turn(user_id, update_id) or {}).get("status") == "done",
         )
         if isinstance(result, str):
             answer = result

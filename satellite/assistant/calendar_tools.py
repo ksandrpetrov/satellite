@@ -20,6 +20,7 @@ from ..calendar.providers.base import (
 )
 from ..calendar.selection import effective_enabled_calendar_urls_from_parts
 from ..calendar.time_utils import add_elapsed_minutes, validate_local_datetime
+from ..calendar.url_utils import normalize_calendar_url
 from ..calendar.user_calendar_service import UserCalendarService
 from ..messages_ru import (
     AI_ALTERNATIVES,
@@ -31,7 +32,11 @@ from ..messages_ru import (
     AI_NO_ALTERNATIVES,
     AI_NOT_FOUND,
     AI_SELECTION,
+    AI_WRITE_FORBIDDEN,
+    ai_calendar_choice,
+    ai_conflict_events,
     ai_receipt,
+    ai_report_text,
 )
 from .optimization import (
     Preferences,
@@ -156,6 +161,7 @@ class CalendarTools:
             enabled_calendar_urls=connected.context.enabled_calendar_urls,
             primary_calendar_url=connected.context.primary_calendar_url,
         )
+        self.selected_urls = tuple(normalize_calendar_url(url) for url in self.selected_urls)
         self.preferences = Preferences(
             workday=workday_options_from_preset(connected.record.analytics_workday)
         )
@@ -182,7 +188,10 @@ class CalendarTools:
             raise CalendarProviderError(
                 "Calendar changed or oversized", error_code="CALENDAR_CONNECTION_CHANGED"
             )
-        return [dict(e) for e in active_events(events, self.tz, self.login)]
+        return sorted(
+            [dict(e) for e in active_events(events, self.tz, self.login)],
+            key=lambda e: event_datetime_bounds(e, self.tz)[0] or datetime.max.replace(tzinfo=UTC),
+        )
 
     def _options(self, kind: str, values: list[dict[str, Any]]) -> None:
         self.conversation["option_kind"] = kind
@@ -259,7 +268,6 @@ class CalendarTools:
                 args.get("option") is not None and self.conversation.get("option_kind") == "events"
             ):
                 events = [self.select_option(args["option"])]
-        events.sort(key=lambda e: str(e.get("dtstart") or ""))
         options = events[:40]
         self._options("events", options)
         result.update(
@@ -314,16 +322,37 @@ class CalendarTools:
                     return AI_NOT_FOUND
                 self._options("events", matches[:40])
                 if len(matches) != 1:
-                    lines = [
-                        f"{i}. {e.get('summary', '')} — {e.get('dtstart', '')}"
-                        for i, e in enumerate(matches[:40], 1)
-                    ]
-                    return AI_SELECTION.format(options="\n".join(lines))
+                    return AI_SELECTION.format(
+                        options=ai_report_text(
+                            {
+                                "from_date": str(from_date),
+                                "to_date_exclusive": str(to_date),
+                                "timezone": str(self.tz),
+                                "events": [
+                                    public_event(e, i, self.tz)
+                                    for i, e in enumerate(matches[:40], 1)
+                                ],
+                                "truncated": len(matches) > 40,
+                            }
+                        )
+                    )
                 event = matches[0]
         original_start = original_end = recurrence = None
         ref = None
         calendar_url = self.primary
         calendar_name = ""
+        if event is None and args.get("calendar_name"):
+            allowed = {normalize_calendar_url(self.primary), *self.selected_urls}
+            calendars = [
+                c
+                for c in self.service.list_calendars(self.user_id)
+                if normalize_calendar_url(c.url) in allowed
+            ]
+            requested = str(args["calendar_name"]).strip().casefold()
+            matching_names = [c for c in calendars if c.name.strip().casefold() == requested]
+            if len(matching_names) != 1:
+                return ai_calendar_choice([c.name for c in calendars])
+            calendar_url = matching_names[0].url
         if event:
             original_start, original_end = event_datetime_bounds(event, self.tz)
             if is_all_day_event(event, self.tz):
@@ -371,7 +400,7 @@ class CalendarTools:
         ):
             raise ValueError("Invalid write interval or title")
         events = self.load(start.date(), end.date() + timedelta(days=1))
-        if calendar_url not in self.selected_urls:
+        if normalize_calendar_url(calendar_url) not in self.selected_urls:
             # A hidden primary calendar is still the create destination; its events
             # must also block creation even when excluded from the user's digest.
             extra = self.service.list_events(
@@ -426,13 +455,20 @@ class CalendarTools:
                 else AI_NO_ALTERNATIVES
             )
             return AI_CONFLICT.format(
-                events="\n".join(
-                    f"• {e.get('summary', '')}: {e.get('dtstart', '')}" for e in conflicts[:10]
+                events=ai_conflict_events(
+                    [public_event(e, i, self.tz) for i, e in enumerate(conflicts[:10], 1)]
                 ),
                 alternatives=text,
             )
         calendars = self.service.list_calendars(self.user_id)
-        calendar_name = next((c.name for c in calendars if c.url == calendar_url), calendar_name)
+        calendar_name = next(
+            (
+                c.name
+                for c in calendars
+                if normalize_calendar_url(c.url) == normalize_calendar_url(calendar_url)
+            ),
+            calendar_name,
+        )
         operation_id = hashlib.sha256(
             f"{self.user_id}:{self.update_id}:{self.connection}".encode()
         ).hexdigest()
@@ -458,7 +494,32 @@ class CalendarTools:
             },
         )
         self.budget.remaining()
-        self.service.apply_mutation(self.user_id, mutation, deadline=self.budget.deadline)
+        try:
+            self.service.apply_mutation(self.user_id, mutation, deadline=self.budget.deadline)
+        except CalendarProviderError as exc:
+            if exc.error_code != "WRITE_FORBIDDEN":
+                raise
+            text = AI_WRITE_FORBIDDEN.format(calendar=calendar_name)
+            if event is None:
+                calendar_alternatives = [
+                    c.name
+                    for c in calendars
+                    if normalize_calendar_url(c.url) in self.selected_urls
+                    and normalize_calendar_url(c.url) != normalize_calendar_url(calendar_url)
+                ]
+                text += "\n\n" + ai_calendar_choice(calendar_alternatives)
+            self.store.save_turn(
+                self.user_id,
+                self.update_id,
+                {
+                    "connection": self.connection,
+                    "mutation": mutation_to_dict(mutation),
+                    "calendar": calendar_name,
+                    "status": "rejected",
+                    "response": text,
+                },
+            )
+            return text
         return self.finish_mutation(mutation, calendar_name)
 
     def finish_mutation(self, mutation: CalendarMutation, calendar_name: str) -> str:
@@ -467,8 +528,8 @@ class CalendarTools:
             moved=mutation.kind == "reschedule",
             title=payload.title,
             calendar=calendar_name,
-            start=payload.start.astimezone(self.tz).strftime("%d.%m.%Y %H:%M") + f" ({self.tz})",
-            end=payload.end.astimezone(self.tz).strftime("%d.%m.%Y %H:%M"),
+            start=payload.start.astimezone(self.tz),
+            end=payload.end.astimezone(self.tz),
         )
         turn = {
             "connection": self.connection,

@@ -25,6 +25,7 @@ from .providers.base import (
     UserCalendarContext,
 )
 from .providers.registry import get_provider
+from .url_utils import normalize_calendar_url
 
 log = logging.getLogger(__name__)
 
@@ -245,8 +246,12 @@ class UserCalendarService:
                 raise CalendarProviderError(
                     "Connection changed", error_code="CALENDAR_CONNECTION_CHANGED"
                 )
-            allowed = {cc.context.primary_calendar_url, *cc.context.enabled_calendar_urls}
-            if mutation.calendar_url not in allowed:
+            allowed = {
+                normalize_calendar_url(url)
+                for url in (cc.context.primary_calendar_url, *cc.context.enabled_calendar_urls)
+                if url
+            }
+            if normalize_calendar_url(mutation.calendar_url) not in allowed:
                 raise CalendarProviderError(
                     "Calendar scope changed", error_code="CALENDAR_CONNECTION_CHANGED"
                 )

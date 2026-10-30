@@ -3,7 +3,7 @@
 from dataclasses import replace
 from unittest.mock import MagicMock
 
-from satellite.messages_ru import AI_HELP, AI_PRIVATE, BOT_KEYBOARD_HINT, BUTTON_OPTIMIZE
+from satellite.messages_ru import AI_PRIVATE, BOT_KEYBOARD_HINT, BUTTON_OPTIMIZE
 from satellite.telegram_bot.api import TelegramError
 from satellite.telegram_bot.handlers import handle_message
 from satellite.telegram_bot.handlers.routing import OptimizeCommand, recognize_message
@@ -53,8 +53,9 @@ def test_ai_help_preserves_lines_and_refreshes_existing_users_keyboard(tmp_path)
     ctx.assistant = MagicMock()
     handle_message(ctx, make_msg(text="/ai"))
     rendered = final_message_html(ctx.telegram)
-    assert "</p><p>• Когда завтра" in rendered
-    assert rendered.count("<p>") == len([line for line in AI_HELP.splitlines() if line])
+    assert "<h3>Посмотреть расписание</h3>" in rendered
+    assert "<li>Когда завтра найдётся час без встреч?</li>" in rendered
+    assert "## " not in rendered
     assert BUTTON_OPTIMIZE in str(final_reply_markup(ctx.telegram))
     ctx.assistant.respond.assert_not_called()
 
