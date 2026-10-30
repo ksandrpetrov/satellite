@@ -3,10 +3,11 @@
 from dataclasses import replace
 from unittest.mock import MagicMock
 
-from satellite.messages_ru import AI_PRIVATE, BOT_KEYBOARD_HINT, BUTTON_OPTIMIZE
+from satellite.messages_ru import AI_HELP, AI_PRIVATE, BOT_KEYBOARD_HINT, BUTTON_OPTIMIZE
+from satellite.telegram_bot.api import TelegramError
 from satellite.telegram_bot.handlers import handle_message
 from satellite.telegram_bot.handlers.routing import OptimizeCommand, recognize_message
-from satellite.testing.delivery_helpers import final_message_html
+from satellite.testing.delivery_helpers import final_message_html, final_reply_markup
 
 from .conftest import make_ctx, make_msg, make_user_store
 
@@ -45,3 +46,27 @@ def test_ai_reset_does_not_call_model_and_usage_is_admin_only(tmp_path):
     handle_message(ctx, make_msg(text="/ai_usage", update_id=2))
     ctx.assistant.store.usage.assert_not_called()
     ctx.assistant.respond.assert_not_called()
+
+
+def test_ai_help_preserves_lines_and_refreshes_existing_users_keyboard(tmp_path):
+    ctx = make_ctx(make_user_store(tmp_path, approved_with_calendar=[5001]))
+    ctx.assistant = MagicMock()
+    handle_message(ctx, make_msg(text="/ai"))
+    rendered = final_message_html(ctx.telegram)
+    assert "</p><p>• Когда завтра" in rendered
+    assert rendered.count("<p>") == len([line for line in AI_HELP.splitlines() if line])
+    assert BUTTON_OPTIMIZE in str(final_reply_markup(ctx.telegram))
+    ctx.assistant.respond.assert_not_called()
+
+
+def test_ai_legacy_fallback_keeps_line_breaks_and_escaped_calendar_text(tmp_path):
+    ctx = make_ctx(make_user_store(tmp_path, approved_with_calendar=[5001]))
+    ctx.assistant = MagicMock()
+    ctx.assistant.respond.return_value = "Первый вариант\n\nВстреча <script> & текст"
+    ctx.subscriptions.get.return_value = None
+    ctx.telegram.send_rich_message.side_effect = TelegramError("METHOD_NOT_FOUND")
+    handle_message(ctx, make_msg(text="Как оптимизировать календарь?"))
+    assert ctx.telegram.send_message.call_args.args[1] == (
+        "Первый вариант\n\nВстреча &lt;script&gt; &amp; текст"
+    )
+    assert BUTTON_OPTIMIZE in str(ctx.telegram.send_message.call_args.kwargs["reply_markup"])

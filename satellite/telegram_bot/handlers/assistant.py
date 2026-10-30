@@ -12,11 +12,14 @@ from ...messages_ru import (
     AI_PRIVATE,
     AI_RESET,
     ai_usage_text,
+    build_approved_main_keyboard,
 )
+from ...presentation.rich import join_blocks, paragraph
+from ...users import USER_STATUS_APPROVED
 from ..visual import TypingIndicator
 from .access import ensure_calendar_connected
 from .context import HandlerContext, IncomingMessage
-from .delivery import send
+from .delivery import send, send_rich_or_html
 
 
 def _private(ctx: HandlerContext, msg: IncomingMessage) -> bool:
@@ -28,13 +31,26 @@ def _private(ctx: HandlerContext, msg: IncomingMessage) -> bool:
 
 def _send_text(ctx: HandlerContext, msg: IncomingMessage, text: str) -> None:
     # Escape generated content; Telegram must never interpret calendar titles as HTML.
+    user = ctx.users.get(msg.user_id) if msg.user_id is not None else None
+    keyboard = (
+        build_approved_main_keyboard()
+        if user and user.status == USER_STATUS_APPROVED and user.has_calendar
+        else None
+    )
     for i in range(0, len(text), 3000):
-        send(ctx, msg.chat_id, escape(text[i : i + 3000]))
+        escaped = escape(text[i : i + 3000])
+        send_rich_or_html(
+            ctx,
+            msg.chat_id,
+            rich_html=join_blocks([paragraph(line) for line in escaped.splitlines() if line]),
+            fallback_html=escaped,
+            reply_markup=keyboard if i == 0 else None,
+        )
 
 
 def handle_ai_help(ctx: HandlerContext, msg: IncomingMessage) -> None:
     if _private(ctx, msg):
-        send(ctx, msg.chat_id, AI_HELP if ctx.assistant else AI_DISABLED)
+        _send_text(ctx, msg, AI_HELP if ctx.assistant else AI_DISABLED)
 
 
 def handle_ai_reset(ctx: HandlerContext, msg: IncomingMessage) -> None:
