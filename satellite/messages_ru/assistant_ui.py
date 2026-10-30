@@ -187,7 +187,12 @@ def ai_report_text(report: dict) -> str:
     else:
         slots = "options" in report
         heading = "🕒 Свободное время" if slots else "📅 Твой календарь"
-        blocks = [f"## {heading}\n{period} · {zone}"]
+        one_day = first.date() == last.date()
+        if one_day:
+            heading = (
+                f"🕒 Свободное время · {_day_label(first)}" if slots else f"📅 {_day_label(first)}"
+            )
+        blocks = [f"## {heading}\n{zone if one_day else period + ' · ' + zone}"]
         values = report.get("options", []) if slots else report.get("events", [])
         calendars = {e.get("calendar") for e in values if e.get("calendar")}
         if not slots and len(calendars) == 1:
@@ -198,7 +203,7 @@ def ai_report_text(report: dict) -> str:
                 datetime.fromisoformat(item["start"]),
                 datetime.fromisoformat(item["end"]),
             )
-            if start.date() != previous_day:
+            if start.date() != previous_day and (not one_day or start.date() != first.date()):
                 blocks.append(f"## {_day_label(start)}")
                 previous_day = start.date()
             when = "Весь день" if item.get("all_day") else _time_range(start, finish)

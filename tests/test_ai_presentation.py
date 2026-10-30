@@ -58,6 +58,8 @@ def test_optimization_card_retains_number_and_numeric_benefit():
     assert "0 → 90 мин" in rich and "0 → 90 мин" in legacy
     assert "<ul><li>Пересечений: 0</li>" in rich
     assert "<h3>Как применить</h3>" in rich
+    spaced, _ = assistant_message_html("1. 10:00–11:00\nПервая\n\n2. 12:00–13:00\nВторая")
+    assert "</p><hr><p><b>2. 12:00–13:00</b>" in spaced
 
 
 def test_long_week_splits_between_meetings_and_never_leaves_day_heading_behind():

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from html import escape
 
-from .rich import bold, join_blocks, paragraph, section_heading, unordered_list
+from .rich import bold, divider, join_blocks, paragraph, section_heading, unordered_list
 
 
 def assistant_message_chunks(text: str, *, limit: int = 2800) -> list[str]:
@@ -57,11 +57,13 @@ def assistant_message_chunks(text: str, *, limit: int = 2800) -> list[str]:
 def assistant_message_html(text: str) -> tuple[str, str]:
     rich: list[str] = []
     legacy: list[str] = []
+    previous_card = False
     for block in text.split("\n\n"):
         lines = block.splitlines()
         if not lines:
             continue
         if lines[0].startswith("## "):
+            previous_card = False
             title = escape(lines.pop(0)[3:])
             rich.append(section_heading(title))
             legacy.append(bold(title))
@@ -70,9 +72,14 @@ def assistant_message_html(text: str) -> tuple[str, str]:
         escaped = [escape(line) for line in lines]
         if all(line.startswith("• ") for line in lines):
             rich.append(unordered_list([line[2:] for line in escaped]))
+            previous_card = False
         else:
-            if re.match(r"^\d+\. ", lines[0]):
+            card = bool(re.match(r"^\d+\. ", lines[0]))
+            if card:
+                if previous_card:
+                    rich.append(divider())
                 escaped[0] = bold(escaped[0])
             rich.append(paragraph("<br>".join(escaped)))
+            previous_card = card
         legacy.append("\n".join(escaped))
     return join_blocks(rich), "\n\n".join(legacy)
