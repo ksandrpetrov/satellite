@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import tzinfo
 
+from ...assistant.service import AssistantService
 from ...calendar.user_calendar_service import UserCalendarService
 from ...config import AdminConfig, PlanConfig, WeatherConfig, WebAppConfig
 from ...meeting_exclusions import MeetingExclusionService
@@ -40,6 +41,7 @@ class HandlerContext:
     calendar_state: CalendarStateStore
     meeting_exclusions: MeetingExclusionService
     _plan_builder: PlanBuilder
+    assistant: AssistantService | None = None
 
     def plan_builder(self) -> PlanBuilder:
         return self._plan_builder
@@ -55,6 +57,7 @@ class IncomingMessage:
     text: str | None
     message_id: int | None = None
     web_app_data: str | None = None
+    chat_type: str | None = None
 
 
 @dataclass(frozen=True)

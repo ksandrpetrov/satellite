@@ -11,6 +11,9 @@ from types import FrameType
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from ..assistant.provider import ResponsesProvider
+from ..assistant.service import AssistantService
+from ..assistant.store import AiStore
 from ..backup import snapshot_all
 from ..calendar.operation_log import CalendarOperationLog
 from ..calendar.user_calendar_service import UserCalendarService
@@ -60,7 +63,11 @@ class TelegramBot:
         self._subscriptions_path = logs_dir / "subscriptions.json"
         # Снапшоты снимаются до строгого чтения stores: повреждённый файл
         # сохраняется для ручного восстановления, а запуск прекращается.
-        self._startup_snapshots = snapshot_all([self._users_path, self._subscriptions_path])
+        ai_path = logs_dir / "ai-state.json"
+        paths = [self._users_path, self._subscriptions_path]
+        if ai_path.exists():
+            paths.append(ai_path)
+        self._startup_snapshots = snapshot_all(paths)
         self._users = UserStore(self._users_path)
         self._subscriptions = SubscriptionStore(self._subscriptions_path)
         self._telegram = TelegramClient(settings.telegram.bot_token)
@@ -72,6 +79,30 @@ class TelegramBot:
             operation_log=self._operation_log,
             cache_ttl_sec=settings.bot.caldav_cache_ttl_sec,
         )
+        self._assistant: AssistantService | None = None
+        if settings.ai.enabled and settings.ai.api_key:
+            try:
+                ai_store = AiStore(ai_path, settings.security.encryption_key)
+                self._assistant = AssistantService(
+                    settings.ai,
+                    ai_store,
+                    ResponsesProvider(settings.ai, ai_store, settings.plan.tz_name),
+                    self._calendar_service,
+                    workers=settings.bot.workers,
+                )
+                log.info(
+                    "AI assistant enabled model=%s monthly_limit_usd=%s",
+                    settings.ai.model,
+                    settings.ai.monthly_limit_usd,
+                )
+            except Exception as exc:
+                # Never reset a corrupt spending journal; ordinary bot features survive.
+                log.critical(
+                    "AI assistant disabled: state initialization failed error_type=%s",
+                    type(exc).__name__,
+                )
+        elif settings.ai.enabled:
+            log.error("AI assistant disabled: API key is missing")
         self._meeting_exclusions = MeetingExclusionService(
             self._users,
             self._token_vault,
@@ -198,6 +229,9 @@ class TelegramBot:
             ]
             if self._weather_client is not None:
                 steps.append(("weather client", self._weather_client.close))
+            if getattr(self, "_assistant", None) is not None:
+                assert self._assistant is not None
+                steps.append(("AI client", self._assistant.close))
             for label, closer in steps:
                 try:
                     closer()
@@ -238,6 +272,7 @@ class TelegramBot:
             calendar_state=self._calendar_state,
             meeting_exclusions=self._meeting_exclusions,
             _plan_builder=self._plan_builder,
+            assistant=self._assistant,
         )
 
     def _main_loop(self) -> None:

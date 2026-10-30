@@ -243,6 +243,8 @@ def make_ctx(
 
     ctx = MagicMock()
 
+    ctx.assistant = None  # AI is opt-in, as in the production Settings default.
+
     ctx.runtime = HandlerRuntime()
     ctx.users = users
     ctx.admin = AdminConfig(telegram_ids=tuple(admin_ids))

@@ -21,6 +21,7 @@ from pathlib import Path
 import requests
 from dotenv import dotenv_values, load_dotenv
 
+from .assistant.config import AiConfig
 from .users import parse_admin_ids
 from .weather.models import WeatherConfig
 
@@ -170,6 +171,7 @@ class Settings:
     project_root: Path = PROJECT_ROOT
     env_path: Path = DEFAULT_ENV_PATH
     weather: WeatherConfig = field(default_factory=default_weather_config)
+    ai: AiConfig = field(default_factory=AiConfig)
 
 
 def _env_value_from_file(key: str, env_path: Path) -> str | None:
@@ -329,6 +331,12 @@ def load_settings(
         raise ValueError("Invalid .env:\n- " + "\n- ".join(env_errors))
 
     settings = Settings(
+        ai=AiConfig(
+            enabled=parse_bool_env(os.getenv("AI_ENABLED"), False),
+            api_key=(os.getenv("OPENAI_API_KEY") or "").strip(),
+            model=(os.getenv("AI_MODEL") or "gpt-6.1-sol").strip(),
+            monthly_limit_usd=_parse_int(os.getenv("AI_MONTHLY_LIMIT_USD"), 50),
+        ),
         telegram=TelegramConfig(bot_token=bot_token),
         plan=PlanConfig(
             hide_all_day_events=parse_bool_env(

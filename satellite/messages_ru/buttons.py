@@ -19,6 +19,7 @@ BUTTON_SUBSCRIBE = "🔔 Подписаться на дайджест"
 BUTTON_UNSUBSCRIBE = "🔕 Отключить дайджест"
 BUTTON_UNSUBSCRIBE_LEGACY = "🔕 Отписаться от дайджеста"
 BUTTON_SETTINGS = "⚙️ Настройки"
+BUTTON_OPTIMIZE = "💡 Советы по календарю"
 BUTTON_DIGEST_SETTINGS = "⚙️ Настройки дайджеста"  # legacy reply-кнопка
 BUTTON_CONNECT_CALENDAR = "🔌 Подключить календарь"
 BUTTON_RECONNECT_CALENDAR = "🔄 Переподключить календарь"

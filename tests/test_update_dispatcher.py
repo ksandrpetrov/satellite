@@ -32,6 +32,7 @@ def dispatcher_ctx(tmp_path) -> tuple[UpdateDispatcher, OffsetTracker, MagicMock
     )
     ctx = MagicMock(spec=HandlerContext)
     ctx.runtime = HandlerRuntime()
+    ctx.assistant = None
     yield disp, tracker, ctx, stop_event
     stop_event.set()
     executor.shutdown(wait=True)
@@ -185,6 +186,49 @@ def test_same_chat_messages_are_serialized(dispatcher_ctx, monkeypatch: pytest.M
     allow_first_finish.set()
     assert both_done.wait(timeout=2.0)
     assert order == [20, 21]
+
+
+def test_waiting_messages_for_active_ai_do_not_occupy_all_workers(tmp_path, monkeypatch):
+    tracker = OffsetTracker(OffsetStore(tmp_path / "offset.json"))
+    started, release, ordinary_done = threading.Event(), threading.Event(), threading.Event()
+    ctx = MagicMock(spec=HandlerContext)
+    ctx.assistant = MagicMock()
+    ctx.assistant.is_running.side_effect = lambda uid: uid == 1
+    calls = []
+
+    def handle(_ctx, msg):
+        calls.append(msg.update_id)
+        if msg.update_id == 1:
+            started.set()
+            assert release.wait(2)
+        else:
+            ordinary_done.set()
+
+    monkeypatch.setattr("satellite.telegram_bot.update_dispatcher.handle_message", handle)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        dispatcher = UpdateDispatcher(
+            executor=executor,
+            chat_locks=ChatLockManager(),
+            offset_tracker=tracker,
+            stop_event=threading.Event(),
+            max_pending_updates=4,
+        )
+
+        def update(n, uid):
+            return {
+                "update_id": n,
+                "message": {"chat": {"id": uid}, "from": {"id": uid}, "text": "test"},
+            }
+
+        try:
+            dispatcher.dispatch_update(ctx, update(1, 1))
+            assert started.wait(1)
+            dispatcher.dispatch_update(ctx, update(2, 1))
+            dispatcher.dispatch_update(ctx, update(3, 2))
+            assert ordinary_done.wait(1)
+            assert calls == [1, 3]
+        finally:
+            release.set()
 
 
 def test_pending_limit_applies_backpressure_before_submit(

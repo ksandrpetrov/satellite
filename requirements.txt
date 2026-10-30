@@ -6,6 +6,7 @@ anyio==4.15.1
     # via
     #   httpx2
     #   mcp
+    #   openai
     #   sse-starlette
     #   starlette
 attrs==26.1.0
@@ -42,7 +43,9 @@ h11==0.16.0
 httpcore2==2.16.0 ; sys_platform != 'emscripten'
     # via httpx2
 httpx2==2.16.0
-    # via mcp
+    # via
+    #   mcp
+    #   openai
 httpx2-jsfetch==1.0 ; python_full_version >= '3.12' and sys_platform == 'emscripten'
     # via httpx2
 icalendar==7.3.0
@@ -61,6 +64,8 @@ idna==3.20
     #   requests
 jh2==5.0.15
     # via urllib3-future
+jiter==0.18.0
+    # via openai
 jsonschema==4.26.0
     # via mcp
 jsonschema-specifications==2025.9.1
@@ -73,6 +78,8 @@ mcp-types==2.3.0
     # via mcp
 niquests==3.21.2
     # via caldav
+openai==3.41.0
+    # via -r requirements.in
 opentelemetry-api==1.45.1
     # via mcp
 pillow==13.0.0
@@ -83,6 +90,7 @@ pydantic==2.14.1
     # via
     #   mcp
     #   mcp-types
+    #   openai
 pydantic-core==2.50.1
     # via pydantic
 pyjwt==2.15.1
@@ -120,6 +128,8 @@ rpds-py==2026.9.1
     #   referencing
 six==1.17.0
     # via python-dateutil
+sniffio==1.3.1
+    # via openai
 sse-starlette==3.6.0
     # via mcp
 starlette==1.10.0
@@ -137,6 +147,7 @@ typing-extensions==4.16.0
     #   icalendar
     #   mcp
     #   mcp-types
+    #   openai
     #   opentelemetry-api
     #   pydantic
     #   pydantic-core

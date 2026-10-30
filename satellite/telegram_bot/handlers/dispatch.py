@@ -22,6 +22,13 @@ from .access import (
     handle_start_or_help,
 )
 from .admin import handle_pending_command, route_admin_callback
+from .assistant import (
+    handle_ai_help,
+    handle_ai_reset,
+    handle_ai_text,
+    handle_ai_usage,
+    handle_optimize,
+)
 from .calendar_create import handle_create_text_input, route_create_callback, start_create_event
 from .calendar_foreign import (
     handle_open_foreign_calendars,
@@ -45,6 +52,9 @@ from .delivery import notify_handler_failure, safe_answer_callback, send
 from .meeting_exclusions import route_meeting_exclusions_callback
 from .plan import handle_plan
 from .routing import (
+    AiHelpCommand,
+    AiResetCommand,
+    AiUsageCommand,
     CalendarSourcesCommand,
     CheckCommand,
     ConnectCommand,
@@ -53,6 +63,7 @@ from .routing import (
     ForeignCalendarsCommand,
     InvitationsCommand,
     ManageEventsCommand,
+    OptimizeCommand,
     PendingCommand,
     PlanCommand,
     RecognizedCommand,
@@ -132,7 +143,8 @@ def _route_message(
                 handle_digest_time_input(ctx, msg)
             return
         if ensure_calendar_access(ctx, msg):
-            _handle_unknown(ctx, msg)
+            if not handle_ai_text(ctx, msg):
+                _handle_unknown(ctx, msg)
         return
 
     if msg.chat_id is not None:
@@ -181,6 +193,16 @@ def _pending(ctx, msg, cmd):
 
 
 _MESSAGE_ROUTES: dict[type, _MessageRoute] = {
+    AiHelpCommand: _MessageRoute(
+        handler=_run_simple(handle_ai_help), access_guard=ensure_calendar_access
+    ),
+    AiResetCommand: _MessageRoute(
+        handler=_run_simple(handle_ai_reset), access_guard=ensure_calendar_access
+    ),
+    AiUsageCommand: _MessageRoute(handler=_run_simple(handle_ai_usage)),
+    OptimizeCommand: _MessageRoute(
+        handler=_run_simple(handle_optimize), access_guard=ensure_calendar_connected
+    ),
     StartOrHelpCommand: _MessageRoute(handler=_start_or_help),
     PendingCommand: _MessageRoute(handler=_pending),
     ConnectCommand: _MessageRoute(handler=_run_simple(handle_connect_calendar_button)),
@@ -294,8 +316,7 @@ def _route_callback(ctx: HandlerContext, cb: IncomingCallback) -> None:
 def _handle_unknown(ctx: HandlerContext, msg: IncomingMessage) -> None:
     send(ctx, msg.chat_id, BOT_KEYBOARD_HINT)
     log.info(
-        "Sent unknown-command hint user_id=%s text=%r (update_id=%s)",
+        "Sent unknown-command hint user_id=%s (update_id=%s)",
         msg.user_id,
-        msg.text,
         msg.update_id,
     )

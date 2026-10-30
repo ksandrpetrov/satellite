@@ -329,3 +329,9 @@ LOG_LEVEL=INFO
 
 **Далее:** [operations.md](operations.md) · [troubleshooting.md](troubleshooting.md) ·
 [telegram-ux.md](telegram-ux.md)
+# Настройки ИИ
+
+`AI_ENABLED` (по умолчанию `false`), `OPENAI_API_KEY`, `AI_MODEL` (`gpt-6.1-sol`),
+`AI_MONTHLY_LIMIT_USD` (целое число от 1 до 50, по умолчанию 50).
+Секрет хранится только в `.env`, лимит применяется ко всему боту.
+Подробности: [помощник по календарю](ai-assistant.md).
