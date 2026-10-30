@@ -274,8 +274,13 @@ class CalendarTools:
             events=[public_event(e, i, self.tz) for i, e in enumerate(options, 1)],
             total_events=len(events),
             truncated=len(events) > 40,
-            metrics=metrics(events, start, end, self.tz, self.login, self.preferences, self.now),
         )
+        if action == "search_events":
+            result["search"] = True
+        else:
+            result["metrics"] = metrics(
+                events, start, end, self.tz, self.login, self.preferences, self.now
+            )
         return result
 
     def select_option(self, option: int) -> dict[str, Any]:

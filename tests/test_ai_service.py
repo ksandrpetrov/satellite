@@ -129,7 +129,30 @@ def test_all_read_scenarios_are_read_only(app, name):
         reply(),
     ]
     answer = app.respond(1, 20, "Советы или обзор", str(TZ), now=NOW)
-    assert answer.startswith("Обзор календаря") and "МСК" in answer
+    expected = "## 🔎 Найденные встречи" if name == "search_events" else "Обзор календаря"
+    assert answer.startswith(expected) and "МСК" in answer
+    app.calendar.apply_mutation.assert_not_called()
+
+
+def test_search_returns_matches_without_summarizing_the_entire_days_load(app):
+    app.calendar.list_events_for_analytics.return_value = [
+        {
+            "uid": title,
+            "summary": title,
+            "dtstart": "2026-11-02T10:00:00+03:00",
+            "dtend": "2026-11-02T11:00:00+03:00",
+        }
+        for title in ("Гринлайн", "Другая встреча")
+    ]
+    app.provider.request.side_effect = [
+        call("search_events", query="Гринлайн"),
+        reply("Весь день свободен, кроме одного часа."),
+    ]
+    answer = app.respond(1, 205, "Найди Гринлайн сегодня", str(TZ), now=NOW)
+    assert "Найденные встречи" in answer and "Гринлайн" in answer
+    assert "Другая встреча" not in answer and "Весь день свободен" not in answer
+    assert app.provider.request.call_count == 1
+    assert len(app.store.conversation(1, "conn", NOW)["options"]) == 1
     app.calendar.apply_mutation.assert_not_called()
 
 

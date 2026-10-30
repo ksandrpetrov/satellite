@@ -163,6 +163,9 @@ class AssistantService:
         )
         if isinstance(result, str):
             answer = result
+        elif plan["name"] == "search_events":
+            # A matching subset cannot describe the load of the entire day.
+            answer = ai_report_text(result)
         else:
             try:
                 explanation = self.provider.request(

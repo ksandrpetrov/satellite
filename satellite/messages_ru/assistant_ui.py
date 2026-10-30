@@ -187,10 +187,14 @@ def ai_report_text(report: dict) -> str:
     else:
         slots = "options" in report
         heading = "🕒 Свободное время" if slots else "📅 Твой календарь"
+        if report.get("search"):
+            heading = "🔎 Найденные встречи"
         one_day = first.date() == last.date()
         if one_day:
             heading = (
-                f"🕒 Свободное время · {_day_label(first)}" if slots else f"📅 {_day_label(first)}"
+                f"{heading} · {_day_label(first)}"
+                if slots or report.get("search")
+                else f"📅 {_day_label(first)}"
             )
         blocks = [f"## {heading} · {zone}" if one_day else f"## {heading}\n{period} · {zone}"]
         values = report.get("options", []) if slots else report.get("events", [])
